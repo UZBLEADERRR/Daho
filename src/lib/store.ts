@@ -45,6 +45,7 @@ const EMPTY_STATE: AppState = {
   courses: [],
   videos: [],
   code: [],
+  routes: [],
 };
 
 /** Eski saqlangan holatdagi ishlamay qolgan model nomlarini tozalaydi. */

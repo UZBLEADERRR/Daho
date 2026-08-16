@@ -9,6 +9,7 @@ import { parseChart } from '../lib/charts';
 import { ArtifactCard } from './ArtifactView';
 import { Chart } from './Chart';
 import { Copy, Download, Refresh, Speaker } from './Icons';
+import { RouteCard } from './RouteCard';
 import { ToolLine, splitByTools } from './ToolLine';
 import { VideoCard } from './VideoStudio';
 import { Sheet, toast } from './ui';
@@ -177,6 +178,8 @@ export function MessageView({
           <img src={`data:${img.mimeType ?? 'image/png'};base64,${img.content}`} alt={img.title} />
         </button>
       ))}
+
+      {message.routeId && <RouteCard routeId={message.routeId} />}
 
       {message.videoId && <VideoCard projectId={message.videoId} onOpen={onOpenVideo} />}
 

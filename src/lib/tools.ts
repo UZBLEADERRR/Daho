@@ -1,11 +1,23 @@
 import { askUser } from './ask';
-import { generateImage } from './gemini';
+import { generateImage, searchAnswer } from './gemini';
 import type { FunctionDeclaration } from './gemini';
+import {
+  describeSpot,
+  directionsUrl,
+  distanceM,
+  findPlace,
+  getSpot,
+  humanDistance,
+  type Place,
+  type Spot,
+  type TravelMode,
+} from './place';
 import { getState, setState } from './store';
 import { DAYS } from './types';
 import type {
   Artifact,
   Attachment,
+  RoutePlan,
   Course,
   CourseTopic,
   Note,
@@ -25,7 +37,16 @@ export interface ToolOutcome {
   payload: Record<string, unknown>;
   /** Vosita yasagan artifactlar — xabarga biriktiriladi (rasm va h.k.) */
   artifacts?: Artifact[];
+  /** Vosita ochgan yoʻl kartasining id si */
+  route?: string;
 }
+
+/** Oxirgi aniqlangan joylashuv — qidiruvni shu atrofga yaqinlashtiradi. */
+let recentSpot: Spot | null = null;
+const lastSpot = (): Spot | undefined => recentSpot ?? undefined;
+const setLastSpot = (spot: Spot) => {
+  recentSpot = spot;
+};
 
 const str = (v: unknown, fallback = ''): string =>
   typeof v === 'string' && v.trim() ? v.trim() : fallback;
@@ -220,6 +241,62 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ['prompt'],
+    },
+  },
+  {
+    name: 'get_location',
+    description:
+      'Foydalanuvchining HOZIRGI joylashuvini oladi (GPS) va manzil nomini qaytaradi. ' +
+      '«Qayerdaman», «yaqin atrofda», «shu yerdan qanday boraman» kabi savollarda ' +
+      'birinchi shuni chaqir.',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'find_place',
+    description:
+      'Joy nomi boʻyicha xaritadan qidiradi (universitet, bekat, kasalxona, doʻkon) va ' +
+      'koordinata bilan qaytaradi. Manzil kerak boʻlganda ishlat.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: { type: 'STRING', description: 'Joy nomi, masalan "Konkuk University"' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'search_web',
+    description:
+      'Google qidiruvi orqali JONLI maʼlumot topadi: avtobus va metro raqamlari, ' +
+      'jadval, narx, ish vaqti, yangilik, ob-havo. Sening bilimingda yoʻq yoki ' +
+      'eskirgan boʻlishi mumkin boʻlgan har qanday narsani shu bilan tekshir.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: {
+          type: 'STRING',
+          description: 'Qidiruv savoli — toʻliq jumla boʻlsin, kerak boʻlsa ingliz tilida',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'plan_route',
+    description:
+      'Hozirgi joylashuvdan berilgan manzilgacha yoʻl kartasini ochadi: masofa, ' +
+      'jamoat transporti (metro/avtobus) varianti va JONLI kuzatuv. Foydalanuvchi ' +
+      '«falon joyga bormoqchiman» desa shuni chaqir.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        destination: { type: 'STRING', description: 'Boriladigan joy nomi' },
+        mode: {
+          type: 'STRING',
+          description: 'transit (jamoat transporti, standart), walking, driving, bicycling',
+        },
+      },
+      required: ['destination'],
     },
   },
   {
@@ -470,6 +547,132 @@ export async function executeTool(
           payload: { error: String((err as Error)?.message ?? err) },
         };
       }
+    }
+
+    case 'get_location': {
+      try {
+        const spot = await getSpot();
+        let address = '';
+        try {
+          address = await describeSpot(spot);
+        } catch {
+          /* manzil nomi topilmasa koordinata yetarli */
+        }
+        setLastSpot(spot);
+        return {
+          ok: true,
+          summary: address ? `Joylashuv: ${address.split(',').slice(0, 2).join(',')}` : 'Joylashuv olindi',
+          payload: {
+            lat: spot.lat,
+            lon: spot.lon,
+            aniqlik_m: Math.round(spot.accuracy ?? 0),
+            manzil: address,
+          },
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          summary: `Joylashuv olinmadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'find_place': {
+      const query = str(args.query);
+      if (!query) return { ok: false, summary: 'Joy nomi berilmadi', payload: { error: 'query_yoq' } };
+      try {
+        const found = await findPlace(query, lastSpot());
+        return {
+          ok: Boolean(found.length),
+          summary: found.length ? `Topildi: ${found[0].name}` : `Topilmadi: ${query}`,
+          payload: { joylar: found.slice(0, 5) },
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          summary: `Qidiruv ishlamadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'search_web': {
+      const query = str(args.query);
+      if (!query) return { ok: false, summary: 'Savol berilmadi', payload: { error: 'query_yoq' } };
+      const { settings } = getState();
+      try {
+        const answer = await searchAnswer(settings.apiKey, settings.model, query, ctx.signal);
+        return {
+          ok: true,
+          summary: `Qidirildi: ${query.slice(0, 40)}`,
+          payload: { natija: answer.text, manbalar: answer.sources },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Qidiruv ishlamadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'plan_route': {
+      const destination = str(args.destination);
+      if (!destination) {
+        return { ok: false, summary: 'Manzil berilmadi', payload: { error: 'destination_yoq' } };
+      }
+      const mode = (['transit', 'walking', 'driving', 'bicycling'] as const).includes(
+        str(args.mode, 'transit') as TravelMode,
+      )
+        ? (str(args.mode, 'transit') as TravelMode)
+        : 'transit';
+
+      let from: Spot | null = null;
+      try {
+        from = await getSpot();
+        setLastSpot(from);
+      } catch {
+        /* joylashuvsiz ham manzilni koʻrsata olamiz */
+      }
+
+      let target: Place | null = null;
+      try {
+        target = (await findPlace(destination, from ?? undefined))[0] ?? null;
+      } catch {
+        /* xarita qidiruvi ishlamasa havolaning oʻzi yetadi */
+      }
+
+      const meters = from && target ? distanceM(from, target) : null;
+      const route: RoutePlan = {
+        id: uid('r_'),
+        destination: target?.name ?? destination,
+        address: target?.address,
+        lat: target?.lat,
+        lon: target?.lon,
+        mode,
+        mapsUrl: directionsUrl(from, target ?? destination, mode),
+        createdAt: Date.now(),
+      };
+      setState((s) => ({ routes: [route, ...s.routes].slice(0, 20) }));
+
+      return {
+        ok: true,
+        summary: `Yoʻl tayyor: ${route.destination}`,
+        payload: {
+          manzil: route.destination,
+          toliq_manzil: target?.address ?? '',
+          masofa: meters ? humanDistance(meters) : 'nomaʼlum',
+          masofa_m: meters ? Math.round(meters) : null,
+          hozirgi_joy: from ? { lat: from.lat, lon: from.lon } : null,
+          eslatma:
+            'Foydalanuvchiga chatda jonli kuzatuv kartasi koʻrsatildi (xarita, masofa, ' +
+            '«Xaritada ochish» tugmasi). Sen esa search_web bilan aynan qaysi metro liniyasi, ' +
+            'qaysi bekat va avtobus raqamlari kerakligini topib, qisqa qadamlar bilan yoz.',
+        },
+        route: route.id,
+      };
     }
 
     case 'read_data': {

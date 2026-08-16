@@ -122,3 +122,50 @@ export function wavDuration(b64: string): number {
   }
   return 0;
 }
+
+/**
+ * Yozib olingan ovozni (webm/ogg/mp4) Gemini tushunadigan WAV ga oʻgiradi.
+ *
+ * Gemini `audio/webm` ni qabul qilmaydi — shuning uchun brauzerning oʻz
+ * dekoderi bilan ochib, 16 kHz mono WAV qilib qayta yigʻamiz. Bu ham hajmni
+ * kichraytiradi (nutq uchun 16 kHz yetarli).
+ */
+export async function blobToWavBytes(blob: Blob, targetRate = 16000): Promise<Uint8Array> {
+  const AudioCtor: typeof AudioContext =
+    window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtor) throw new Error('Brauzer ovozni oʻqiy olmadi');
+
+  const ctx = new AudioCtor();
+  try {
+    const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+
+    // Kanallarni bitta qilib qoʻshamiz.
+    const length = decoded.length;
+    const mono = new Float32Array(length);
+    for (let ch = 0; ch < decoded.numberOfChannels; ch += 1) {
+      const data = decoded.getChannelData(ch);
+      for (let i = 0; i < length; i += 1) mono[i] += data[i];
+    }
+    if (decoded.numberOfChannels > 1) {
+      for (let i = 0; i < length; i += 1) mono[i] /= decoded.numberOfChannels;
+    }
+
+    // Oddiy chiziqli qayta namunalash.
+    const ratio = decoded.sampleRate / targetRate;
+    const outLength = Math.max(1, Math.floor(length / ratio));
+    const pcm = new Uint8Array(outLength * 2);
+    const view = new DataView(pcm.buffer);
+    for (let i = 0; i < outLength; i += 1) {
+      const pos = i * ratio;
+      const low = Math.floor(pos);
+      const high = Math.min(low + 1, length - 1);
+      const value = mono[low] + (mono[high] - mono[low]) * (pos - low);
+      const clamped = Math.max(-1, Math.min(1, value));
+      view.setInt16(i * 2, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+    }
+
+    return pcmToWav(pcm, targetRate, 1);
+  } finally {
+    void ctx.close().catch(() => undefined);
+  }
+}

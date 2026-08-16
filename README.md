@@ -87,6 +87,18 @@ raqamli kartochkalar. Har bir grafikda legenda, bosilganda qiymat va **Jadval**
 tugmasi bor. Ranglar rang koʻrmaslikka (CVD) qarshi tekshirilgan palitradan.
 Javoblarda markdown jadvallar va emoji ham ishlatiladi.
 
+**Joylashuv, kamera va jonli maʼlumot** 🗺️
+- «Konkuk universitetiga bormoqchiman» → agent joylashuvingizni aniqlaydi,
+  manzilni xaritadan topadi va chatda **jonli kuzatuv kartasi** chiqaradi:
+  OpenStreetMap xaritasi, masofa, «Xaritada ochish» (telefon xaritasida
+  yoʻl-yoʻriq) va kuzatuv rejimi — yurganingiz sayin masofa yangilanadi.
+- Metro liniyasi, avtobus raqami, jadval, narx kabi **jonli maʼlumot** Google
+  qidiruvi orqali tekshiriladi — model oʻzidan oʻylab topmaydi.
+- `+` menyusida **Kamera** — surat olib darhol savol berasiz — va
+  **Joylashuvim** tugmasi bor.
+- Mikrofon ishlamasa: Sozlamalar → **«Mikrofonni tekshirish»** har bosqichni
+  alohida sinab, muammo qayerdaligini aytadi.
+
 **Ilova qiyofasi** 🎨
 Sozlamalar → «Ilova qiyofasi»: telefondan rasm tanlaysiz va yangi nom yozasiz.
 Ishlab turgan ilova oʻz ikonkasini almashtira olmaydi, shuning uchun Daho barcha

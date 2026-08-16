@@ -306,6 +306,7 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         onMode={setMode}
         onSend={onSend}
         onStop={stop}
+        onLocation={() => onSend('Men hozir qayerdaman? Yaqin atrofda nima bor?', [])}
       />
     </>
   );

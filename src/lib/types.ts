@@ -28,6 +28,8 @@ export interface Message {
   videoId?: string;
   /** Shu xabardan saqlangan mini ilova */
   appId?: string;
+  /** Shu xabar ochgan yoʻl (jonli kuzatuv kartasi) */
+  routeId?: string;
   createdAt: number;
   error?: string;
 }
@@ -163,6 +165,21 @@ export interface MiniApp {
   opens: number;
 }
 
+/* ---------- Yoʻl va joylashuv ---------- */
+
+export interface RoutePlan {
+  id: string;
+  /** Boriladigan joy nomi */
+  destination: string;
+  address?: string;
+  lat?: number;
+  lon?: number;
+  mode: 'transit' | 'walking' | 'driving' | 'bicycling';
+  /** Telefondagi xarita ilovasida ochish havolasi */
+  mapsUrl: string;
+  createdAt: number;
+}
+
 /* ---------- Kurslar ---------- */
 
 export interface CourseTopic {
@@ -288,6 +305,7 @@ export interface AppState {
   courses: Course[];
   videos: VideoProject[];
   code: CodeProject[];
+  routes: RoutePlan[];
 }
 
 export const DAYS = [

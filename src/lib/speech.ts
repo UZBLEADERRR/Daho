@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
-import { playWavBase64, stopPlayback, ttsToWavBase64 } from './audio';
+import { blobToWavBytes, bytesToB64, playWavBase64, stopPlayback, ttsToWavBase64 } from './audio';
 import { generateSpeech, transcribeAudio } from './gemini';
 import { getState } from './store';
 
@@ -288,11 +288,19 @@ async function listenViaGemini(cb: ListenCallbacks): Promise<ListenHandle | null
       }
       cb.onState?.('tahlil');
       try {
-        const base64 = await blobToBase64(blob);
+        // Gemini webm ni qabul qilmaydi — WAV ga oʻgiramiz.
+        let mimeType = blob.type.split(';')[0] || 'audio/webm';
+        let base64: string;
+        try {
+          base64 = bytesToB64(await blobToWavBytes(blob));
+          mimeType = 'audio/wav';
+        } catch {
+          base64 = await blobToBase64(blob);
+        }
         const text = await transcribeAudio(
           settings.apiKey,
           settings.model,
-          { mimeType: blob.type.split(';')[0] || 'audio/webm', data: base64 },
+          { mimeType, data: base64 },
           undefined,
           settings.sttLang,
         );

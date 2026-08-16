@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { playWavBase64 } from '../lib/audio';
+import { blobToWavBytes, bytesToB64, playWavBase64 } from '../lib/audio';
 import { applyAppLook } from '../lib/applook';
 import { saveBackup } from '../lib/exporter';
 import { getRepo, whoAmI } from '../lib/github';
+import { transcribeAudio } from '../lib/gemini';
 import { byRole, cachedModels, getModels, pickModel, type ModelInfo } from '../lib/models';
 import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
-import { exportState, importState, resetState, updateSettings, useStore } from '../lib/store';
+import { exportState, getState, importState, resetState, updateSettings, useStore } from '../lib/store';
 import { Refresh } from './Icons';
 import { Sheet, Switch, toast } from './ui';
 
@@ -379,6 +380,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
         {ghChecking ? 'Tekshirilmoqda…' : 'GitHub ulanishini tekshirish'}
       </button>
 
+      <MicCheck />
+
       <AppLook />
 
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
@@ -618,6 +621,126 @@ function AppLook() {
         <a className="btn ghost wide" style={{ marginTop: 8 }} href={done} target="_blank" rel="noreferrer">
           Yigʻilishni koʻrish →
         </a>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mikrofon tekshiruvi                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Mikrofon nima uchun ishlamayotganini aniqlaydi: ruxsat, yozib olish,
+ * matnga oʻgirish — har bir bosqich alohida koʻrsatiladi.
+ */
+function MicCheck() {
+  const [busy, setBusy] = useState(false);
+  const [lines, setLines] = useState<string[]>([]);
+
+  const run = async () => {
+    setBusy(true);
+    const log: string[] = [];
+    const say = (line: string) => {
+      log.push(line);
+      setLines([...log]);
+    };
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        say('❌ Bu qurilmada mikrofon interfeysi yoʻq (getUserMedia).');
+        return;
+      }
+      say('⏳ Ruxsat soʻralmoqda…');
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        const name = String((err as Error)?.name ?? '');
+        say(
+          name === 'NotAllowedError'
+            ? '❌ Ruxsat berilmadi. Sozlamalar → Ilovalar → Daho → Ruxsatlar → Mikrofon.'
+            : `❌ Mikrofon ochilmadi: ${name || String(err)}`,
+        );
+        return;
+      }
+      say('✅ Ruxsat bor, mikrofon ochildi.');
+
+      if (typeof MediaRecorder === 'undefined') {
+        stream.getTracks().forEach((t) => t.stop());
+        say('❌ MediaRecorder yoʻq — ovoz yozib boʻlmaydi.');
+        return;
+      }
+
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      const done = new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve();
+      });
+      recorder.start();
+      say('🎙 3 soniya gapiring…');
+      await new Promise((r) => setTimeout(r, 3000));
+      recorder.stop();
+      await done;
+      stream.getTracks().forEach((t) => t.stop());
+
+      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+      say(`✅ Yozildi: ${(blob.size / 1024).toFixed(1)} KB · ${blob.type || 'nomaʼlum'}`);
+      if (blob.size < 1200) {
+        say('❌ Ovoz juda kichik — mikrofon boshqa ilovada band boʻlishi mumkin.');
+        return;
+      }
+
+      let data: string;
+      let mimeType = blob.type.split(';')[0] || 'audio/webm';
+      try {
+        data = bytesToB64(await blobToWavBytes(blob));
+        mimeType = 'audio/wav';
+        say('✅ WAV ga oʻgirildi.');
+      } catch (err) {
+        data = '';
+        say(`⚠️ WAV ga oʻgirilmadi: ${(err as Error).message}`);
+      }
+      if (!data) return;
+
+      const { settings } = getState();
+      if (!settings.apiKey) {
+        say('⚠️ API kalit yoʻq — matnga oʻgirib boʻlmaydi.');
+        return;
+      }
+      say('⏳ Matnga oʻgirilmoqda…');
+      try {
+        const text = await transcribeAudio(
+          settings.apiKey,
+          settings.model,
+          { mimeType, data },
+          undefined,
+          settings.sttLang,
+        );
+        say(text.trim() ? `✅ Eshitildi: «${text.trim()}»` : '❌ Model matn qaytarmadi.');
+      } catch (err) {
+        say(`❌ Gemini xatosi: ${(err as Error).message}`);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        className="btn ghost wide"
+        style={{ marginTop: 8 }}
+        disabled={busy}
+        onClick={() => void run()}
+      >
+        {busy ? 'Tekshirilmoqda…' : '🎙 Mikrofonni tekshirish'}
+      </button>
+      {!!lines.length && (
+        <div className="tiny" style={{ marginTop: 8, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+          {lines.join('\n')}
+        </div>
       )}
     </>
   );

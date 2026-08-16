@@ -61,9 +61,19 @@ interface Props {
   onMode: (m: ComposerMode) => void;
   onSend: (text: string, attachments: Attachment[]) => void;
   onStop: () => void;
+  /** «Joylashuvim» tanlanganda */
+  onLocation?: () => void;
 }
 
-export function Composer({ busy, allowWhileBusy, mode, onMode, onSend, onStop }: Props) {
+export function Composer({
+  busy,
+  allowWhileBusy,
+  mode,
+  onMode,
+  onSend,
+  onStop,
+  onLocation,
+}: Props) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [docs, setDocs] = useState<string[]>([]);
@@ -72,6 +82,7 @@ export function Composer({ busy, allowWhileBusy, mode, onMode, onSend, onStop }:
   const listenRef = useRef<ListenHandle | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const camRef = useRef<HTMLInputElement>(null);
 
   const active = MODES.find((m) => m.id === mode) ?? null;
   const canSend = Boolean(text.trim() || attachments.length || docs.length);
@@ -207,6 +218,17 @@ export function Composer({ busy, allowWhileBusy, mode, onMode, onSend, onStop }:
             e.target.value = '';
           }}
         />
+        <input
+          ref={camRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          hidden
+          onChange={(e) => {
+            void pickFiles(e.target.files);
+            e.target.value = '';
+          }}
+        />
 
         <button className="round-btn" onClick={() => setMenu(true)} aria-label="Qoʻshish">
           <Plus size={21} />
@@ -256,6 +278,20 @@ export function Composer({ busy, allowWhileBusy, mode, onMode, onSend, onStop }:
             className="action-row"
             onClick={() => {
               setMenu(false);
+              camRef.current?.click();
+            }}
+          >
+            <span className="action-icon">📷</span>
+            <span className="grow">
+              <b>Kamera</b>
+              <div className="tiny">Surat oling — masala, xato yoki atrofdagi narsa haqida soʻrang</div>
+            </span>
+          </button>
+
+          <button
+            className="action-row"
+            onClick={() => {
+              setMenu(false);
               fileRef.current?.click();
             }}
           >
@@ -263,6 +299,20 @@ export function Composer({ busy, allowWhileBusy, mode, onMode, onSend, onStop }:
             <span className="grow">
               <b>Fayl biriktirish</b>
               <div className="tiny">Rasm, PDF, matn, kod yoki ovoz fayli</div>
+            </span>
+          </button>
+
+          <button
+            className="action-row"
+            onClick={() => {
+              setMenu(false);
+              onLocation?.();
+            }}
+          >
+            <span className="action-icon">📍</span>
+            <span className="grow">
+              <b>Joylashuvim</b>
+              <div className="tiny">Qayerdaligimni aniqlab, yaqin atrofni aytsin</div>
             </span>
           </button>
 

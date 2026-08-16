@@ -374,6 +374,66 @@ export async function generateJson<T>(
   }
 }
 
+export interface GroundedAnswer {
+  text: string;
+  /** Javob olingan manbalar */
+  sources: Array<{ title: string; url: string }>;
+}
+
+/**
+ * Google qidiruviga tayangan javob — jonli maʼlumot uchun (transport,
+ * jadval, narx, yangilik). Model qidiradi va topganini yozadi.
+ */
+export async function searchAnswer(
+  apiKey: string,
+  model: string,
+  question: string,
+  signal?: AbortSignal,
+): Promise<GroundedAnswer> {
+  if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
+
+  const ask = async (tool: Record<string, unknown>) => {
+    const r = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: question }] }],
+        tools: [tool],
+      }),
+      signal,
+    });
+    return r;
+  };
+
+  let res = await withRetry(async () => {
+    const r = await ask({ google_search: {} });
+    // Eski modellar boshqa nom kutadi.
+    if (r.status === 400) {
+      const retry = await ask({ google_search_retrieval: {} });
+      await assertOk(retry);
+      return retry;
+    }
+    await assertOk(r);
+    return r;
+  }, signal);
+
+  const data = await res.json();
+  const candidate = data?.candidates?.[0];
+  const parts: GeminiPart[] = candidate?.content?.parts ?? [];
+  const text = parts.map((p) => p.text ?? '').join('').trim();
+
+  const chunks = (candidate?.groundingMetadata?.groundingChunks ?? []) as Array<{
+    web?: { uri?: string; title?: string };
+  }>;
+  const sources = chunks
+    .map((c) => ({ title: c.web?.title ?? '', url: c.web?.uri ?? '' }))
+    .filter((c) => c.url)
+    .slice(0, 6);
+
+  if (!text) throw new GeminiError('Qidiruvdan javob kelmadi.', 0);
+  return { text, sources };
+}
+
 export interface RemoteModel {
   name: string;
   displayName?: string;

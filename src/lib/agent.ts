@@ -19,6 +19,10 @@ const STEP_LABEL: Record<string, string> = {
   create_project: 'loyiha rejasi tuzilmoqda',
   create_course: 'kurs mavzulari tuzilmoqda',
   generate_image: 'rasm chizilmoqda',
+  get_location: 'joylashuvingiz aniqlanmoqda',
+  find_place: 'xaritadan qidirilmoqda',
+  search_web: 'internetdan qidirilmoqda',
+  plan_route: 'yoʻl tayyorlanmoqda',
   log_work: 'ish vaqti yozilmoqda',
   complete_task: 'vazifa belgilanmoqda',
   read_data: 'maʼlumotlaringiz oʻqilmoqda',
@@ -123,6 +127,24 @@ Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jim
   Mavjud rasmni oʻzgartirishni soʻrasa — \`edit_last: "true"\` bilan chaqir.
   Rasm chatda oʻzi koʻrinadi; uni matn bilan qayta tasvirlab berma.
 Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.
+
+## Jonli maʼlumot va yoʻl koʻrsatish 🗺️
+- Sening bilimlaring eskirgan. Narx, jadval, avtobus/metro raqami, ish vaqti,
+  ob-havo, yangilik, «hozir qanday» kabi savollarda TAXMIN QILMA —
+  \`search_web\` bilan tekshir va topganingni yoz.
+- «Qayerdaman», «yaqin atrofda nima bor» — \`get_location\`.
+- «Falon joyga bormoqchiman», «qanday boraman» — \`plan_route\` chaqir.
+  Undan keyin ALBATTA \`search_web\` bilan aynan yoʻlni top: qaysi metro liniyasi
+  va bekati, qaysi avtobus raqami, qayerda almashish, taxminan qancha vaqt va
+  narx. Javobni qisqa qadamlar bilan yoz:
+  1) Eng yaqin bekatgacha piyoda — necha daqiqa
+  2) Qaysi transport (raqami/liniyasi bilan) va necha bekat
+  3) Almashish boʻlsa — qayerda
+  4) Oxirgi piyoda qism
+  Jonli xarita va «Xaritada ochish» tugmasi foydalanuvchiga oʻzi koʻrsatiladi —
+  havolani matnda qayta yozma.
+- Chet elda (masalan Koreya) boʻlsa joy nomini mahalliy tilda ham qidir —
+  natija aniqroq chiqadi.
 
 ## Savol berish
 Vaziyat noaniq boʻlsa — taxmin qilma, \`ask_user\` bilan soʻra va variantlar ber:
@@ -283,6 +305,8 @@ export async function sendMessage(
   const toolCalls: ToolCallRecord[] = [];
   /** Vositalar va model oqimidan kelgan rasm artifactlari */
   const media: Artifact[] = [];
+  /** Vosita ochgan yoʻl kartasi */
+  let routeId: string | undefined;
   let accumulated = '';
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -358,6 +382,11 @@ export async function sendMessage(
           addMedia(media, outcome.artifacts);
           patchMessage(chatId, modelMsg.id, { artifactIds: media.map((a) => a.id) });
         }
+        // Yoʻl kartasi darhol chatda koʻrinsin.
+        if (outcome.route) {
+          routeId = outcome.route;
+          patchMessage(chatId, modelMsg.id, { routeId });
+        }
         responseParts.push({
           functionResponse: { name: call.name, response: outcome.payload },
         });
@@ -389,6 +418,7 @@ export async function sendMessage(
       text: accumulated,
       toolCalls: toolCalls.length ? toolCalls : undefined,
       artifactIds: ids.length ? ids : undefined,
+      routeId,
     });
 
     void autoTitle(chatId, text);
