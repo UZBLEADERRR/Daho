@@ -352,6 +352,7 @@ export async function sendMessage(
           args: call.args,
           ok: outcome.ok,
           summary: outcome.summary,
+          at: accumulated.length,
         });
         if (outcome.artifacts?.length) {
           addMedia(media, outcome.artifacts);

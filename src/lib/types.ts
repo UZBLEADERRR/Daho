@@ -12,6 +12,8 @@ export interface ToolCallRecord {
   args: Record<string, unknown>;
   ok: boolean;
   summary: string;
+  /** Javob matnining qaysi belgisidan keyin bajarilgani — tartibda koʻrsatish uchun */
+  at?: number;
 }
 
 export interface Message {

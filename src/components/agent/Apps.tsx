@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { deleteApp, saveLinkApp, updateApp } from '../../lib/creations';
 import { saveArtifact } from '../../lib/exporter';
+import { clearSandboxStore, sandboxDocument } from '../../lib/sandbox';
 import { useStore } from '../../lib/store';
 import type { MiniApp } from '../../lib/types';
 import { relativeTime, uid } from '../../lib/utils';
@@ -51,8 +52,8 @@ export function Apps() {
             <iframe
               key={reloadKey}
               title={running.name}
-              srcDoc={running.html}
-              sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin"
+              srcDoc={sandboxDocument(running.html, running.id)}
+              sandbox="allow-scripts allow-forms allow-modals allow-popups"
             />
           )}
         </div>
@@ -242,6 +243,7 @@ export function Apps() {
             style={{ marginTop: 8, color: 'var(--danger)' }}
             onClick={() => {
               if (window.confirm(`"${edit.name}" oʻchirilsinmi?`)) {
+                clearSandboxStore(edit.id);
                 deleteApp(edit.id);
                 setEdit(null);
               }

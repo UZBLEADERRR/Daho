@@ -29,6 +29,9 @@ toʻgʻridan-toʻgʻri murojaat qiladi.
 **Mini ilovalar**
 AI yasagan ilovani nom va emoji ikonka bilan «Ilovalarim» boʻlimiga qoʻshasiz —
 telefondagi oddiy ilovadek grid koʻrinishida turadi va toʻliq ekranda ochiladi.
+Ilovalar oʻz maʼlumotini saqlaydi (hisob, natija, roʻyxat) — qumbox ichida
+xavfsiz saqlash qatlami ishlaydi, ilova ilovaning oʻz maʼlumotiga tegmaydi.
+Yasalgan ilova avtomatik sinovdan oʻtadi: xato boʻlsa darhol ogohlantiradi.
 
 **Kurslar**
 «IELTS 7.0 olmoqchiman» deysiz — agent 40-100 ta mavzudan iborat kurs ochadi.
@@ -56,6 +59,10 @@ jonli havola beradi**.
 - *Shablonlar* — 🌐 Veb sayt · 📱 Android ilova (APK) · 🤖 Telegram bot · 🧱 Fullstack.
 - *Model tanlash* — har bir loyihaga alohida model (sarlavhadagi chip).
 - *Skrinshot* — xatoning suratini yuborsangiz, agent oʻqib tuzatadi.
+- *Oʻz ishini sinaydi* — `test_app` bilan loyihani telefonda haqiqatan ishga
+  tushiradi: JS xatolarini, boʻsh sahifani, qaysi tugma va matn chiqqanini
+  koʻradi. Xato boʻlsa oʻzi tuzatib qayta sinaydi. Bot va Node kodi esa
+  GitHub Actions da ishga tushirilib, logi oʻqiladi.
 - *GitHub Actions* — agent ish oqimi yozadi, ishga tushiradi va natijani kuzatadi.
   **APK shu yoʻl bilan yigʻiladi**: kod → push → run_workflow → tayyor fayl.
 
@@ -76,6 +83,10 @@ Chat javoblarida grafiklar chiziladi: ustunli, gorizontal, chiziqli, doira va
 raqamli kartochkalar. Har bir grafikda legenda, bosilganda qiymat va **Jadval**
 tugmasi bor. Ranglar rang koʻrmaslikka (CVD) qarshi tekshirilgan palitradan.
 Javoblarda markdown jadvallar va emoji ham ishlatiladi.
+
+**Nusxalash** 📋
+Xabar matnini bosib turib belgilash mumkin, ikki marta bossangiz butun xabar
+nusxalanadi. Har bir javob ostida «Nusxa» tugmasi ham bor.
 
 **Hujjatlar**
 Har qanday javobni **Word (.docx)**, **PDF**, **slayd (.pptx)** yoki matn

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { splitSegments } from '../lib/artifacts';
+import { splitSegments, type Segment } from '../lib/artifacts';
 import { copyText, exportDocument, DOC_LABEL, type DocFormat } from '../lib/exporter';
 import { renderMarkdown } from '../lib/markdown';
 import { speak, stopSpeaking } from '../lib/speech';
@@ -8,7 +8,8 @@ import type { Artifact, Message as Msg } from '../lib/types';
 import { parseChart } from '../lib/charts';
 import { ArtifactCard } from './ArtifactView';
 import { Chart } from './Chart';
-import { Check, Copy, Download, Refresh, Speaker } from './Icons';
+import { Copy, Download, Refresh, Speaker } from './Icons';
+import { ToolLine, splitByTools } from './ToolLine';
 import { VideoCard } from './VideoStudio';
 import { Sheet, toast } from './ui';
 
@@ -33,7 +34,11 @@ export function MessageView({
   const [exporting, setExporting] = useState(false);
   const [speaking, setSpeaking] = useState(false);
 
-  const segments = useMemo(() => splitSegments(message.text), [message.text]);
+  // Matn vositalar bajarilgan nuqtalar boʻyicha boʻlinadi — tartib saqlanadi.
+  const blocks = useMemo(
+    () => splitByTools(message.text, message.toolCalls),
+    [message.text, message.toolCalls],
+  );
 
   const linked = useMemo(() => {
     const ids = message.artifactIds ?? [];
@@ -56,7 +61,16 @@ export function MessageView({
             ))}
           </div>
         )}
-        {message.text && <div className="msg user">{message.text}</div>}
+        {message.text && (
+          <div
+            className="msg user"
+            onDoubleClick={async () =>
+              toast((await copyText(message.text)) ? 'Nusxalandi' : 'Nusxalab boʻlmadi')
+            }
+          >
+            {message.text}
+          </div>
+        )}
       </div>
     );
   }
@@ -90,68 +104,68 @@ export function MessageView({
 
   let codeIndex = -1;
 
+  const renderSegment = (seg: Segment, key: string) => {
+    if (seg.type === 'text') {
+      if (!seg.value.trim()) return null;
+      return (
+        <div
+          key={key}
+          className="md"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.value) }}
+        />
+      );
+    }
+
+    if (seg.lang === 'chart') {
+      const spec = seg.closed ? parseChart(seg.value) : null;
+      if (spec) return <Chart key={key} spec={spec} />;
+      if (!seg.closed) {
+        return (
+          <div key={key} className="viz viz-loading">
+            Grafik tayyorlanmoqda…
+          </div>
+        );
+      }
+    }
+
+    const lines = seg.value.trim().split('\n').length;
+    const substantial = seg.closed && seg.lang !== 'chart' && lines >= 3;
+    if (substantial) codeIndex += 1;
+    const artifact = substantial ? codeLinked[codeIndex] : undefined;
+
+    if (artifact) return <ArtifactCard key={key} artifact={artifact} onOpen={onOpenArtifact} />;
+
+    // Yozilayotgan yoki hali saqlanmagan katta blok — xom kodni koʻrsatmaymiz.
+    if (!seg.closed || lines >= 3) {
+      return (
+        <div key={key} className="artifact-card pending">
+          <span className="chip accent">{seg.lang === 'html' ? 'Ilova' : 'Kod'}</span>
+          <span className="grow artifact-title">
+            {seg.closed ? 'Tayyorlanmoqda…' : 'Yozilmoqda…'}
+          </span>
+          <span className="typing" />
+        </div>
+      );
+    }
+
+    // Qisqa parcha — oddiy misol, shundayligicha koʻrsatiladi.
+    return (
+      <pre key={key} className="snippet">
+        {seg.value}
+      </pre>
+    );
+  };
+
   return (
     <div className="msg model">
-      {message.toolCalls?.map((call, i) => (
-        <div key={i} className={call.ok ? 'tool-line' : 'tool-line bad'}>
-          <Check size={13} />
-          <span className="grow">{call.summary}</span>
+      {blocks.map((block, bi) => (
+        <div key={bi}>
+          {splitSegments(block.text).map((seg, si) => renderSegment(seg, `${bi}-${si}`))}
+          {block.calls.map((call, ci) => (
+            <ToolLine key={ci} call={call} />
+          ))}
         </div>
       ))}
-
-      {segments.map((seg, i) => {
-        if (seg.type === 'text') {
-          if (!seg.value.trim()) return null;
-          return (
-            <div
-              key={i}
-              className="md"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.value) }}
-            />
-          );
-        }
-
-        if (seg.lang === 'chart') {
-          const spec = seg.closed ? parseChart(seg.value) : null;
-          if (spec) return <Chart key={i} spec={spec} />;
-          if (!seg.closed) {
-            return (
-              <div key={i} className="viz viz-loading">
-                Grafik tayyorlanmoqda…
-              </div>
-            );
-          }
-        }
-
-        const lines = seg.value.trim().split('\n').length;
-        const substantial = seg.closed && seg.lang !== 'chart' && lines >= 3;
-        if (substantial) codeIndex += 1;
-        const artifact = substantial ? codeLinked[codeIndex] : undefined;
-
-        if (artifact) {
-          return <ArtifactCard key={i} artifact={artifact} onOpen={onOpenArtifact} />;
-        }
-
-        // Yozilayotgan yoki hali saqlanmagan katta blok — xom kodni koʻrsatmaymiz.
-        if (!seg.closed || lines >= 3) {
-          return (
-            <div key={i} className="artifact-card pending">
-              <span className="chip accent">{seg.lang === 'html' ? 'Ilova' : 'Kod'}</span>
-              <span className="grow artifact-title">
-                {seg.closed ? 'Tayyorlanmoqda…' : 'Yozilmoqda…'}
-              </span>
-              <span className="typing" />
-            </div>
-          );
-        }
-
-        // Qisqa parcha — oddiy misol, shundayligicha koʻrsatiladi.
-        return (
-          <pre key={i} className="snippet">
-            {seg.value}
-          </pre>
-        );
-      })}
 
       {pictures.map((img) => (
         <button

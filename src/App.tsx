@@ -14,6 +14,7 @@ import type { AgentSection } from './components/agent/sections';
 import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
 import { getModels, pickModel } from './lib/models';
+import { installSandboxStore } from './lib/sandbox';
 import { getState, updateSettings, useStore } from './lib/store';
 import type { Artifact } from './lib/types';
 
@@ -35,6 +36,9 @@ export default function App() {
     document.documentElement.style.setProperty('--accent', accent);
     document.documentElement.style.fontSize = `${Math.round(16 * fontScale)}px`;
   }, [accent, fontScale]);
+
+  // Qumboxdagi ilovalar saqlagan maʼlumotni qabul qilamiz.
+  useEffect(() => installSandboxStore(), []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

@@ -29,19 +29,21 @@ import {
 } from './github';
 import { cachedModels, getModels } from './models';
 import {
+  bundlePreview,
   deleteProjectFile,
   fileTree,
   getCodeProject,
   patchCodeProject,
   writeProjectFile,
 } from './codeproject';
+import { describeProbe, probeApp } from './probe';
 import { askUser, drainInterjections } from './ask';
 import { getState, setState } from './store';
 import { templateById } from './templates';
 import type { Attachment, CodeProject, Message, ToolCallRecord } from './types';
 import { uid } from './utils';
 
-const MAX_ROUNDS = 18;
+const MAX_ROUNDS = 26;
 const MAX_HISTORY = 24;
 
 /** Vosita nomining oʻzbekcha tavsifi — pastdagi qatorda koʻrinadi. */
@@ -62,6 +64,7 @@ const STEP_LABEL: Record<string, string> = {
   write_workflow: 'ish oqimi yozilmoqda',
   run_workflow: 'yigʻish boshlandi',
   check_workflow: 'yigʻish tekshirilmoqda',
+  test_app: 'ilova sinovdan oʻtkazilmoqda',
   github_branch: 'tarmoqlar bilan ishlanmoqda',
   github_pull_request: 'pull request bilan ishlanmoqda',
   github_issue: 'issue bilan ishlanmoqda',
@@ -236,6 +239,28 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
       'Oxirgi ishga tushishlar holatini tekshiradi: bajarilyaptimi, muvaffaqiyatlimi, ' +
       'natija fayllari (APK va h.k.) bormi. Yiqilgan boʻlsa sababini qaytaradi.',
     parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'test_app',
+    description:
+      'Loyihani HAQIQATAN ishga tushirib sinaydi (telefonning oʻzida, koʻrinmas oynada). ' +
+      'JavaScript xatolarini, sahifa boʻsh chiqqanini, qaysi tugma va maydonlar ' +
+      'chizilganini qaytaradi. Veb loyiha ustida ish qilganingdan soʻng HAR SAFAR chaqir: ' +
+      'xato boʻlsa tuzat va qayta sinab koʻr. Faqat HTML/JS loyihalar uchun ishlaydi ' +
+      '(Node yoki bot kodi bunda ishlamaydi — ular uchun run_workflow + check_workflow).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        entry: {
+          type: 'STRING',
+          description: 'Boshlangʻich fayl, odatda "index.html"',
+        },
+        wait: {
+          type: 'STRING',
+          description: 'Necha millisekund kutish (default 1200, koʻpi 6000)',
+        },
+      },
+    },
   },
   {
     name: 'ask_user',
@@ -432,6 +457,26 @@ async function runTool(
         summary: `${project.files.length} ta fayl`,
         payload: { files: project.files.map((f) => f.path) },
       };
+
+    case 'test_app': {
+      const entry = str(args.entry, 'index.html');
+      if (!project.files.some((f) => f.path === entry)) {
+        return {
+          ok: false,
+          summary: `Sinov uchun ${entry} yoʻq`,
+          payload: { error: 'kirish_fayli_yoq', mavjud: project.files.map((f) => f.path) },
+        };
+      }
+      const wait = Number(str(args.wait, '1200')) || 1200;
+      const result = await probeApp(bundlePreview(project, entry), wait);
+      return {
+        ok: result.ok,
+        summary: result.ok
+          ? `Sinovdan oʻtdi: ${entry} (${result.nodes} element)`
+          : `Sinov muammo topdi: ${result.errors[0]?.slice(0, 60) ?? 'sahifa boʻsh'}`,
+        payload: { hisobot: describeProbe(result), xatolar: result.errors },
+      };
+    }
 
     case 'read_file': {
       const path = str(args.path);
@@ -907,6 +952,18 @@ ${fileTree(project) || '(boʻsh)'}
 7. APK, test yoki deploy kerak boʻlsa: \`write_workflow\` → \`github_push\` →
    \`run_workflow\` → soʻng \`check_workflow\` bilan natijani tekshir. Yiqilsa
    sababini oʻqib, kodni tuzat va qaytadan yubor.
+
+## Oʻz ishingni SINAB koʻr — majburiy
+Veb (HTML/JS) qismini oʻzgartirgan boʻlsang, ishni tugatishdan oldin
+\`test_app\` ni chaqir. U loyihani haqiqatan ishga tushiradi va sanga
+xatolarni, sahifada qanday tugma va matn chiqqanini qaytaradi.
+- Xato chiqsa yoki sahifa boʻsh boʻlsa — tuzat va qayta sinab koʻr.
+  Uch marta urinib boʻlmasa, muammoni ochiq ayt.
+- Sinovdan oʻtgach foydalanuvchiga nima ishlaganini bir jumlada ayt
+  («sinab koʻrdim: 3 ta tugma ishlayapti, xato yoʻq»).
+- Bot yoki Node kodi telefonda ishlamaydi — uni GitHub Actions orqali
+  ishga tushirib (\`run_workflow\`), \`check_workflow\` bilan logini oʻqi.
+  Yani baribir sinovsiz qoldirma.
 8. Foydalanuvchi skrinshot yuborsa — undagi xato matnini diqqat bilan oʻqi,
    tegishli faylni \`read_file\` bilan ochib, sababini top va tuzat.
 
@@ -1026,10 +1083,15 @@ export async function runCodeAgent(
   };
 
   try {
+    // Sikl oxirigacha yetib borsa — ish tugamagan, qadamlar tugagan.
+    let finished = false;
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
       // Har turda tizim koʻrsatmasi yangilanadi — fayl roʻyxati oʻzgargan boʻlishi mumkin.
       const current = getCodeProject(projectId);
-      if (!current) break;
+      if (!current) {
+        finished = true;
+        break;
+      }
 
       const result = await streamGenerate({
         apiKey: settings.apiKey,
@@ -1044,7 +1106,10 @@ export async function runCodeAgent(
 
       if (!result.functionCalls.length) {
         const extra = drainInterjections('code', projectId);
-        if (!extra.length) break;
+        if (!extra.length) {
+          finished = true;
+          break;
+        }
         contents.push({ role: 'model', parts: result.parts });
         contents.push({
           role: 'user',
@@ -1076,6 +1141,7 @@ export async function runCodeAgent(
           args: call.args,
           ok: outcome.ok,
           summary: outcome.summary,
+          at: accumulated.length,
         });
         responses.push({ functionResponse: { name: call.name, response: outcome.payload } });
       }
@@ -1093,6 +1159,11 @@ export async function runCodeAgent(
     }
 
     if (flush) clearTimeout(flush);
+    // Katta loyihada qadamlar tugab qolsa — ish yarim qolganini aytamiz.
+    if (!finished) {
+      accumulated +=
+        '\n\n⏸ Bu bosqichda qadamlar tugadi. «Davom et» desangiz shu joydan davom ettiraman.';
+    }
     patchMessage(projectId, modelMsg.id, {
       text: accumulated,
       toolCalls: toolCalls.length ? toolCalls : undefined,

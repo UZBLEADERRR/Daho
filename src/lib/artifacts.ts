@@ -1,3 +1,4 @@
+import { sandboxDocument } from './sandbox';
 import type { Artifact, ArtifactKind } from './types';
 import { uid } from './utils';
 
@@ -122,8 +123,11 @@ export function toPreviewDocument(artifact: Artifact): string {
   if (artifact.lang === 'svg') {
     return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;height:100%;display:grid;place-items:center;background:#fff}svg{max-width:100%;max-height:100%}</style></head><body>${body}</body></html>`;
   }
-  if (/<html[\s>]/i.test(body)) return body;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}</style></head><body>${body}</body></html>`;
+  const doc = /<html[\s>]/i.test(body)
+    ? body
+    : `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}</style></head><body>${body}</body></html>`;
+  // Saqlash qatlami boʻlmasa localStorage ishlatuvchi ilovalar ochilmay qoladi.
+  return sandboxDocument(doc, artifact.id);
 }
 
 export function fileExtension(artifact: Artifact): string {

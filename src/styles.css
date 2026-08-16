@@ -50,6 +50,23 @@ body {
   overscroll-behavior: none;
   font-size: 15px;
   line-height: 1.55;
+  /* Interfeys tugmalari tasodifan belgilanib qolmasin */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Xabar matni — barmoq bilan bosib turib belgilash va nusxalash mumkin */
+.msg,
+.msg.user,
+.md,
+.snippet,
+.viewer-body pre,
+.tool-line,
+.note-body,
+.artifact-title {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 button,
@@ -70,6 +87,8 @@ button {
 input,
 textarea,
 select {
+  -webkit-user-select: text;
+  user-select: text;
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 10px;

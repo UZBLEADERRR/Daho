@@ -8,6 +8,7 @@ import {
   VIDEO_BRIEF,
   saveApp,
 } from '../lib/creations';
+import { probeApp } from '../lib/probe';
 import { generateImage } from '../lib/gemini';
 import { speak } from '../lib/speech';
 import { getState, setState, useStore } from '../lib/store';
@@ -221,6 +222,12 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
       if (html && html.type === 'code') {
         const app = saveApp(html.value, text.slice(0, 30) || 'Ilova');
         toast(`«${app.name}» Ilovalarimga qoʻshildi`);
+        // Ilovani jimgina sinab koʻramiz — buzuq boʻlsa foydalanuvchi bilib tursin.
+        void probeApp(html.value).then((r) => {
+          if (!r.ok && r.errors.length) {
+            toast(`⚠️ Ilovada xato: ${r.errors[0].slice(0, 60)} — «tuzat» deb yozing`);
+          }
+        });
       }
     }
 

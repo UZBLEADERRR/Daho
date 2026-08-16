@@ -15,6 +15,7 @@ import { saveLinkApp } from '../lib/creations';
 import { byRole, cachedModels } from '../lib/models';
 import { TEMPLATES } from '../lib/templates';
 import { renderMarkdown } from '../lib/markdown';
+import { sandboxDocument } from '../lib/sandbox';
 import { getState, useStore, updateSettings } from '../lib/store';
 import type { Attachment, CodeProject } from '../lib/types';
 import { relativeTime } from '../lib/utils';
@@ -23,6 +24,7 @@ import { startListening, type ListenHandle } from '../lib/speech';
 import { interject, usePendingQuestion } from '../lib/ask';
 import { noteTask, startTask, stopFor, useTaskFor } from '../lib/tasks';
 import { QuestionCard } from './QuestionCard';
+import { ToolLine, splitByTools } from './ToolLine';
 import { Back, Check, Close, Copy, Download, Mic, Plus, Refresh, Send, Stop, Trash } from './Icons';
 import { copyText } from '../lib/exporter';
 import { Empty, Sheet, toast } from './ui';
@@ -394,23 +396,44 @@ function CodeChat({ project }: { project: CodeProject }) {
                       ))}
                     </div>
                   )}
-                  {m.text && <div className="msg user">{m.text}</div>}
+                  {m.text && (
+                    <div
+                      className="msg user"
+                      onDoubleClick={async () => {
+                        toast((await copyText(m.text)) ? 'Nusxalandi' : 'Nusxalab boʻlmadi');
+                      }}
+                    >
+                      {m.text}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div key={m.id} className="msg model">
-                  {m.toolCalls?.map((call, i) => (
-                    <div key={i} className={call.ok ? 'tool-line' : 'tool-line bad'}>
-                      <Check size={13} />
-                      <span className="grow">{call.summary}</span>
+                  {splitByTools(m.text, m.toolCalls).map((block, bi) => (
+                    <div key={bi}>
+                      {block.text.trim() && (
+                        <div
+                          className="md"
+                          dangerouslySetInnerHTML={{ __html: renderMarkdown(block.text) }}
+                        />
+                      )}
+                      {block.calls.map((call, ci) => (
+                        <ToolLine key={ci} call={call} />
+                      ))}
                     </div>
                   ))}
-                  {m.text.trim() && (
-                    <div
-                      className="md"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }}
-                    />
-                  )}
                   {m.error && <div className="err">{m.error}</div>}
+                  {m.text.trim() && (
+                    <div className="msg-actions">
+                      <button
+                        onClick={async () =>
+                          toast((await copyText(m.text)) ? 'Nusxalandi' : 'Nusxalab boʻlmadi')
+                        }
+                      >
+                        <Copy size={12} /> Nusxa
+                      </button>
+                    </div>
+                  )}
                 </div>
               ),
             )}
@@ -670,7 +693,10 @@ function Files({ project }: { project: CodeProject }) {
 
 function Preview({ project }: { project: CodeProject }) {
   const [key, setKey] = useState(0);
-  const doc = useMemo(() => bundlePreview(project), [project]);
+  const doc = useMemo(
+    () => sandboxDocument(bundlePreview(project), project.id),
+    [project],
+  );
 
   return (
     <>
