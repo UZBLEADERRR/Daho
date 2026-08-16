@@ -335,6 +335,27 @@ Frontend'da API manzilini oʻzgartiring, soʻng «Nashr» tugmasini bosing.
   },
 ];
 
+const SELF_FILES: CodeFile[] = [
+  {
+    path: 'OQING.md',
+    content: `# Daho ilovasining oʻzi
+
+Bu loyiha Daho ilovasining manba kodiga ulangan. Agent kodni GitHub’dan
+oʻqiydi, tuzatadi va qaytarib yuboradi — soʻng GitHub Actions yangi APK yigʻadi.
+
+## Qanday ishlatiladi
+1. «Nashr» boʻlimida repozitoriy ulanganiga ishonch hosil qiling.
+2. Suhbatda kamchilikni ayting: masalan «Sozlamalar oynasidagi tugma juda kichkina».
+3. Agent kerakli faylni oʻqiydi, tuzatadi va push qiladi.
+4. Actions yangi APK yigʻadi — uni Actions boʻlimidan yuklab olasiz.
+
+## Ehtiyot boʻling
+Har oʻzgarishdan keyin yangi APK oʻrnatib tekshiring. Kod buzilsa APK yigʻilmaydi —
+agent xatoni \`check_workflow\` orqali koʻrib tuzatadi.
+`,
+  },
+];
+
 export const TEMPLATES: ProjectTemplate[] = [
   {
     id: 'statik',
@@ -367,6 +388,21 @@ export const TEMPLATES: ProjectTemplate[] = [
       'Bot GitHub Actions cron orqali har 5 daqiqada `getUpdates` qiladi — bepul, lekin ' +
       'javob darhol emas. Foydalanuvchiga BOT_TOKEN ni repo Secrets ga qoʻshishni eslat.',
     files: BOT_FILES,
+  },
+  {
+    id: 'ozim',
+    name: 'Daho ilovasining oʻzi',
+    icon: '🪞',
+    hint: 'Ilovaning kodini oʻqib, tuzatib, qayta yigʻadi.',
+    brief:
+      'Bu loyiha DAHO ILOVASINING OʻZI kodiga ulangan (React + TypeScript + Vite + Capacitor). ' +
+      'Fayllar loyihada emas — GitHub’da. Shuning uchun: avval `github_read` bilan papkani ' +
+      'koʻr (masalan `src/components`), keyin kerakli faylni `github_import` bilan koʻchirib ol, ' +
+      'tuzat va `github_push` qil. Butun repo’ni koʻchirma — faqat kerakli faylni. ' +
+      'Push qilingach GitHub Actions APK yigʻadi; `check_workflow` bilan natijani tekshir va ' +
+      'yiqilsa xatoni tuzat. Loyiha tuzilishi: `src/lib/` — mantiq, `src/components/` — ' +
+      'interfeys, `src/styles.css` — uslublar, `src/lib/types.ts` — maʼlumot turlari.',
+    files: SELF_FILES,
   },
   {
     id: 'fullstack',

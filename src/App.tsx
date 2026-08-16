@@ -11,6 +11,7 @@ import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { VideoStudio } from './components/VideoStudio';
 import type { AgentSection } from './components/agent/sections';
+import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
 import { getModels, pickModel } from './lib/models';
 import { getState, updateSettings, useStore } from './lib/store';
@@ -20,6 +21,8 @@ type Tab = 'chat' | 'agent' | 'kod';
 
 export default function App() {
   const theme = useStore((s) => s.settings.theme);
+  const accent = useStore((s) => s.settings.accent);
+  const fontScale = useStore((s) => s.settings.fontScale);
   const hasKey = useStore((s) => Boolean(s.settings.apiKey));
   const [tab, setTab] = useState<Tab>('chat');
   const [section, setSection] = useState<AgentSection>('bugun');
@@ -27,6 +30,11 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(!hasKey);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--accent', accent);
+    document.documentElement.style.fontSize = `${Math.round(16 * fontScale)}px`;
+  }, [accent, fontScale]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -143,6 +151,7 @@ export default function App() {
       {videoId && <VideoStudio projectId={videoId} onClose={() => setVideoId(null)} />}
       {artifact && <ArtifactViewer artifact={artifact} onClose={() => setArtifact(null)} />}
 
+      <TaskBar />
       <ToastHost />
     </div>
   );

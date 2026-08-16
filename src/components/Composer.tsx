@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { fileIcon, prepareFile } from '../lib/attach';
 import { startListening, type ListenHandle } from '../lib/speech';
 import type { Attachment } from '../lib/types';
-import { shrinkImage } from '../lib/utils';
 import { Close, Mic, Plus, Send, Stop } from './Icons';
 import { Sheet, toast } from './ui';
 
@@ -64,6 +64,7 @@ interface Props {
 export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [docs, setDocs] = useState<string[]>([]);
   const [mic, setMic] = useState<'oʻchiq' | 'yozilmoqda' | 'tahlil'>('oʻchiq');
   const [menu, setMenu] = useState(false);
   const listenRef = useRef<ListenHandle | null>(null);
@@ -71,7 +72,7 @@ export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const active = MODES.find((m) => m.id === mode) ?? null;
-  const canSend = Boolean(text.trim() || attachments.length);
+  const canSend = Boolean(text.trim() || attachments.length || docs.length);
 
   useEffect(() => {
     const el = areaRef.current;
@@ -89,23 +90,23 @@ export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
 
   const submit = () => {
     if (busy || !canSend) return;
-    onSend(text.trim(), attachments);
+    const full = [text.trim(), ...docs].filter(Boolean).join('\n\n');
+    onSend(full, attachments);
     setText('');
     setAttachments([]);
+    setDocs([]);
   };
 
+  /** Rasm, PDF, matn, kod, audio — hammasi qabul qilinadi. */
   const pickFiles = async (files: FileList | null) => {
     if (!files?.length) return;
-    const next: Attachment[] = [];
-    for (const file of Array.from(files).slice(0, 4)) {
-      try {
-        const shrunk = await shrinkImage(file);
-        next.push({ ...shrunk, name: file.name });
-      } catch {
-        toast(`Rasmni oʻqib boʻlmadi: ${file.name}`);
-      }
+    for (const file of Array.from(files).slice(0, 5)) {
+      const prepared = await prepareFile(file);
+      if (prepared.error) toast(prepared.error);
+      else if (prepared.attachment)
+        setAttachments((prev) => [...prev, prepared.attachment!].slice(0, 5));
+      else if (prepared.text) setDocs((prev) => [...prev, prepared.text!].slice(0, 5));
     }
-    setAttachments((prev) => [...prev, ...next].slice(0, 4));
   };
 
   const toggleMic = async () => {
@@ -153,14 +154,35 @@ export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
         </div>
       )}
 
-      {!!attachments.length && (
+      {(!!attachments.length || !!docs.length) && (
         <div className="pending-strip">
           {attachments.map((a, i) => (
-            <div className="thumb" key={i}>
-              <img src={`data:${a.mimeType};base64,${a.data}`} alt="" />
+            <div className="thumb" key={`a${i}`}>
+              {a.mimeType.startsWith('image/') ? (
+                <img src={`data:${a.mimeType};base64,${a.data}`} alt="" />
+              ) : (
+                <span className="file-chip">
+                  {fileIcon(a.name ?? '', a.mimeType)}
+                  <i>{(a.name ?? 'fayl').slice(0, 12)}</i>
+                </span>
+              )}
               <button
                 className="x"
                 onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                aria-label="Olib tashlash"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {docs.map((d, i) => (
+            <div className="thumb" key={`d${i}`}>
+              <span className="file-chip">
+                📄<i>{(d.match(/^Fayl: (.+)$/m)?.[1] ?? 'matn').slice(0, 12)}</i>
+              </span>
+              <button
+                className="x"
+                onClick={() => setDocs((prev) => prev.filter((_, j) => j !== i))}
                 aria-label="Olib tashlash"
               >
                 ×
@@ -174,7 +196,6 @@ export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
           multiple
           hidden
           onChange={(e) => {
@@ -230,10 +251,10 @@ export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
               fileRef.current?.click();
             }}
           >
-            <span className="action-icon">🖼</span>
+            <span className="action-icon">📎</span>
             <span className="grow">
-              <b>Rasm biriktirish</b>
-              <div className="tiny">Daftar yoki kitob sahifasini surat qilib soʻrang</div>
+              <b>Fayl biriktirish</b>
+              <div className="tiny">Rasm, PDF, matn, kod yoki ovoz fayli</div>
             </span>
           </button>
 

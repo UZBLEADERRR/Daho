@@ -88,6 +88,10 @@ export function whoAmI(token: string): Promise<GhUser> {
   return gh<GhUser>(token, '/user');
 }
 
+export function getRepo(token: string, owner: string, repo: string): Promise<GhRepo> {
+  return gh<GhRepo>(token, `/repos/${owner}/${repo}`);
+}
+
 export function listRepos(token: string): Promise<GhRepo[]> {
   return gh<GhRepo[]>(token, '/user/repos?per_page=100&sort=updated&affiliation=owner');
 }
@@ -393,4 +397,246 @@ export async function runFailureLog(
 
   // Jurnal matni ZIP boʻlib keladi; bu yerda faqat qadam nomlarini qaytaramiz.
   return `Ish: ${failed.name}. Yiqilgan qadam(lar): ${badSteps || 'nomaʼlum'}.`;
+}
+
+/* ---------- Tarmoqlar ---------- */
+
+export interface GhBranch {
+  name: string;
+  commit: { sha: string };
+  protected: boolean;
+}
+
+export function listBranches(token: string, owner: string, repo: string): Promise<GhBranch[]> {
+  return gh<GhBranch[]>(token, `/repos/${owner}/${repo}/branches?per_page=100`);
+}
+
+/** `from` tarmog'idan yangi tarmoq ochadi. */
+export async function createBranch(
+  token: string,
+  owner: string,
+  repo: string,
+  name: string,
+  from: string,
+): Promise<void> {
+  const ref = await gh<{ object: { sha: string } }>(
+    token,
+    `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(from)}`,
+  );
+  await gh(token, `/repos/${owner}/${repo}/git/refs`, {
+    method: 'POST',
+    body: JSON.stringify({ ref: `refs/heads/${name}`, sha: ref.object.sha }),
+  });
+}
+
+/* ---------- Pull request ---------- */
+
+export interface GhPull {
+  number: number;
+  title: string;
+  state: string;
+  html_url: string;
+  head: { ref: string };
+  base: { ref: string };
+  draft?: boolean;
+}
+
+export function listPulls(
+  token: string,
+  owner: string,
+  repo: string,
+  state: 'open' | 'closed' | 'all' = 'open',
+): Promise<GhPull[]> {
+  return gh<GhPull[]>(token, `/repos/${owner}/${repo}/pulls?state=${state}&per_page=30`);
+}
+
+export function createPull(
+  token: string,
+  owner: string,
+  repo: string,
+  title: string,
+  head: string,
+  base: string,
+  body = '',
+  draft = false,
+): Promise<GhPull> {
+  return gh<GhPull>(token, `/repos/${owner}/${repo}/pulls`, {
+    method: 'POST',
+    body: JSON.stringify({ title, head, base, body, draft }),
+  });
+}
+
+export function mergePull(
+  token: string,
+  owner: string,
+  repo: string,
+  number: number,
+  method: 'merge' | 'squash' | 'rebase' = 'squash',
+): Promise<{ merged: boolean; message: string }> {
+  return gh(token, `/repos/${owner}/${repo}/pulls/${number}/merge`, {
+    method: 'PUT',
+    body: JSON.stringify({ merge_method: method }),
+  });
+}
+
+/* ---------- Issue ---------- */
+
+export interface GhIssue {
+  number: number;
+  title: string;
+  state: string;
+  html_url: string;
+  body?: string;
+}
+
+export function listIssues(
+  token: string,
+  owner: string,
+  repo: string,
+  state: 'open' | 'closed' | 'all' = 'open',
+): Promise<GhIssue[]> {
+  return gh<GhIssue[]>(token, `/repos/${owner}/${repo}/issues?state=${state}&per_page=30`);
+}
+
+export function createIssue(
+  token: string,
+  owner: string,
+  repo: string,
+  title: string,
+  body = '',
+): Promise<GhIssue> {
+  return gh<GhIssue>(token, `/repos/${owner}/${repo}/issues`, {
+    method: 'POST',
+    body: JSON.stringify({ title, body }),
+  });
+}
+
+export function commentIssue(
+  token: string,
+  owner: string,
+  repo: string,
+  number: number,
+  body: string,
+): Promise<{ html_url: string }> {
+  return gh(token, `/repos/${owner}/${repo}/issues/${number}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function closeIssue(
+  token: string,
+  owner: string,
+  repo: string,
+  number: number,
+): Promise<GhIssue> {
+  return gh<GhIssue>(token, `/repos/${owner}/${repo}/issues/${number}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ state: 'closed' }),
+  });
+}
+
+/* ---------- Reliz ---------- */
+
+export interface GhRelease {
+  id: number;
+  tag_name: string;
+  name: string;
+  html_url: string;
+}
+
+export function createRelease(
+  token: string,
+  owner: string,
+  repo: string,
+  tag: string,
+  name: string,
+  body = '',
+): Promise<GhRelease> {
+  return gh<GhRelease>(token, `/repos/${owner}/${repo}/releases`, {
+    method: 'POST',
+    body: JSON.stringify({ tag_name: tag, name, body, draft: false, prerelease: false }),
+  });
+}
+
+export function listReleases(token: string, owner: string, repo: string): Promise<GhRelease[]> {
+  return gh<GhRelease[]>(token, `/repos/${owner}/${repo}/releases?per_page=20`);
+}
+
+/* ---------- Qidiruv ---------- */
+
+export interface CodeHit {
+  path: string;
+  repository: { full_name: string };
+  html_url: string;
+}
+
+export function searchCode(token: string, query: string): Promise<{ items: CodeHit[] }> {
+  return gh(token, `/search/code?q=${encodeURIComponent(query)}&per_page=20`);
+}
+
+/* ---------- Fayl o'chirish ---------- */
+
+export async function deleteRepoFile(
+  token: string,
+  owner: string,
+  repo: string,
+  path: string,
+  branch: string,
+  message: string,
+): Promise<void> {
+  const meta = await gh<{ sha: string }>(
+    token,
+    `/repos/${owner}/${repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(branch)}`,
+  );
+  await gh(token, `/repos/${owner}/${repo}/contents/${encodeURI(path)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ message, sha: meta.sha, branch }),
+  });
+}
+
+/* ---------- Repo sozlamalari ---------- */
+
+export function updateRepo(
+  token: string,
+  owner: string,
+  repo: string,
+  patch: Record<string, unknown>,
+): Promise<GhRepo> {
+  return gh<GhRepo>(token, `/repos/${owner}/${repo}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+export function setTopics(
+  token: string,
+  owner: string,
+  repo: string,
+  topics: string[],
+): Promise<{ names: string[] }> {
+  return gh(token, `/repos/${owner}/${repo}/topics`, {
+    method: 'PUT',
+    body: JSON.stringify({ names: topics.map((t) => t.toLowerCase().replace(/[^a-z0-9-]/g, '-')) }),
+    headers: { Accept: 'application/vnd.github.mercy-preview+json' },
+  });
+}
+
+/** Oxirgi commitlar — o'zgarishlar tarixini ko'rish uchun. */
+export interface GhCommit {
+  sha: string;
+  commit: { message: string; author: { name: string; date: string } };
+}
+
+export function listCommits(
+  token: string,
+  owner: string,
+  repo: string,
+  branch: string,
+  limit = 10,
+): Promise<GhCommit[]> {
+  return gh<GhCommit[]>(
+    token,
+    `/repos/${owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=${limit}`,
+  );
 }

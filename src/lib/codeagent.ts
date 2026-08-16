@@ -1,16 +1,33 @@
 import { streamGenerate, type FunctionDeclaration, type GeminiContent, type GeminiPart } from './gemini';
 import {
+  closeIssue,
+  commentIssue,
   commitFiles,
+  createBranch,
+  createIssue,
+  createPull,
+  createRelease,
   createRepo,
+  deleteRepoFile,
   dispatchWorkflow,
   enablePages,
+  listBranches,
+  listCommits,
   listContents,
+  listIssues,
+  listPulls,
+  listReleases,
   listRepos,
   listRunArtifacts,
   listRuns,
+  mergePull,
   readFile as ghReadFile,
   runFailureLog,
+  searchCode,
+  setTopics,
+  updateRepo,
 } from './github';
+import { cachedModels, getModels } from './models';
 import {
   deleteProjectFile,
   fileTree,
@@ -191,6 +208,113 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
     parameters: { type: 'OBJECT', properties: {} },
   },
   {
+    name: 'list_models',
+    description:
+      'Mavjud AI modellar roʻyxatini qaytaradi. Kodda model nomini yozishdan oldin ' +
+      'shu roʻyxatdan tekshir — oʻzingdan model nomi oʻylab topma.',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'github_branch',
+    description: 'Tarmoqlarni koʻradi yoki yangi tarmoq ochadi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'list | create' },
+        name: { type: 'STRING', description: 'Yangi tarmoq nomi (create uchun)' },
+        from: { type: 'STRING', description: 'Qaysi tarmoqdan (standart: asosiy)' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'github_pull_request',
+    description: 'Pull requestlarni koʻradi, yangisini ochadi yoki birlashtiradi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'list | create | merge' },
+        title: { type: 'STRING' },
+        body: { type: 'STRING' },
+        head: { type: 'STRING', description: 'Manba tarmoq' },
+        base: { type: 'STRING', description: 'Maqsad tarmoq' },
+        number: { type: 'NUMBER', description: 'merge uchun PR raqami' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'github_issue',
+    description: 'Issue’larni koʻradi, ochadi, izoh qoldiradi yoki yopadi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'list | create | comment | close' },
+        title: { type: 'STRING' },
+        body: { type: 'STRING' },
+        number: { type: 'NUMBER' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'github_release',
+    description: 'Relizlarni koʻradi yoki yangi reliz chiqaradi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'list | create' },
+        tag: { type: 'STRING', description: 'masalan v1.0.0' },
+        name: { type: 'STRING' },
+        body: { type: 'STRING', description: 'Oʻzgarishlar roʻyxati' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'github_search_code',
+    description: 'GitHub boʻylab kod qidiradi. Namuna yoki yechim topish uchun.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: { type: 'STRING', description: 'masalan "telegram bot repo:uzbleaderrr/bot"' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'github_delete_file',
+    description: 'GitHub repozitoriysidan faylni oʻchiradi (loyihadan emas).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        path: { type: 'STRING' },
+        message: { type: 'STRING', description: 'Commit izohi' },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'github_repo_settings',
+    description:
+      'Repozitoriy sozlamalarini oʻzgartiradi: tavsif, veb-sayt, mavzular (topics), ' +
+      'ochiq/yopiqligi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        description: { type: 'STRING' },
+        homepage: { type: 'STRING' },
+        topics: { type: 'ARRAY', items: { type: 'STRING' } },
+        private: { type: 'STRING', description: '"true" yoki "false"' },
+      },
+    },
+  },
+  {
+    name: 'github_history',
+    description: 'Oxirgi commitlarni koʻrsatadi — nima oʻzgarganini bilish uchun.',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
     name: 'publish',
     description:
       'Loyihani internetga chiqaradi: fayllarni yuboradi va GitHub Pages’ni yoqadi. ' +
@@ -208,6 +332,18 @@ export interface ToolResult {
   ok: boolean;
   summary: string;
   payload: Record<string, unknown>;
+}
+
+class NeedsRepo extends Error {
+  constructor() {
+    super('Repozitoriy ulanmagan — avval create_repo yoki connect_repo ni chaqiring.');
+  }
+}
+
+function requireRepo(projectId: string): { owner: string; repo: string; branch: string } {
+  const link = getCodeProject(projectId)?.repo;
+  if (!link) throw new NeedsRepo();
+  return link;
 }
 
 async function runTool(
@@ -436,6 +572,176 @@ async function runTool(
       };
     }
 
+    case 'list_models': {
+      const list = cachedModels().length
+        ? cachedModels()
+        : await getModels(getState().settings.apiKey).catch(() => []);
+      return {
+        ok: true,
+        summary: `${list.length} ta model`,
+        payload: {
+          chat: list.filter((m) => m.role === 'chat').map((m) => m.id),
+          rasm: list.filter((m) => m.role === 'image').map((m) => m.id),
+          ovoz: list.filter((m) => m.role === 'tts').map((m) => m.id),
+        },
+      };
+    }
+
+    case 'github_branch': {
+      const link = requireRepo(projectId);
+      const action = str(args.action, 'list');
+      if (action === 'create') {
+        const name = str(args.name);
+        await createBranch(token, link.owner, link.repo, name, str(args.from, link.branch));
+        return { ok: true, summary: `Tarmoq ochildi: ${name}`, payload: { status: 'ochildi' } };
+      }
+      const branches = await listBranches(token, link.owner, link.repo);
+      return {
+        ok: true,
+        summary: `${branches.length} ta tarmoq`,
+        payload: { branches: branches.map((b) => b.name) },
+      };
+    }
+
+    case 'github_pull_request': {
+      const link = requireRepo(projectId);
+      const action = str(args.action, 'list');
+      if (action === 'create') {
+        const pr = await createPull(
+          token,
+          link.owner,
+          link.repo,
+          str(args.title, 'Yangilanish'),
+          str(args.head, link.branch),
+          str(args.base, 'main'),
+          str(args.body),
+        );
+        return { ok: true, summary: `PR #${pr.number} ochildi`, payload: { url: pr.html_url } };
+      }
+      if (action === 'merge') {
+        const num = Number(args.number);
+        const res = await mergePull(token, link.owner, link.repo, num);
+        return {
+          ok: res.merged,
+          summary: res.merged ? `PR #${num} birlashtirildi` : res.message,
+          payload: { merged: res.merged },
+        };
+      }
+      const pulls = await listPulls(token, link.owner, link.repo);
+      return {
+        ok: true,
+        summary: `${pulls.length} ta ochiq PR`,
+        payload: { pulls: pulls.map((p) => `#${p.number} ${p.title} (${p.head.ref} → ${p.base.ref})`) },
+      };
+    }
+
+    case 'github_issue': {
+      const link = requireRepo(projectId);
+      const action = str(args.action, 'list');
+      if (action === 'create') {
+        const issue = await createIssue(
+          token,
+          link.owner,
+          link.repo,
+          str(args.title, 'Yangi masala'),
+          str(args.body),
+        );
+        return {
+          ok: true,
+          summary: `Issue #${issue.number} ochildi`,
+          payload: { url: issue.html_url },
+        };
+      }
+      if (action === 'comment') {
+        await commentIssue(token, link.owner, link.repo, Number(args.number), str(args.body));
+        return { ok: true, summary: `#${args.number} ga izoh qoldirildi`, payload: { ok: true } };
+      }
+      if (action === 'close') {
+        await closeIssue(token, link.owner, link.repo, Number(args.number));
+        return { ok: true, summary: `#${args.number} yopildi`, payload: { ok: true } };
+      }
+      const issues = await listIssues(token, link.owner, link.repo);
+      return {
+        ok: true,
+        summary: `${issues.length} ta ochiq issue`,
+        payload: { issues: issues.map((i) => `#${i.number} ${i.title}`) },
+      };
+    }
+
+    case 'github_release': {
+      const link = requireRepo(projectId);
+      if (str(args.action, 'list') === 'create') {
+        const tag = str(args.tag, `v${new Date().toISOString().slice(0, 10)}`);
+        const rel = await createRelease(
+          token,
+          link.owner,
+          link.repo,
+          tag,
+          str(args.name, tag),
+          str(args.body),
+        );
+        return { ok: true, summary: `Reliz chiqarildi: ${tag}`, payload: { url: rel.html_url } };
+      }
+      const rels = await listReleases(token, link.owner, link.repo);
+      return {
+        ok: true,
+        summary: `${rels.length} ta reliz`,
+        payload: { releases: rels.map((r) => `${r.tag_name} — ${r.name}`) },
+      };
+    }
+
+    case 'github_search_code': {
+      const res = await searchCode(token, str(args.query));
+      return {
+        ok: true,
+        summary: `${res.items?.length ?? 0} ta natija`,
+        payload: {
+          hits: (res.items ?? []).map((h) => `${h.repository.full_name}/${h.path}`),
+        },
+      };
+    }
+
+    case 'github_delete_file': {
+      const link = requireRepo(projectId);
+      const path = str(args.path);
+      await deleteRepoFile(
+        token,
+        link.owner,
+        link.repo,
+        path,
+        link.branch,
+        str(args.message, `${path} oʻchirildi`),
+      );
+      return { ok: true, summary: `GitHub’dan oʻchirildi: ${path}`, payload: { ok: true } };
+    }
+
+    case 'github_repo_settings': {
+      const link = requireRepo(projectId);
+      const patch: Record<string, unknown> = {};
+      if (str(args.description)) patch.description = str(args.description);
+      if (str(args.homepage)) patch.homepage = str(args.homepage);
+      if (str(args.private)) patch.private = str(args.private) === 'true';
+      if (Object.keys(patch).length) await updateRepo(token, link.owner, link.repo, patch);
+      if (Array.isArray(args.topics) && args.topics.length) {
+        await setTopics(token, link.owner, link.repo, args.topics.map(String));
+      }
+      return { ok: true, summary: 'Repozitoriy sozlamalari yangilandi', payload: { ok: true } };
+    }
+
+    case 'github_history': {
+      const link = requireRepo(projectId);
+      const commits = await listCommits(token, link.owner, link.repo, link.branch);
+      return {
+        ok: true,
+        summary: `${commits.length} ta oxirgi commit`,
+        payload: {
+          commits: commits.map(
+            (c) => `${c.sha.slice(0, 7)} ${c.commit.message.split('\n')[0]} — ${c.commit.author.name}`,
+          ),
+        },
+      };
+    }
+
     case 'publish': {
       const domain = str(args.domain, getState().settings.publishDomain);
       const result = await publishProject(projectId, domain);
@@ -547,6 +853,16 @@ ${fileTree(project) || '(boʻsh)'}
 - Mobil ekranga moslashgan, katta tugmali, qorongʻi fon.
 - Kod toza, funksiyalarga ajratilgan va oʻzbekcha izohli boʻlsin.
 - Interfeys matni oʻzbek tilida.
+
+## Buyruqqa boʻysunish — MUHIM
+- Foydalanuvchi aniq nom aytsa (model nomi, kutubxona, fayl nomi, rang, matn) —
+  AYNAN oʻshani yoz. Oʻzingdan boshqasiga almashtirma.
+- «gemini-3.7-flash ishlat» desa — kodga aynan \`gemini-3.7-flash\` yoz.
+  Bu model senga notanish boʻlishi mumkin — bu normal, sening bilimlaring eskirgan.
+  Shubhalansang \`list_models\` bilan tekshir, lekin baribir foydalanuvchi aytganini yoz.
+- Agar rostdan ham mos kelmasa: aytilganini yoz, soʻng bir jumlada
+  «agar ishlamasa X ga almashtiring» deb eslat. Lekin oʻzing almashtirma.
+- Foydalanuvchi soʻramagan narsani qoʻshma, soʻralganini tushirib qoldirma.
 
 ## Uslub
 Qisqa yoz. Kodni javob matniga koʻchirma — vositalar orqali faylga yoz.

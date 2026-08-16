@@ -12,6 +12,8 @@ export const DEFAULT_SETTINGS: Settings = {
   imageModel: FALLBACK_MODELS.image,
   ttsModel: FALLBACK_MODELS.tts,
   theme: 'tun',
+  accent: '#8b7cf6',
+  fontScale: 1,
   temperature: 0.8,
   autoSpeak: false,
   ttsEngine: 'gemini',

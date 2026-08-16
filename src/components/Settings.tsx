@@ -8,6 +8,17 @@ import { exportState, importState, resetState, updateSettings, useStore } from '
 import { Refresh } from './Icons';
 import { Sheet, Switch, toast } from './ui';
 
+const ACCENTS = [
+  { name: 'Binafsha', hex: '#8b7cf6' },
+  { name: 'Koʻk', hex: '#3987e5' },
+  { name: 'Yashil', hex: '#199e70' },
+  { name: 'Zangori', hex: '#0ea5a5' },
+  { name: 'Toʻq sariq', hex: '#e07a2f' },
+  { name: 'Pushti', hex: '#d55181' },
+  { name: 'Qizil', hex: '#e05555' },
+  { name: 'Oltin', hex: '#c98500' },
+];
+
 const TTS_LANGS = [
   { id: 'uz-UZ', label: 'Oʻzbekcha' },
   { id: 'ru-RU', label: 'Ruscha' },
@@ -406,6 +417,40 @@ export function Settings({ onClose }: { onClose: () => void }) {
         onChange={(v) => updateSettings({ theme: v ? 'tun' : 'kun' })}
         label="Tungi rejim"
       />
+
+      <div className="field" style={{ marginTop: 10 }}>
+        <label>Urgʻu rangi</label>
+        <div className="accent-picker">
+          {ACCENTS.map((a) => (
+            <button
+              key={a.hex}
+              className={settings.accent === a.hex ? 'on' : ''}
+              style={{ background: a.hex }}
+              onClick={() => updateSettings({ accent: a.hex })}
+              aria-label={a.name}
+            />
+          ))}
+        </div>
+        <input
+          type="color"
+          value={settings.accent}
+          onChange={(e) => updateSettings({ accent: e.target.value })}
+          style={{ height: 44, padding: 4, marginTop: 8 }}
+        />
+      </div>
+
+      <div className="field">
+        <label>Shrift oʻlchami: {Math.round(settings.fontScale * 100)}%</label>
+        <input
+          type="range"
+          min={0.85}
+          max={1.3}
+          step={0.05}
+          value={settings.fontScale}
+          onChange={(e) => updateSettings({ fontScale: Number(e.target.value) })}
+          style={{ padding: 0, background: 'none', border: 'none' }}
+        />
+      </div>
 
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
         Maʼlumotlar

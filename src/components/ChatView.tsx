@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { ensureActiveChat, regenerate, sendMessage } from '../lib/agent';
 import { splitSegments } from '../lib/artifacts';
 import {
@@ -13,6 +13,7 @@ import { speak } from '../lib/speech';
 import { getState, setState, useStore } from '../lib/store';
 import type { Artifact, Attachment, Message } from '../lib/types';
 import { uid } from '../lib/utils';
+import { startTask, stopFor, useTaskFor } from '../lib/tasks';
 import { planVideo } from '../lib/video';
 import { Composer, type ComposerMode } from './Composer';
 import { MessageView } from './Message';
@@ -30,6 +31,13 @@ interface Props {
   onOpenVideo: (id: string) => void;
 }
 
+const MODE_TITLE: Partial<Record<ComposerMode, string>> = {
+  chat: 'Javob yozilmoqda',
+  ilova: 'Ilova yasalmoqda',
+  kurs: 'Kurs tayyorlanmoqda',
+  hujjat: 'Hujjat yozilmoqda',
+};
+
 const BRIEFS: Partial<Record<ComposerMode, string>> = {
   ilova: APP_BUILDER_BRIEF,
   kurs: COURSE_BRIEF,
@@ -41,26 +49,20 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
   const chats = useStore((s) => s.chats);
   const activeChatId = useStore((s) => s.activeChatId);
   const settings = useStore((s) => s.settings);
-  const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<ComposerMode>('chat');
-  const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
 
   const chat = chats.find((c) => c.id === activeChatId) ?? null;
   const messages = chat?.messages ?? [];
+  // Ish holati global reyestrda — boshqa boʻlimga oʻtsangiz ham davom etadi.
+  const running = useTaskFor('chat', activeChatId ?? '');
+  const busy = Boolean(running);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   });
-
-  useEffect(
-    () => () => {
-      abortRef.current?.abort();
-    },
-    [],
-  );
 
   const onScroll = () => {
     const el = scrollRef.current;
@@ -69,9 +71,7 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
   };
 
   const stop = () => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setBusy(false);
+    if (activeChatId) stopFor('chat', activeChatId);
   };
 
   /** Chatga model xabarini qo'shib, uni yangilash funksiyasini qaytaradi. */
@@ -111,16 +111,17 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
       createdAt: Date.now(),
     };
     const patch = openModelMessage(chatId, userMsg, 'Rasm chizilmoqda…');
-    const controller = new AbortController();
-    abortRef.current = controller;
 
+    await startTask(
+      { kind: 'chat', targetId: chatId, title: 'Rasm chizilmoqda', note: prompt.slice(0, 40) },
+      async (signal) => {
     try {
       const result = await generateImage(
         settings.apiKey,
         settings.imageModel,
         prompt,
         refs,
-        controller.signal,
+        signal,
       );
       const artifacts: Artifact[] = result.images.map((img, i) => ({
         id: uid('a_'),
@@ -139,20 +140,20 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         text: '',
         error: aborted ? 'Toʻxtatildi.' : String((err as Error)?.message ?? err),
       });
-    } finally {
-      abortRef.current = null;
-      setBusy(false);
     }
+      },
+    );
   };
 
   const runVideo = async (chatId: string, topic: string) => {
     const userMsg: Message = { id: uid('m_'), role: 'user', text: topic, createdAt: Date.now() };
     const patch = openModelMessage(chatId, userMsg, 'Ssenariy yozilmoqda…');
-    const controller = new AbortController();
-    abortRef.current = controller;
 
+    await startTask(
+      { kind: 'chat', targetId: chatId, title: 'Ssenariy yozilmoqda', note: topic.slice(0, 40) },
+      async (signal) => {
     try {
-      const project = await planVideo(topic, { chatId }, controller.signal);
+      const project = await planVideo(topic, { chatId }, signal);
       patch({
         text:
           `**${project.title}** — ${project.scenes.length} sahnadan iborat ssenariy tayyor.\n\n` +
@@ -167,10 +168,9 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         text: '',
         error: aborted ? 'Toʻxtatildi.' : String((err as Error)?.message ?? err),
       });
-    } finally {
-      abortRef.current = null;
-      setBusy(false);
     }
+      },
+    );
   };
 
   const onSend = async (text: string, attachments: Attachment[]) => {
@@ -180,7 +180,6 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
     }
     const chatId = ensureActiveChat();
     stickRef.current = true;
-    setBusy(true);
 
     if (mode === 'rasm') {
       await runImage(chatId, text, attachments);
@@ -191,17 +190,16 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
       return;
     }
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const result = await sendMessage(
-      chatId,
-      text,
-      attachments,
-      controller.signal,
-      BRIEFS[mode],
+    const result = await startTask(
+      {
+        kind: 'chat',
+        targetId: chatId,
+        title: MODE_TITLE[mode] ?? 'Javob yozilmoqda',
+        note: text.slice(0, 40) || 'fayl yuborildi',
+      },
+      (signal) => sendMessage(chatId, text, attachments, signal, BRIEFS[mode]),
     );
-    abortRef.current = null;
-    setBusy(false);
+    if (!result) return;
 
     // «Ilova yasash» rejimida natijani darhol Ilovalarimga saqlaymiz.
     if (mode === 'ilova' && result.ok) {
@@ -223,12 +221,10 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
     const chatId = getState().activeChatId;
     if (!chatId || busy) return;
     stickRef.current = true;
-    setBusy(true);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    await regenerate(chatId, controller.signal);
-    abortRef.current = null;
-    setBusy(false);
+    await startTask(
+      { kind: 'chat', targetId: chatId, title: 'Qayta yozilmoqda', note: '' },
+      (signal) => regenerate(chatId, signal),
+    );
   };
 
   const lastModelIndex = (() => {

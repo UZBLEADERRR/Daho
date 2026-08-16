@@ -49,6 +49,24 @@ export function saveApp(
   return app;
 }
 
+/** Tashqi havolani mini ilova sifatida qoʻshadi. */
+export function saveLinkApp(url: string, name: string, icon = '🔗', description = ''): MiniApp {
+  const clean = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  const app: MiniApp = {
+    id: uid('app_'),
+    name: name.trim().slice(0, 40) || new URL(clean).hostname,
+    icon: icon.slice(0, 4) || '🔗',
+    description: description.slice(0, 120),
+    html: '',
+    url: clean,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    opens: 0,
+  };
+  setState((s) => ({ apps: [app, ...s.apps] }));
+  return app;
+}
+
 export function updateApp(id: string, patch: Partial<MiniApp>): void {
   setState((s) => ({
     apps: s.apps.map((a) => (a.id === id ? { ...a, ...patch, updatedAt: Date.now() } : a)),

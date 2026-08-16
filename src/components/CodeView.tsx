@@ -10,14 +10,18 @@ import {
   writeProjectFile,
 } from '../lib/codeproject';
 import { saveBytes } from '../lib/exporter';
-import { listRepos, type GhRepo } from '../lib/github';
+import { getRepo, listRepos, whoAmI, type GhRepo } from '../lib/github';
+import { saveLinkApp } from '../lib/creations';
 import { byRole, cachedModels } from '../lib/models';
 import { TEMPLATES } from '../lib/templates';
 import { renderMarkdown } from '../lib/markdown';
-import { useStore, updateSettings } from '../lib/store';
+import { getState, useStore, updateSettings } from '../lib/store';
 import type { Attachment, CodeProject } from '../lib/types';
-import { relativeTime, shrinkImage } from '../lib/utils';
-import { Back, Check, Close, Copy, Download, Plus, Refresh, Send, Stop, Trash } from './Icons';
+import { relativeTime } from '../lib/utils';
+import { prepareFile, fileIcon } from '../lib/attach';
+import { startListening, type ListenHandle } from '../lib/speech';
+import { startTask, stopFor, useTaskFor } from '../lib/tasks';
+import { Back, Check, Close, Copy, Download, Mic, Plus, Refresh, Send, Stop, Trash } from './Icons';
 import { copyText } from '../lib/exporter';
 import { Empty, Sheet, toast } from './ui';
 
@@ -131,6 +135,8 @@ export function CodeView() {
               const p = createCodeProject(name, template);
               setCreating(false);
               setOpenId(p.id);
+              // «Oʻzim» shabloni — Daho repozitoriysiga avtomatik ulanamiz.
+              if (template === 'ozim') void connectSelfRepo(p.id);
             }}
           >
             Yaratish
@@ -139,6 +145,25 @@ export function CodeView() {
       )}
     </div>
   );
+}
+
+/** Daho ilovasining oʻz repozitoriysini topib ulaydi. */
+async function connectSelfRepo(projectId: string): Promise<void> {
+  const { settings } = getState();
+  if (!settings.githubToken) {
+    toast('GitHub token kerak — Sozlamalardan kiriting');
+    return;
+  }
+  try {
+    const me = await whoAmI(settings.githubToken);
+    const repo = await getRepo(settings.githubToken, me.login, 'Daho');
+    patchCodeProject(projectId, {
+      repo: { owner: repo.owner.login, repo: repo.name, branch: repo.default_branch },
+    });
+    toast(`Ulandi: ${repo.full_name}`);
+  } catch {
+    toast('Daho repozitoriysi topilmadi — «Nashr» boʻlimidan qoʻlda ulang');
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -247,12 +272,15 @@ const CODE_STARTERS = [
 
 function CodeChat({ project }: { project: CodeProject }) {
   const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
   const [shots, setShots] = useState<Attachment[]>([]);
-  const abortRef = useRef<AbortController | null>(null);
+  const [extraText, setExtraText] = useState<string[]>([]);
+  const [mic, setMic] = useState<'oʻchiq' | 'yozilmoqda' | 'tahlil'>('oʻchiq');
+  const listenRef = useRef<ListenHandle | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const running = useTaskFor('code', project.id);
+  const busy = Boolean(running);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -268,34 +296,53 @@ function CodeChat({ project }: { project: CodeProject }) {
 
   const send = async (value: string) => {
     const instruction = value.trim();
-    if ((!instruction && !shots.length) || busy) return;
+    if ((!instruction && !shots.length && !extraText.length) || busy) return;
     const files = shots;
+    const texts = extraText;
     setText('');
     setShots([]);
-    setBusy(true);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    await runCodeAgent(
-      project.id,
-      instruction || 'Shu skrinshotdagi xatoni tuzat.',
-      controller.signal,
-      files,
+    setExtraText([]);
+    const full = [instruction || 'Biriktirilgan faylni koʻrib chiq.', ...texts].join('\n\n');
+    await startTask(
+      { kind: 'code', targetId: project.id, title: project.name, note: instruction.slice(0, 40) },
+      (signal) => runCodeAgent(project.id, full, signal, files),
     );
-    abortRef.current = null;
-    setBusy(false);
   };
 
-  const pickShots = async (list: FileList | null) => {
+  /** Istalgan fayl: rasm, PDF, matn, kod, audio. */
+  const pickFiles = async (list: FileList | null) => {
     if (!list?.length) return;
-    const next: Attachment[] = [];
-    for (const file of Array.from(list).slice(0, 3)) {
-      try {
-        next.push(await shrinkImage(file, 1400));
-      } catch {
-        toast('Rasmni oʻqib boʻlmadi');
-      }
+    for (const file of Array.from(list).slice(0, 5)) {
+      const prepared = await prepareFile(file);
+      if (prepared.error) toast(prepared.error);
+      else if (prepared.attachment) setShots((prev) => [...prev, prepared.attachment!].slice(0, 5));
+      else if (prepared.text) setExtraText((prev) => [...prev, prepared.text!].slice(0, 5));
     }
-    setShots((prev) => [...prev, ...next].slice(0, 3));
+  };
+
+  const toggleMic = async () => {
+    if (mic !== 'oʻchiq') {
+      const handle = listenRef.current;
+      listenRef.current = null;
+      await handle?.stop();
+      return;
+    }
+    setMic('yozilmoqda');
+    const handle = await startListening({
+      onState: (st) => setMic(st),
+      onFinal: (value) => {
+        setText((prev) => (prev ? `${prev} ${value}` : value));
+        setMic('oʻchiq');
+        listenRef.current = null;
+      },
+      onError: (message) => {
+        toast(message);
+        setMic('oʻchiq');
+        listenRef.current = null;
+      },
+    });
+    listenRef.current = handle;
+    if (!handle) setMic('oʻchiq');
   };
 
   return (
@@ -361,14 +408,35 @@ function CodeChat({ project }: { project: CodeProject }) {
       </div>
 
       <div className="composer">
-        {!!shots.length && (
+        {(!!shots.length || !!extraText.length) && (
           <div className="pending-strip">
             {shots.map((a, i) => (
-              <div className="thumb" key={i}>
-                <img src={`data:${a.mimeType};base64,${a.data}`} alt="" />
+              <div className="thumb" key={`s${i}`}>
+                {a.mimeType.startsWith('image/') ? (
+                  <img src={`data:${a.mimeType};base64,${a.data}`} alt="" />
+                ) : (
+                  <span className="file-chip">
+                    {fileIcon(a.name ?? '', a.mimeType)}
+                    <i>{(a.name ?? 'fayl').slice(0, 12)}</i>
+                  </span>
+                )}
                 <button
                   className="x"
                   onClick={() => setShots((prev) => prev.filter((_, j) => j !== i))}
+                  aria-label="Olib tashlash"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {extraText.map((t, i) => (
+              <div className="thumb" key={`t${i}`}>
+                <span className="file-chip">
+                  📄<i>{(t.match(/^Fayl: (.+)$/m)?.[1] ?? 'matn').slice(0, 12)}</i>
+                </span>
+                <button
+                  className="x"
+                  onClick={() => setExtraText((prev) => prev.filter((_, j) => j !== i))}
                   aria-label="Olib tashlash"
                 >
                   ×
@@ -381,18 +449,17 @@ function CodeChat({ project }: { project: CodeProject }) {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
             multiple
             hidden
             onChange={(e) => {
-              void pickShots(e.target.files);
+              void pickFiles(e.target.files);
               e.target.value = '';
             }}
           />
           <button
             className="round-btn"
             onClick={() => fileRef.current?.click()}
-            aria-label="Skrinshot qoʻshish"
+            aria-label="Fayl qoʻshish"
           >
             <Plus size={21} />
           </button>
@@ -400,7 +467,13 @@ function CodeChat({ project }: { project: CodeProject }) {
             ref={areaRef}
             rows={1}
             value={text}
-            placeholder="Nima qilay?"
+            placeholder={
+              mic === 'yozilmoqda'
+                ? 'Tinglayapman…'
+                : mic === 'tahlil'
+                  ? 'Matnga oʻgirilmoqda…'
+                  : 'Nima qilay?'
+            }
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) {
@@ -412,19 +485,27 @@ function CodeChat({ project }: { project: CodeProject }) {
           {busy ? (
             <button
               className="round-btn primary"
-              onClick={() => abortRef.current?.abort()}
+              onClick={() => stopFor('code', project.id)}
               aria-label="Toʻxtatish"
             >
               <Stop size={16} />
             </button>
-          ) : (
+          ) : text.trim() || shots.length || extraText.length ? (
             <button
               className="round-btn primary"
-              disabled={!text.trim() && !shots.length}
               onClick={() => void send(text)}
               aria-label="Yuborish"
             >
               <Send size={19} />
+            </button>
+          ) : (
+            <button
+              className={mic === 'oʻchiq' ? 'round-btn' : 'round-btn rec'}
+              onClick={toggleMic}
+              disabled={mic === 'tahlil'}
+              aria-label="Ovozli xabar"
+            >
+              <Mic size={20} />
             </button>
           )}
         </div>
@@ -648,6 +729,16 @@ function Publish({ project, onDeleted }: { project: CodeProject; onDeleted: () =
                 Ochish
               </a>
             </div>
+            <button
+              className="btn mini ghost wide"
+              style={{ marginTop: 8 }}
+              onClick={() => {
+                const app = saveLinkApp(project.publish!.url, project.name, '🌐');
+                toast(`«${app.name}» Ilovalarimga qoʻshildi`);
+              }}
+            >
+              🔗 Ilovalarimga qoʻshish
+            </button>
             <div className="tiny" style={{ marginTop: 8 }}>
               {relativeTime(project.publish.at)} chiqarilgan. Birinchi marta yoqilganda
               GitHub 1–2 daqiqa tayyorlaydi.

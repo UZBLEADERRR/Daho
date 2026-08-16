@@ -120,6 +120,10 @@ export interface Settings {
   imageModel: string;
   ttsModel: string;
   theme: ThemeName;
+  /** Urgʻu rangi (hex) */
+  accent: string;
+  /** Interfeys shrift oʻlchami koeffitsienti */
+  fontScale: number;
   temperature: number;
   autoSpeak: boolean;
   /** 'gemini' — tabiiy ovoz, 'qurilma' — tizim sintezatori */
@@ -146,7 +150,10 @@ export interface MiniApp {
   name: string;
   icon: string; // emoji
   description: string;
+  /** Ichki ilova uchun HTML; havolali ilovada boʻsh */
   html: string;
+  /** Tashqi havola bilan qoʻshilgan ilova */
+  url?: string;
   createdAt: number;
   updatedAt: number;
   opens: number;

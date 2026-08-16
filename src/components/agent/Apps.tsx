@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { deleteApp, updateApp } from '../../lib/creations';
+import { deleteApp, saveLinkApp, updateApp } from '../../lib/creations';
 import { saveArtifact } from '../../lib/exporter';
 import { useStore } from '../../lib/store';
 import type { MiniApp } from '../../lib/types';
@@ -14,6 +14,8 @@ export function Apps() {
   const [open, setOpen] = useState<string | null>(null);
   const [edit, setEdit] = useState<MiniApp | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [linking, setLinking] = useState(false);
+  const [link, setLink] = useState({ url: '', name: '', icon: '🔗' });
 
   const running = apps.find((a) => a.id === open);
 
@@ -43,12 +45,16 @@ export function Apps() {
           </button>
         </div>
         <div className="viewer-body">
-          <iframe
-            key={reloadKey}
-            title={running.name}
-            srcDoc={running.html}
-            sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin"
-          />
+          {running.url ? (
+            <iframe key={reloadKey} title={running.name} src={running.url} />
+          ) : (
+            <iframe
+              key={reloadKey}
+              title={running.name}
+              srcDoc={running.html}
+              sandbox="allow-scripts allow-forms allow-modals allow-popups allow-same-origin"
+            />
+          )}
         </div>
       </div>
     );
@@ -57,6 +63,17 @@ export function Apps() {
   return (
     <div className="scroll">
       <div className="pad">
+        <button
+          className="btn ghost wide"
+          style={{ marginBottom: 12 }}
+          onClick={() => {
+            setLink({ url: '', name: '', icon: '🔗' });
+            setLinking(true);
+          }}
+        >
+          🔗 Havola bilan ilova qoʻshish
+        </button>
+
         {apps.length === 0 ? (
           <Empty
             title="Ilova yoʻq"
@@ -82,6 +99,57 @@ export function Apps() {
           </div>
         )}
       </div>
+
+      {linking && (
+        <Sheet title="Havolali ilova" onClose={() => setLinking(false)}>
+          <div className="field">
+            <label>Havola</label>
+            <input
+              autoFocus
+              value={link.url}
+              onChange={(e) => setLink({ ...link, url: e.target.value.trim() })}
+              placeholder="https://daho.uz"
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+          </div>
+          <div className="field-row">
+            <div className="field">
+              <label>Nomi</label>
+              <input
+                value={link.name}
+                onChange={(e) => setLink({ ...link, name: e.target.value })}
+                placeholder="Saytim"
+              />
+            </div>
+            <div className="field">
+              <label>Ikonka</label>
+              <input
+                value={link.icon}
+                onChange={(e) => setLink({ ...link, icon: e.target.value.slice(0, 4) })}
+              />
+            </div>
+          </div>
+          <button
+            className="btn wide"
+            disabled={!link.url.trim()}
+            onClick={() => {
+              try {
+                const app = saveLinkApp(link.url, link.name, link.icon);
+                setLinking(false);
+                toast(`«${app.name}» qoʻshildi`);
+              } catch {
+                toast('Havola notoʻgʻri');
+              }
+            }}
+          >
+            Qoʻshish
+          </button>
+          <div className="tiny" style={{ marginTop: 8 }}>
+            Havolali ilova internet talab qiladi. Ichki ilovalar esa oflayn ishlaydi.
+          </div>
+        </Sheet>
+      )}
 
       {edit && (
         <Sheet title="Ilova sozlamalari" onClose={() => setEdit(null)}>
@@ -138,6 +206,13 @@ export function Apps() {
             Saqlash
           </button>
 
+          {edit.url && (
+            <div className="tiny" style={{ marginBottom: 10, wordBreak: 'break-all' }}>
+              🔗 {edit.url}
+            </div>
+          )}
+
+          {!edit.url && (
           <button
             className="btn ghost wide"
             style={{ marginTop: 8 }}
@@ -160,6 +235,7 @@ export function Apps() {
           >
             <Download size={15} /> HTML faylni saqlash
           </button>
+          )}
 
           <button
             className="btn ghost wide"
