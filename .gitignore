@@ -1,0 +1,19 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+.vscode/
+.idea/
+
+# Android build chiqindilari
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+*.iml
+*.keystore
+*.jks

@@ -1,0 +1,60 @@
+name: APK yasash
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodni olish
+        uses: actions/checkout@v4
+
+      - name: Node.js sozlash
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Java 17 sozlash
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK sozlash
+        uses: android-actions/setup-android@v3
+
+      - name: Paketlarni oʻrnatish
+        run: npm ci
+
+      - name: Veb qismini yigʻish
+        run: npm run build
+
+      - name: Capacitor sinxronizatsiyasi
+        run: npx cap sync android
+
+      - name: Gradle wrapper ruxsati
+        run: chmod +x android/gradlew
+
+      - name: Debug APK yigʻish
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: APK nomini oʻzgartirish
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk daho.apk
+
+      - name: APK ni yuklash
+        uses: actions/upload-artifact@v4
+        with:
+          name: daho-apk
+          path: daho.apk
+          if-no-files-found: error
+          retention-days: 90
