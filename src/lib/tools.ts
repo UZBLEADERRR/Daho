@@ -1,5 +1,15 @@
 import { askUser } from './ask';
-import { generateImage, searchAnswer } from './gemini';
+import { b64ToBytes } from './audio';
+import { saveBytes } from './exporter';
+import { generateImage, generateJson, generateText, searchAnswer } from './gemini';
+import {
+  DOCX_MIME,
+  buildDocxWithImages,
+  imageSize,
+  placeImages,
+  readDocx,
+  type DocImage,
+} from './office';
 import type { FunctionDeclaration } from './gemini';
 import {
   describeSpot,
@@ -297,6 +307,25 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ['destination'],
+    },
+  },
+  {
+    name: 'illustrate_document',
+    description:
+      'Suhbatga biriktirilgan hujjatga (Word .docx yoki PDF) rasm qoʻshib, yangi ' +
+      '.docx fayl yasab beradi va telefonga saqlaydi. Foydalanuvchi «kitobga rasm ' +
+      'qoʻshib ber», «hujjatni bezab ber», «illyustratsiya qoʻsh» desa shuni chaqir. ' +
+      'Rasmlar mazmunga qarab mos joylarga qoʻyiladi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        count: { type: 'NUMBER', description: 'Nechta rasm kerak (1-12, standart 5)' },
+        style: {
+          type: 'STRING',
+          description: 'Rasm uslubi, masalan "realistik surat", "bolalar kitobi rasmi", "chizma"',
+        },
+        note: { type: 'STRING', description: 'Qoʻshimcha talab (ranglar, qahramon, mavzu)' },
+      },
     },
   },
   {
@@ -672,6 +701,147 @@ export async function executeTool(
             'qaysi bekat va avtobus raqamlari kerakligini topib, qisqa qadamlar bilan yoz.',
         },
         route: route.id,
+      };
+    }
+
+    case 'illustrate_document': {
+      const { settings, chats } = getState();
+      const chat = chats.find((c) => c.id === ctx.chatId);
+
+      // Suhbatdagi eng oxirgi hujjatni topamiz.
+      let source: Attachment | null = null;
+      for (let i = (chat?.messages.length ?? 0) - 1; i >= 0 && !source; i -= 1) {
+        const msg = chat!.messages[i];
+        for (const att of msg.attachments ?? []) {
+          if (att.mimeType === DOCX_MIME || att.mimeType === 'application/pdf') {
+            source = att;
+            break;
+          }
+        }
+      }
+      if (!source) {
+        return {
+          ok: false,
+          summary: 'Hujjat topilmadi',
+          payload: { error: 'Avval Word (.docx) yoki PDF faylni biriktiring' },
+        };
+      }
+
+      const count = Math.max(1, Math.min(12, Math.round(num(args.count, 5))));
+      const style = str(args.style, 'chiroyli, kitobga mos illyustratsiya');
+      const note = str(args.note);
+
+      // 1. Hujjat matni.
+      let text = '';
+      if (source.mimeType === DOCX_MIME) {
+        text = readDocx(b64ToBytes(source.data));
+      } else {
+        text = await generateText(
+          settings.apiKey,
+          settings.model,
+          'Ushbu PDF hujjatning BARCHA matnini oʻzgartirmasdan, tartibi bilan yozib ber. ' +
+            'Izoh qoʻshma, faqat matnning oʻzi.',
+          [source],
+          ctx.signal,
+        );
+      }
+      if (text.trim().length < 40) {
+        return { ok: false, summary: 'Hujjat matni oʻqilmadi', payload: { error: 'matn_yoq' } };
+      }
+      const forPlan = text.length > 24000 ? `${text.slice(0, 24000)}\n…` : text;
+
+      // 2. Qayerga qanday rasm kerakligini modeldan soʻraymiz.
+      const plan = await generateJson<{
+        images: Array<{ prompt: string; caption?: string; after?: string }>;
+      }>(
+        settings.apiKey,
+        settings.model,
+        `Quyidagi hujjatga ${count} ta rasm qoʻshamiz. Uslub: ${style}.` +
+          (note ? ` Qoʻshimcha talab: ${note}.` : '') +
+          `\n\nHar bir rasm uchun:\n` +
+          `- "prompt": rasm tavsifi INGLIZ tilida, juda batafsil (nima tasvirlangan, ` +
+          `uslub, rang, yorugʻlik). Matnda yozuv boʻlmasin.\n` +
+          `- "caption": rasm ostidagi qisqa izoh — OʻZBEK tilida.\n` +
+          `- "after": hujjatdagi AYNAN shu joydan keyin rasm turishi kerak boʻlgan ` +
+          `jumla (hujjatdan soʻzma-soʻz koʻchirilgan 5-12 soʻz).\n\n` +
+          `Rasmlar butun hujjat boʻylab teng taqsimlansin.\n\nHUJJAT:\n${forPlan}`,
+        {
+          type: 'OBJECT',
+          properties: {
+            images: {
+              type: 'ARRAY',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  prompt: { type: 'STRING' },
+                  caption: { type: 'STRING' },
+                  after: { type: 'STRING' },
+                },
+                required: ['prompt'],
+              },
+            },
+          },
+          required: ['images'],
+        },
+        ctx.signal,
+      );
+
+      const wanted = (plan.images ?? []).slice(0, count);
+      if (!wanted.length) {
+        return { ok: false, summary: 'Rasm rejasi tuzilmadi', payload: { error: 'reja_yoq' } };
+      }
+
+      // 3. Rasmlarni chizamiz (birma-bir — server limitini urmaslik uchun).
+      const images: DocImage[] = [];
+      const drawn: string[] = [];
+      for (const item of wanted) {
+        try {
+          const result = await generateImage(
+            settings.apiKey,
+            settings.imageModel,
+            `${item.prompt}. Style: ${style}.${note ? ` ${note}.` : ''} No text or letters in the image.`,
+            [],
+            ctx.signal,
+          );
+          const first = result.images[0];
+          if (!first) continue;
+          const size = await imageSize(first.data, first.mimeType);
+          images.push({
+            data: first.data,
+            mimeType: first.mimeType,
+            caption: item.caption,
+            width: size.width,
+            height: size.height,
+          });
+          drawn.push(item.after ?? '');
+        } catch (err) {
+          if ((err as Error)?.name === 'AbortError') throw err;
+          // Bitta rasm chiqmasa ham qolganini davom ettiramiz.
+        }
+      }
+      if (!images.length) {
+        return { ok: false, summary: 'Rasm chizilmadi', payload: { error: 'rasm_yoq' } };
+      }
+
+      // 4. Yangi .docx ni yigʻib, telefonga saqlaymiz.
+      const parts = placeImages(text, drawn.map((after) => ({ after })));
+      const bytes = buildDocxWithImages(parts, images);
+      const title = (source.name ?? 'hujjat').replace(/\.(docx|pdf)$/i, '');
+      const fileName = `${title}-rasmli.docx`;
+      const where = await saveBytes(fileName, bytes, DOCX_MIME);
+
+      return {
+        ok: true,
+        summary: `${images.length} ta rasm qoʻshildi → ${fileName}`,
+        payload: {
+          fayl: fileName,
+          rasmlar: images.length,
+          saqlandi: where,
+          eslatma:
+            'Fayl foydalanuvchining telefoniga saqlandi. Rasmlar hujjat ichiga ' +
+            'joylandi. Qisqa qilib nima qilganingni ayt va faylni qayerdan ' +
+            'topishini bir jumlada aytib qoʻy.',
+        },
       };
     }
 

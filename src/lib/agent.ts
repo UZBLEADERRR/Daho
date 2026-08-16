@@ -1,6 +1,8 @@
 import { drainInterjections } from './ask';
+import { isModelReadable } from './attach';
 import { extractArtifacts } from './artifacts';
-import { GeminiError, streamGenerate, generateText } from './gemini';
+import { GeminiError, generateText } from './gemini';
+import { streamResilient } from './resilient';
 import type { GeminiContent, GeminiPart } from './gemini';
 import { getState, setState } from './store';
 import { TOOL_DECLARATIONS, buildContextSummary, executeTool } from './tools';
@@ -23,6 +25,7 @@ const STEP_LABEL: Record<string, string> = {
   find_place: 'xaritadan qidirilmoqda',
   search_web: 'internetdan qidirilmoqda',
   plan_route: 'yoʻl tayyorlanmoqda',
+  illustrate_document: 'hujjatga rasm qoʻshilmoqda',
   log_work: 'ish vaqti yozilmoqda',
   complete_task: 'vazifa belgilanmoqda',
   read_data: 'maʼlumotlaringiz oʻqilmoqda',
@@ -123,6 +126,9 @@ Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jim
 - Bajarilgan ish haqida aytsa — \`log_work\`.
 - Biror sohani oʻrganmoqchi boʻlsa (IELTS, dasturlash, ingliz tili…) — \`create_course\` bilan
   kamida 40 ta mavzudan iborat toʻliq kurs och.
+- Hujjatga (Word yoki PDF biriktirilgan boʻlsa) rasm qoʻshish soʻralsa —
+  \`illustrate_document\`. Nechta rasm kerakligini foydalanuvchi aytmasa 5 ta qil.
+  Natija yangi .docx boʻlib telefonga saqlanadi.
 - Rasm, surat, illyustratsiya, logotip yoki chizma soʻrasa — \`generate_image\`.
   Mavjud rasmni oʻzgartirishni soʻrasa — \`edit_last: "true"\` bilan chaqir.
   Rasm chatda oʻzi koʻrinadi; uni matn bilan qayta tasvirlab berma.
@@ -179,6 +185,8 @@ function toContents(messages: Message[]): GeminiContent[] {
     if (msg.error && !msg.text) continue;
     const parts: GeminiPart[] = [];
     for (const att of msg.attachments ?? []) {
+      // Modelga faqat u oʻqiy oladigan turlarni yuboramiz (docx bizda qoladi).
+      if (!isModelReadable(att.mimeType)) continue;
       parts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
     }
     if (msg.text.trim()) parts.push({ text: msg.text });
@@ -323,7 +331,7 @@ export async function sendMessage(
     const instruction = brief ? `${systemPrompt()}\n\n## Ushbu soʻrov uchun maxsus vazifa\n${brief}` : systemPrompt();
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-      const result = await streamGenerate({
+      const result = await streamResilient({
         apiKey: settings.apiKey,
         model: settings.model,
         contents,
@@ -332,6 +340,12 @@ export async function sendMessage(
         temperature: settings.temperature,
         signal,
         onText,
+        rollback: (chars) => {
+          accumulated = accumulated.slice(0, Math.max(0, accumulated.length - chars));
+          patchMessage(chatId, modelMsg.id, { text: accumulated });
+        },
+        onStep,
+        allowModelSwap: true,
       });
 
       // Model javobida rasm boʻlsa — darhol chatda koʻrsatamiz.

@@ -307,7 +307,12 @@ async function listenViaGemini(cb: ListenCallbacks): Promise<ListenHandle | null
         if (text.trim()) cb.onFinal(text.trim());
         else cb.onError('Ovoz aniqlanmadi — balandroq va yaqinroq gapiring.');
       } catch (err) {
-        cb.onError(String((err as Error)?.message ?? err));
+        // Model audioni qabul qilmadi — keyingi safar qurilma xizmatiga oʻtamiz.
+        geminiSttBroken = true;
+        cb.onError(
+          `Ovozni matnga oʻgirib boʻlmadi: ${String((err as Error)?.message ?? err)} ` +
+            '— keyingi safar telefonning oʻz xizmati ishlatiladi.',
+        );
       }
       resolve();
     };
@@ -413,10 +418,16 @@ async function listenOnDevice(cb: ListenCallbacks): Promise<ListenHandle | null>
   };
 }
 
+/**
+ * Gemini orqali matnga oʻgirish ishlamay qolgan boʻlsa — shu suhbatda
+ * boshqa urinmaymiz, qurilmaning oʻz xizmatiga oʻtamiz.
+ */
+let geminiSttBroken = false;
+
 /** Mikrofonni yoqadi. Sozlamaga qarab Gemini yoki qurilma STT ishlatiladi. */
 export async function startListening(cb: ListenCallbacks): Promise<ListenHandle | null> {
   const { settings } = getState();
-  if (settings.sttEngine === 'qurilma') return listenOnDevice(cb);
+  if (settings.sttEngine === 'qurilma' || geminiSttBroken) return listenOnDevice(cb);
   const viaGemini = await listenViaGemini(cb);
   return viaGemini ?? listenOnDevice(cb);
 }

@@ -93,7 +93,8 @@ const wait = (ms: number, signal?: AbortSignal) =>
 async function withRetry<T>(
   fn: () => Promise<T>,
   signal?: AbortSignal,
-  attempts = 4,
+  attempts = 6,
+  onWait?: (attempt: number, seconds: number) => void,
 ): Promise<T> {
   let lastError: unknown;
   for (let i = 0; i < attempts; i += 1) {
@@ -105,8 +106,10 @@ async function withRetry<T>(
       const retryable = RETRYABLE.has(status) || status === 0;
       if (!retryable || i === attempts - 1) throw err;
       lastError = err;
-      // 1.5s, 3s, 6s + tasodifiy qoʻshimcha
-      await wait(1500 * 2 ** i + Math.random() * 400, signal);
+      // 2s, 4s, 8s, 16s, 30s — server bandligi odatda shu ichida oʻtadi.
+      const ms = Math.min(30000, 2000 * 2 ** i) + Math.random() * 500;
+      onWait?.(i + 1, Math.round(ms / 1000));
+      await wait(ms, signal);
     }
   }
   throw lastError;
@@ -121,6 +124,8 @@ export interface StreamOptions {
   temperature?: number;
   signal?: AbortSignal;
   onText: (chunk: string) => void;
+  /** Server band boʻlib qayta urinilayotganda chaqiriladi */
+  onRetry?: (attempt: number, seconds: number) => void;
 }
 
 export interface StreamResult {
@@ -186,7 +191,7 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
     }
     await assertOk(response);
     return response;
-  }, opts.signal);
+  }, opts.signal, 6, opts.onRetry);
 
   if (!res.body) throw new GeminiError('Javob oqimi boʻsh keldi.', 0);
 
@@ -262,21 +267,26 @@ export async function generateText(
   apiKey: string,
   model: string,
   prompt: string,
+  files: Attachment[] = [],
   signal?: AbortSignal,
 ): Promise<string> {
+  const parts: GeminiPart[] = [
+    ...files.map((f) => ({ inlineData: { mimeType: f.mimeType, data: f.data } })),
+    { text: prompt },
+  ];
   const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: [{ role: 'user', parts }],
       generationConfig: { temperature: 0.4 },
     }),
     signal,
   });
   await assertOk(res);
   const data = await res.json();
-  const parts: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
-  return parts.map((p) => p.text ?? '').join('').trim();
+  const out: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
+  return out.map((p) => p.text ?? '').join('').trim();
 }
 
 export interface ImageResult {
@@ -521,30 +531,47 @@ export async function transcribeAudio(
   const langName =
     { 'uz-UZ': 'oʻzbek', 'ru-RU': 'rus', 'en-US': 'ingliz', 'tr-TR': 'turk' }[lang] ?? 'oʻzbek';
 
-  const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { inlineData: { mimeType: audio.mimeType, data: audio.data } },
-            {
-              text:
-                `Ushbu audiodagi nutq ${langName} tilida. Uni aynan matnga oʻgir. ` +
-                'Faqat matnning oʻzini qaytar — izoh, tirnoq yoki qoʻshimcha soʻzsiz. ' +
-                'Agar nutq eshitilmasa, boʻsh javob qaytar.',
-            },
-          ],
-        },
-      ],
-      generationConfig: { temperature: 0 },
-    }),
-    signal,
-  });
-  await assertOk(res);
+  const res = await withRetry(async () => {
+    const r = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { inlineData: { mimeType: audio.mimeType, data: audio.data } },
+              {
+                text:
+                  `Ushbu audiodagi nutq ${langName} tilida. Uni aynan matnga oʻgir. ` +
+                  'Faqat matnning oʻzini qaytar — izoh, tirnoq yoki qoʻshimcha soʻzsiz. ' +
+                  'Agar nutq eshitilmasa, boʻsh javob qaytar.',
+              },
+            ],
+          },
+        ],
+        generationConfig: { temperature: 0 },
+      }),
+      signal,
+    });
+    await assertOk(r);
+    return r;
+  }, signal);
+
   const data = await res.json();
-  const parts: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
-  return parts.map((p) => p.text ?? '').join('').trim();
+  const candidate = data?.candidates?.[0];
+  const parts: GeminiPart[] = candidate?.content?.parts ?? [];
+  const text = parts
+    .filter((p) => !p.thought)
+    .map((p) => p.text ?? '')
+    .join('')
+    .trim();
+
+  if (!text) {
+    const reason = candidate?.finishReason;
+    if (reason && reason !== 'STOP') {
+      throw new GeminiError(`Model javob bermadi (${reason}).`, 0);
+    }
+  }
+  return text;
 }

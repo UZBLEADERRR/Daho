@@ -114,6 +114,12 @@ nusxalanadi. Har bir javob ostida «Nusxa» tugmasi ham bor.
 Har qanday javobni **Word (.docx)**, **PDF**, **slayd (.pptx)** yoki matn
 qilib yuklab olasiz — hammasi qurilmada yasaladi.
 
+**Hujjatga rasm qoʻshish** 🖼
+Word (.docx) yoki PDF faylni biriktirib «shu kitobga 5 ta rasm qoʻshib ber»
+desangiz: matn oʻqiladi, mazmunga mos rasmlar chiziladi va **mos joylarga
+qoʻyilgan yangi .docx** telefoningizga saqlanadi (rasm ostida izoh bilan).
+.docx ning matni telefonda ochiladi — hujjat serverga yuborilmaydi.
+
 **Agent tarafi**
 - *Bugun* — kunlik xulosa: darslar, muddati kelgan vazifalar, ish vaqti
 - *Jadval* — haftalik dars jadvali

@@ -1,4 +1,5 @@
-import { streamGenerate, type FunctionDeclaration, type GeminiContent, type GeminiPart } from './gemini';
+import type { FunctionDeclaration, GeminiContent, GeminiPart } from './gemini';
+import { streamResilient } from './resilient';
 import {
   closeIssue,
   commentIssue,
@@ -38,6 +39,7 @@ import {
 } from './codeproject';
 import { describeProbe, probeApp } from './probe';
 import { askUser, drainInterjections } from './ask';
+import { isModelReadable } from './attach';
 import { getState, setState } from './store';
 import { templateById } from './templates';
 import type { Attachment, CodeProject, Message, ToolCallRecord } from './types';
@@ -953,6 +955,32 @@ ${fileTree(project) || '(boʻsh)'}
    \`run_workflow\` → soʻng \`check_workflow\` bilan natijani tekshir. Yiqilsa
    sababini oʻqib, kodni tuzat va qaytadan yubor.
 
+## Katta loyiha — avval ARXITEKTURA 🏗
+Kichik ish (bitta sahifa, bitta tuzatish) boʻlsa darhol qil. Lekin loyiha katta
+boʻlsa (bir nechta ekran, maʼlumot saqlash, bot, API, foydalanuvchi hisobi) —
+kodga sakrama, avval quyidagini bajar:
+
+1. \`REJA.md\` faylini yoz. Ichida:
+   - **Maqsad** — bir jumlada nima yasayapmiz va kim uchun.
+   - **Ekranlar/boʻlimlar** — roʻyxat, har biriga bir qator izoh.
+   - **Maʼlumot** — qanday obyektlar, qaysi maydonlar, qayerda saqlanadi
+     (localStorage, JSON fayl, GitHub, tashqi baza).
+   - **Fayl xaritasi** — qaysi fayl nima uchun javob beradi.
+   - **Bosqichlar** — 3-6 ta bosqich, har biri alohida ishlaydigan natija beradi.
+     Bajarilganini \`- [x]\` bilan belgilab borasan.
+2. Rejani foydalanuvchiga 5-8 qatorda koʻrsat. Muhim tanlov boʻlsa (masalan
+   maʼlumot qayerda saqlansin, dizayn qanday boʻlsin) — \`ask_user\` bilan soʻra.
+3. Soʻng bosqichma-bosqich yoz. Har bosqich oxirida \`test_app\` bilan sinab,
+   \`REJA.md\` dagi belgini yangilab qoʻy.
+
+Arxitektura qoidalari:
+- Har bir fayl BITTA ish qilsin. 300 qatordan oshsa — boʻlaklarga ajrat.
+- Nomlash izchil boʻlsin (masalan \`store.js\`, \`ui.js\`, \`api.js\`).
+- Maʼlumot bilan ishlash (saqlash/oʻqish) alohida faylda boʻlsin, UI ichida emas.
+- Bir joyda takrorlanayotgan kodni funksiyaga chiqar.
+- Sozlamalar (token, URL, rang) — bitta joyda, kod ichiga sochib tashlama.
+- Yangi bosqich eskisini buzmasin: oʻzgartirishdan oldin tegishli faylni oʻqi.
+
 ## Oʻz ishingni SINAB koʻr — majburiy
 Veb (HTML/JS) qismini oʻzgartirgan boʻlsang, ishni tugatishdan oldin
 \`test_app\` ni chaqir. U loyihani haqiqatan ishga tushiradi va sanga
@@ -1010,6 +1038,7 @@ function toContents(messages: Message[]): GeminiContent[] {
   for (const msg of messages.slice(-MAX_HISTORY)) {
     const parts: GeminiPart[] = [];
     for (const att of msg.attachments ?? []) {
+      if (!isModelReadable(att.mimeType)) continue;
       parts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
     }
     if (msg.text.trim()) parts.push({ text: msg.text });
@@ -1093,7 +1122,7 @@ export async function runCodeAgent(
         break;
       }
 
-      const result = await streamGenerate({
+      const result = await streamResilient({
         apiKey: settings.apiKey,
         model: current.model || settings.model,
         contents,
@@ -1102,6 +1131,12 @@ export async function runCodeAgent(
         temperature: 0.4,
         signal,
         onText,
+        rollback: (chars) => {
+          accumulated = accumulated.slice(0, Math.max(0, accumulated.length - chars));
+          patchMessage(projectId, modelMsg.id, { text: accumulated });
+        },
+        onStep,
+        allowModelSwap: true,
       });
 
       if (!result.functionCalls.length) {
