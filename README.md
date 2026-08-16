@@ -84,6 +84,13 @@ raqamli kartochkalar. Har bir grafikda legenda, bosilganda qiymat va **Jadval**
 tugmasi bor. Ranglar rang koʻrmaslikka (CVD) qarshi tekshirilgan palitradan.
 Javoblarda markdown jadvallar va emoji ham ishlatiladi.
 
+**Ilova qiyofasi** 🎨
+Sozlamalar → «Ilova qiyofasi»: telefondan rasm tanlaysiz va yangi nom yozasiz.
+Ishlab turgan ilova oʻz ikonkasini almashtira olmaydi, shuning uchun Daho barcha
+oʻlchamdagi ikonkalarni telefonning oʻzida yasab, GitHub’dagi oʻz repozitoriysiga
+yozadi va APK’ni qaytadan yigʻadi — bir necha daqiqadan soʻng yangi nom va
+ikonkali APK’ni oʻrnatasiz. GitHub token kerak.
+
 **Nusxalash** 📋
 Xabar matnini bosib turib belgilash mumkin, ikki marta bossangiz butun xabar
 nusxalanadi. Har bir javob ostida «Nusxa» tugmasi ham bor.

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { playWavBase64 } from '../lib/audio';
+import { applyAppLook } from '../lib/applook';
 import { saveBackup } from '../lib/exporter';
-import { whoAmI } from '../lib/github';
+import { getRepo, whoAmI } from '../lib/github';
 import { byRole, cachedModels, getModels, pickModel, type ModelInfo } from '../lib/models';
 import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
 import { exportState, importState, resetState, updateSettings, useStore } from '../lib/store';
@@ -378,6 +379,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
         {ghChecking ? 'Tekshirilmoqda…' : 'GitHub ulanishini tekshirish'}
       </button>
 
+      <AppLook />
+
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
         Shaxsiy
       </div>
@@ -502,5 +505,120 @@ export function Settings({ onClose }: { onClose: () => void }) {
         Daho 2.0 · maʼlumotlar faqat shu telefonda saqlanadi
       </div>
     </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Ilova qiyofasi — nom va ikonka                                     */
+/* ------------------------------------------------------------------ */
+
+function AppLook() {
+  const settings = useStore((s) => s.settings);
+  const [name, setName] = useState('');
+  const [icon, setIcon] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const pickRef = useRef<HTMLInputElement>(null);
+
+  const onPick = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast('Rasm tanlang');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setIcon(String(reader.result));
+    reader.onerror = () => toast('Rasmni oʻqib boʻlmadi');
+    reader.readAsDataURL(file);
+  };
+
+  const apply = async () => {
+    if (!settings.githubToken) {
+      toast('Avval GitHub tokenini kiriting');
+      return;
+    }
+    setBusy(true);
+    setDone(null);
+    try {
+      const me = await whoAmI(settings.githubToken);
+      const repo = await getRepo(settings.githubToken, me.login, 'Daho');
+      const result = await applyAppLook({
+        name: name.trim() || undefined,
+        iconDataUrl: icon ?? undefined,
+        repo: { owner: repo.owner.login, repo: repo.name, branch: repo.default_branch },
+      });
+      setDone(result.runsUrl);
+      toast(`Yuborildi (${result.commit}) — APK yigʻilmoqda`);
+    } catch (err) {
+      toast(String((err as Error)?.message ?? err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+        Ilova qiyofasi
+      </div>
+
+      <div className="row" style={{ gap: 12, alignItems: 'center', marginBottom: 10 }}>
+        <button
+          className="look-icon"
+          onClick={() => pickRef.current?.click()}
+          aria-label="Ikonka tanlash"
+        >
+          {icon ? <img src={icon} alt="" /> : <span>🖼</span>}
+        </button>
+        <div className="grow">
+          <div style={{ fontWeight: 550 }}>Ikonka</div>
+          <div className="tiny">
+            Kvadrat rasm tanlang — barcha oʻlchamlar telefonda yasaladi.
+          </div>
+        </div>
+        {icon && (
+          <button className="btn mini ghost" onClick={() => setIcon(null)}>
+            Bekor
+          </button>
+        )}
+      </div>
+
+      <input
+        ref={pickRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          void onPick(e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
+
+      <div className="field">
+        <label>Ilova nomi</label>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Daho"
+          maxLength={30}
+        />
+      </div>
+
+      <button className="btn wide" disabled={busy || (!icon && !name.trim())} onClick={apply}>
+        {busy ? 'Yuborilmoqda…' : 'Yangi APK yigʻish'}
+      </button>
+
+      <div className="tiny" style={{ marginTop: 6 }}>
+        Ishlab turgan ilova oʻz ikonkasini almashtira olmaydi — shuning uchun Daho yangi
+        ikonka va nomni GitHub’dagi oʻz repozitoriysiga yozadi va APK’ni qaytadan yigʻadi.
+        5-10 daqiqadan soʻng yangi APK’ni yuklab olib oʻrnatasiz. GitHub token kerak.
+      </div>
+
+      {done && (
+        <a className="btn ghost wide" style={{ marginTop: 8 }} href={done} target="_blank" rel="noreferrer">
+          Yigʻilishni koʻrish →
+        </a>
+      )}
+    </>
   );
 }

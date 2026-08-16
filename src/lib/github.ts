@@ -166,6 +166,8 @@ function toBase64(text: string): string {
 export interface CommitFile {
   path: string;
   content: string;
+  /** content allaqachon base64 boʻlsa (rasm va boshqa ikkilik fayllar) */
+  base64?: boolean;
 }
 
 export interface CommitResult {
@@ -210,7 +212,10 @@ export async function commitFiles(
     files.map((f) =>
       gh<{ sha: string }>(token, `/repos/${owner}/${repo}/git/blobs`, {
         method: 'POST',
-        body: JSON.stringify({ content: toBase64(f.content), encoding: 'base64' }),
+        body: JSON.stringify({
+          content: f.base64 ? f.content : toBase64(f.content),
+          encoding: 'base64',
+        }),
       }).then((b) => ({ path: f.path, sha: b.sha })),
     ),
   );
