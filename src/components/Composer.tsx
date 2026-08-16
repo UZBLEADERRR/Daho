@@ -55,13 +55,15 @@ export const MODES: ModeInfo[] = [
 
 interface Props {
   busy: boolean;
+  /** Ish ketayotganda ham yozish mumkinmi (qoʻshimcha koʻrsatma) */
+  allowWhileBusy?: boolean;
   mode: ComposerMode;
   onMode: (m: ComposerMode) => void;
   onSend: (text: string, attachments: Attachment[]) => void;
   onStop: () => void;
 }
 
-export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
+export function Composer({ busy, allowWhileBusy, mode, onMode, onSend, onStop }: Props) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [docs, setDocs] = useState<string[]>([]);
@@ -89,7 +91,7 @@ export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
   );
 
   const submit = () => {
-    if (busy || !canSend) return;
+    if ((busy && !allowWhileBusy) || !canSend) return;
     const full = [text.trim(), ...docs].filter(Boolean).join('\n\n');
     onSend(full, attachments);
     setText('');
@@ -140,7 +142,9 @@ export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
       ? 'Tinglayapman…'
       : mic === 'tahlil'
         ? 'Matnga oʻgirilmoqda…'
-        : (active?.placeholder ?? 'Savolingizni yozing…');
+        : busy && allowWhileBusy
+          ? 'Qoʻshimcha koʻrsatma…'
+          : (active?.placeholder ?? 'Savolingizni yozing…');
 
   return (
     <div className="composer">
@@ -222,7 +226,11 @@ export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
           }}
         />
 
-        {busy ? (
+        {busy && canSend && allowWhileBusy ? (
+          <button className="round-btn primary" onClick={submit} aria-label="Qoʻshimcha yuborish">
+            <Send size={19} />
+          </button>
+        ) : busy ? (
           <button className="round-btn primary" onClick={onStop} aria-label="Toʻxtatish">
             <Stop size={16} />
           </button>

@@ -117,6 +117,8 @@ export default function App() {
         </button>
       </header>
 
+      <TaskBar />
+
       <main className="main">
         {tab === 'chat' && (
           <ChatView onOpenArtifact={setArtifact} onOpenVideo={setVideoId} />
@@ -151,7 +153,6 @@ export default function App() {
       {videoId && <VideoStudio projectId={videoId} onClose={() => setVideoId(null)} />}
       {artifact && <ArtifactViewer artifact={artifact} onClose={() => setArtifact(null)} />}
 
-      <TaskBar />
       <ToastHost />
     </div>
   );

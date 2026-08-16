@@ -35,13 +35,43 @@ import {
   patchCodeProject,
   writeProjectFile,
 } from './codeproject';
+import { askUser, drainInterjections } from './ask';
 import { getState, setState } from './store';
 import { templateById } from './templates';
 import type { Attachment, CodeProject, Message, ToolCallRecord } from './types';
 import { uid } from './utils';
 
-const MAX_ROUNDS = 14;
+const MAX_ROUNDS = 18;
 const MAX_HISTORY = 24;
+
+/** Vosita nomining oʻzbekcha tavsifi — pastdagi qatorda koʻrinadi. */
+const STEP_LABEL: Record<string, string> = {
+  ask_user: 'sizdan soʻrayapman',
+  read_file: 'fayl oʻqilmoqda',
+  write_file: 'fayl yozilmoqda',
+  edit_file: 'fayl tuzatilmoqda',
+  delete_file: 'fayl oʻchirilmoqda',
+  list_files: 'fayllar koʻrilmoqda',
+  list_models: 'modellar tekshirilmoqda',
+  github_list_repos: 'repozitoriylar olinmoqda',
+  github_read: 'GitHub’dan oʻqilmoqda',
+  github_import: 'fayl koʻchirilmoqda',
+  github_push: 'GitHub’ga yuborilmoqda',
+  create_repo: 'repozitoriy ochilmoqda',
+  connect_repo: 'repozitoriy ulanmoqda',
+  write_workflow: 'ish oqimi yozilmoqda',
+  run_workflow: 'yigʻish boshlandi',
+  check_workflow: 'yigʻish tekshirilmoqda',
+  github_branch: 'tarmoqlar bilan ishlanmoqda',
+  github_pull_request: 'pull request bilan ishlanmoqda',
+  github_issue: 'issue bilan ishlanmoqda',
+  github_release: 'reliz tayyorlanmoqda',
+  github_search_code: 'kod qidirilmoqda',
+  github_delete_file: 'GitHub’dan oʻchirilmoqda',
+  github_repo_settings: 'repo sozlanmoqda',
+  github_history: 'tarix koʻrilmoqda',
+  publish: 'internetga chiqarilmoqda',
+};
 
 /* ------------------------------------------------------------------ */
 /*  Vositalar                                                          */
@@ -208,6 +238,26 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
     parameters: { type: 'OBJECT', properties: {} },
   },
   {
+    name: 'ask_user',
+    description:
+      'Foydalanuvchidan aniqlik soʻraydi va javobini kutadi. Yoʻnalish noaniq boʻlsa, ' +
+      'bir nechta yechim boʻlsa yoki qaytarib boʻlmaydigan ish (fayl oʻchirish, repo ' +
+      'sozlamasini oʻzgartirish, nashr) oldidan chaqir.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        question: { type: 'STRING', description: 'Qisqa, aniq savol — oʻzbekcha' },
+        options: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Tayyor variantlar (2-5 ta)',
+        },
+        multi: { type: 'STRING', description: '"true" — bir nechtasini tanlash mumkin' },
+      },
+      required: ['question'],
+    },
+  },
+  {
     name: 'list_models',
     description:
       'Mavjud AI modellar roʻyxatini qaytaradi. Kodda model nomini yozishdan oldin ' +
@@ -350,6 +400,7 @@ async function runTool(
   projectId: string,
   name: string,
   args: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<ToolResult> {
   const str = (v: unknown, fallback = '') =>
     typeof v === 'string' && v.trim() ? v.trim() : fallback;
@@ -358,6 +409,23 @@ async function runTool(
   if (!project) return { ok: false, summary: 'Loyiha topilmadi', payload: { error: 'no_project' } };
 
   switch (name) {
+    case 'ask_user': {
+      const question = str(args.question, 'Qanday davom etay?');
+      const answer = await askUser({
+        scope: 'code',
+        targetId: projectId,
+        question,
+        options: Array.isArray(args.options) ? args.options.map(String) : [],
+        multi: str(args.multi) === 'true',
+        signal,
+      });
+      return {
+        ok: true,
+        summary: `Soʻraldi → ${answer.slice(0, 45)}`,
+        payload: { javob: answer },
+      };
+    }
+
     case 'list_files':
       return {
         ok: true,
@@ -854,6 +922,17 @@ ${fileTree(project) || '(boʻsh)'}
 - Kod toza, funksiyalarga ajratilgan va oʻzbekcha izohli boʻlsin.
 - Interfeys matni oʻzbek tilida.
 
+## Savol berish va aytib ishlash
+- Har bir vositani chaqirishdan OLDIN bir qisqa jumlada nima qilayotganingni yoz.
+- Yoʻnalish noaniq boʻlsa \`ask_user\` bilan variantlar berib soʻra: qaysi sahifa,
+  qaysi uslub, qaysi tarmoq, nashr qilinsinmi va hokazo. Taxmin qilib katta ishni
+  notoʻgʻri qilma.
+- Qaytarib boʻlmaydigan ish (fayl oʻchirish, repo sozlamasi, nashr, PR birlashtirish)
+  oldidan albatta soʻra.
+- Mayda qarorlarni oʻzing qabul qil va aytib qoʻy — har narsaga soʻrama.
+- Ish davomida foydalanuvchi qoʻshimcha yozsa, u «Foydalanuvchi qoʻshimcha aytdi»
+  boʻlib keladi — uni darhol hisobga ol va rejangni oʻzgartir.
+
 ## Buyruqqa boʻysunish — MUHIM
 - Foydalanuvchi aniq nom aytsa (model nomi, kutubxona, fayl nomi, rang, matn) —
   AYNAN oʻshani yoz. Oʻzingdan boshqasiga almashtirma.
@@ -908,6 +987,7 @@ export async function runCodeAgent(
   instruction: string,
   signal?: AbortSignal,
   attachments: Attachment[] = [],
+  onStep?: (step: string) => void,
 ): Promise<CodeRunResult> {
   const { settings } = getState();
   const project = getCodeProject(projectId);
@@ -962,17 +1042,29 @@ export async function runCodeAgent(
         onText,
       });
 
-      if (!result.functionCalls.length) break;
+      if (!result.functionCalls.length) {
+        const extra = drainInterjections('code', projectId);
+        if (!extra.length) break;
+        contents.push({ role: 'model', parts: result.parts });
+        contents.push({
+          role: 'user',
+          parts: [{ text: `Foydalanuvchi qoʻshimcha aytdi:\n${extra.join('\n')}` }],
+        });
+        onStep?.('qoʻshimcha koʻrsatma hisobga olinmoqda');
+        continue;
+      }
 
       // Fikrlash imzolari bilan birga aynan qaytariladi.
       contents.push({ role: 'model', parts: result.parts });
 
       const responses: GeminiPart[] = [];
       for (const call of result.functionCalls) {
+        onStep?.(STEP_LABEL[call.name] ?? call.name);
         let outcome: ToolResult;
         try {
-          outcome = await runTool(projectId, call.name, call.args);
+          outcome = await runTool(projectId, call.name, call.args, signal);
         } catch (err) {
+          if ((err as Error)?.name === 'AbortError') throw err;
           outcome = {
             ok: false,
             summary: `${call.name}: ${(err as Error).message}`,
@@ -989,6 +1081,15 @@ export async function runCodeAgent(
       }
       contents.push({ role: 'user', parts: responses });
       patchMessage(projectId, modelMsg.id, { toolCalls: [...toolCalls] });
+
+      const extra = drainInterjections('code', projectId);
+      if (extra.length) {
+        contents.push({
+          role: 'user',
+          parts: [{ text: `Foydalanuvchi qoʻshimcha aytdi:\n${extra.join('\n')}` }],
+        });
+        onStep?.('qoʻshimcha koʻrsatma hisobga olinmoqda');
+      }
     }
 
     if (flush) clearTimeout(flush);

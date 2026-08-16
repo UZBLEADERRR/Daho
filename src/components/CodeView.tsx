@@ -20,7 +20,9 @@ import type { Attachment, CodeProject } from '../lib/types';
 import { relativeTime } from '../lib/utils';
 import { prepareFile, fileIcon } from '../lib/attach';
 import { startListening, type ListenHandle } from '../lib/speech';
-import { startTask, stopFor, useTaskFor } from '../lib/tasks';
+import { interject, usePendingQuestion } from '../lib/ask';
+import { noteTask, startTask, stopFor, useTaskFor } from '../lib/tasks';
+import { QuestionCard } from './QuestionCard';
 import { Back, Check, Close, Copy, Download, Mic, Plus, Refresh, Send, Stop, Trash } from './Icons';
 import { copyText } from '../lib/exporter';
 import { Empty, Sheet, toast } from './ui';
@@ -281,6 +283,7 @@ function CodeChat({ project }: { project: CodeProject }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const running = useTaskFor('code', project.id);
   const busy = Boolean(running);
+  const question = usePendingQuestion('code', project.id);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -296,7 +299,15 @@ function CodeChat({ project }: { project: CodeProject }) {
 
   const send = async (value: string) => {
     const instruction = value.trim();
-    if ((!instruction && !shots.length && !extraText.length) || busy) return;
+    // Ish ketayotgan boʻlsa — qoʻshimcha koʻrsatma sifatida qabul qilamiz.
+    if (busy) {
+      if (!instruction) return;
+      interject('code', project.id, instruction);
+      setText('');
+      toast('Qoʻshimcha koʻrsatma qabul qilindi');
+      return;
+    }
+    if (!instruction && !shots.length && !extraText.length) return;
     const files = shots;
     const texts = extraText;
     setText('');
@@ -305,7 +316,8 @@ function CodeChat({ project }: { project: CodeProject }) {
     const full = [instruction || 'Biriktirilgan faylni koʻrib chiq.', ...texts].join('\n\n');
     await startTask(
       { kind: 'code', targetId: project.id, title: project.name, note: instruction.slice(0, 40) },
-      (signal) => runCodeAgent(project.id, full, signal, files),
+      (signal, taskId) =>
+        runCodeAgent(project.id, full, signal, files, (step) => noteTask(taskId, step)),
     );
   };
 
@@ -402,10 +414,17 @@ function CodeChat({ project }: { project: CodeProject }) {
                 </div>
               ),
             )}
-            {busy && <span className="typing" />}
+            {question && <QuestionCard question={question} />}
+            {busy && !question && <span className="typing" />}
           </div>
         )}
       </div>
+
+      {busy && !question && (
+        <div className="interject-hint">
+          💬 Ish davom etyapti — qoʻshimcha koʻrsatma yozsangiz hisobga oladi
+        </div>
+      )}
 
       <div className="composer">
         {(!!shots.length || !!extraText.length) && (
@@ -472,7 +491,9 @@ function CodeChat({ project }: { project: CodeProject }) {
                 ? 'Tinglayapman…'
                 : mic === 'tahlil'
                   ? 'Matnga oʻgirilmoqda…'
-                  : 'Nima qilay?'
+                  : busy
+                    ? 'Qoʻshimcha koʻrsatma…'
+                    : 'Nima qilay?'
             }
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
@@ -482,7 +503,15 @@ function CodeChat({ project }: { project: CodeProject }) {
               }
             }}
           />
-          {busy ? (
+          {busy && text.trim() ? (
+            <button
+              className="round-btn primary"
+              onClick={() => void send(text)}
+              aria-label="Qoʻshimcha yuborish"
+            >
+              <Send size={19} />
+            </button>
+          ) : busy ? (
             <button
               className="round-btn primary"
               onClick={() => stopFor('code', project.id)}

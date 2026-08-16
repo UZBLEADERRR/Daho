@@ -1,3 +1,4 @@
+import { drainInterjections } from './ask';
 import { extractArtifacts } from './artifacts';
 import { GeminiError, streamGenerate, generateText } from './gemini';
 import type { GeminiContent, GeminiPart } from './gemini';
@@ -7,7 +8,20 @@ import type { Attachment, Chat, Message, ToolCallRecord } from './types';
 import { uid } from './utils';
 
 const MAX_HISTORY = 40;
-const MAX_TOOL_ROUNDS = 5;
+const MAX_TOOL_ROUNDS = 8;
+
+/** Vosita nomining foydalanuvchiga koʻrinadigan tavsifi. */
+const STEP_LABEL: Record<string, string> = {
+  ask_user: 'sizdan soʻrayapman',
+  create_note: 'konspekt yozilmoqda',
+  create_task: 'vazifa qoʻshilmoqda',
+  add_schedule_item: 'jadvalga yozilmoqda',
+  create_project: 'loyiha rejasi tuzilmoqda',
+  create_course: 'kurs mavzulari tuzilmoqda',
+  log_work: 'ish vaqti yozilmoqda',
+  complete_task: 'vazifa belgilanmoqda',
+  read_data: 'maʼlumotlaringiz oʻqilmoqda',
+};
 
 function systemPrompt(): string {
   const { settings } = getState();
@@ -92,6 +106,19 @@ Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jim
 - Biror sohani oʻrganmoqchi boʻlsa (IELTS, dasturlash, ingliz tili…) — \`create_course\` bilan
   kamida 40 ta mavzudan iborat toʻliq kurs och.
 Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.
+
+## Savol berish
+Vaziyat noaniq boʻlsa — taxmin qilma, \`ask_user\` bilan soʻra va variantlar ber:
+- bir nechta yoʻl bor va tanlov natijani jiddiy oʻzgartiradi
+- muhim maʼlumot yetishmayapti (daraja, muddat, format, hajm)
+- oʻchirish yoki almashtirish kabi qaytarib boʻlmaydigan ish
+Lekin mayda narsa uchun soʻrama — rang, nom, tartib kabi ikkinchi darajali
+qarorlarni oʻzing qabul qil va nima tanlaganingni aytib qoʻy.
+
+## Ishni aytib qilish
+Har bir vositani chaqirishdan OLDIN bir qisqa jumlada nima qilayotganingni yoz
+(«Jadvalingizni tekshiraman», «Konspekt yozib qoʻyaman»). Foydalanuvchi nima
+sodir boʻlayotganini koʻrib tursin.
 
 ## Kontekst
 ${buildContextSummary()}
@@ -200,6 +227,7 @@ export async function sendMessage(
   attachments: Attachment[] = [],
   signal?: AbortSignal,
   brief?: string,
+  onStep?: (step: string) => void,
 ): Promise<SendResult> {
   const { settings } = getState();
 
@@ -256,14 +284,26 @@ export async function sendMessage(
         onText,
       });
 
-      if (!result.functionCalls.length) break;
+      if (!result.functionCalls.length) {
+        // Vosita chaqirilmasa ham foydalanuvchi qoʻshimcha aytgan boʻlishi mumkin.
+        const extra = drainInterjections('chat', chatId);
+        if (!extra.length) break;
+        contents.push({ role: 'model', parts: result.parts });
+        contents.push({
+          role: 'user',
+          parts: [{ text: `Foydalanuvchi qoʻshimcha aytdi:\n${extra.join('\n')}` }],
+        });
+        onStep?.('qoʻshimcha koʻrsatma hisobga olinmoqda');
+        continue;
+      }
 
       // Model qismlarini AYNAN qaytaramiz — fikrlash imzolari yoʻqolmasligi kerak.
       contents.push({ role: 'model', parts: result.parts });
 
       const responseParts: GeminiPart[] = [];
       for (const call of result.functionCalls) {
-        const outcome = executeTool(call.name, call.args);
+        onStep?.(STEP_LABEL[call.name] ?? call.name);
+        const outcome = await executeTool(call.name, call.args, { chatId, signal });
         toolCalls.push({
           name: call.name,
           args: call.args,
@@ -276,6 +316,16 @@ export async function sendMessage(
       }
       contents.push({ role: 'user', parts: responseParts });
       patchMessage(chatId, modelMsg.id, { toolCalls: [...toolCalls] });
+
+      // Ish davomida kelgan qoʻshimcha fikrni keyingi qadamga qoʻshamiz.
+      const extra = drainInterjections('chat', chatId);
+      if (extra.length) {
+        contents.push({
+          role: 'user',
+          parts: [{ text: `Foydalanuvchi qoʻshimcha aytdi:\n${extra.join('\n')}` }],
+        });
+        onStep?.('qoʻshimcha koʻrsatma hisobga olinmoqda');
+      }
     }
 
     if (flushTimer) clearTimeout(flushTimer);

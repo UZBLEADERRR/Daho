@@ -13,10 +13,12 @@ import { speak } from '../lib/speech';
 import { getState, setState, useStore } from '../lib/store';
 import type { Artifact, Attachment, Message } from '../lib/types';
 import { uid } from '../lib/utils';
-import { startTask, stopFor, useTaskFor } from '../lib/tasks';
+import { interject, usePendingQuestion } from '../lib/ask';
+import { noteTask, startTask, stopFor, useTaskFor } from '../lib/tasks';
 import { planVideo } from '../lib/video';
 import { Composer, type ComposerMode } from './Composer';
 import { MessageView } from './Message';
+import { QuestionCard } from './QuestionCard';
 import { Empty, toast } from './ui';
 
 const STARTERS = [
@@ -58,6 +60,7 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
   // Ish holati global reyestrda — boshqa boʻlimga oʻtsangiz ham davom etadi.
   const running = useTaskFor('chat', activeChatId ?? '');
   const busy = Boolean(running);
+  const question = usePendingQuestion('chat', activeChatId ?? '');
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -178,6 +181,12 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
       toast('Avval Sozlamalarda Gemini API kalitini kiriting');
       return;
     }
+    // Ish ketayotgan boʻlsa — yangi soʻrov emas, qoʻshimcha koʻrsatma.
+    if (busy && activeChatId) {
+      interject('chat', activeChatId, text);
+      toast('Qoʻshimcha koʻrsatma qabul qilindi');
+      return;
+    }
     const chatId = ensureActiveChat();
     stickRef.current = true;
 
@@ -197,7 +206,10 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         title: MODE_TITLE[mode] ?? 'Javob yozilmoqda',
         note: text.slice(0, 40) || 'fayl yuborildi',
       },
-      (signal) => sendMessage(chatId, text, attachments, signal, BRIEFS[mode]),
+      (signal, taskId) =>
+        sendMessage(chatId, text, attachments, signal, BRIEFS[mode], (step) =>
+          noteTask(taskId, step),
+        ),
     );
     if (!result) return;
 
@@ -269,11 +281,25 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
                 onRegenerate={onRegenerate}
               />
             ))}
+            {question && <QuestionCard question={question} />}
           </div>
         )}
       </div>
 
-      <Composer busy={busy} mode={mode} onMode={setMode} onSend={onSend} onStop={stop} />
+      {busy && !question && (
+        <div className="interject-hint">
+          💬 Ish davom etyapti — qoʻshimcha fikringizni hozir ham yozishingiz mumkin
+        </div>
+      )}
+
+      <Composer
+        busy={busy}
+        allowWhileBusy
+        mode={mode}
+        onMode={setMode}
+        onSend={onSend}
+        onStop={stop}
+      />
     </>
   );
 }

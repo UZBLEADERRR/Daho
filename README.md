@@ -55,6 +55,12 @@ jonli havola beradi**.
 - *GitHub Actions* — agent ish oqimi yozadi, ishga tushiradi va natijani kuzatadi.
   **APK shu yoʻl bilan yigʻiladi**: kod → push → run_workflow → tayyor fayl.
 
+**Savol berish va birga ishlash** 💬
+Vaziyat noaniq boʻlsa agent taxmin qilmaydi — variantlar bilan savol beradi va
+javobingizni kutadi. Yuqoridagi qatorda **necha soniyadan beri** ishlayotgani va
+**hozir aynan nima qilayotgani** koʻrinib turadi. Ish ketayotganda qoʻshimcha
+fikr yozsangiz — toʻxtatmasdan hisobga oladi va rejasini oʻzgartiradi.
+
 **Fon rejimi** ⏳
 Agent ishi boshqa boʻlimga oʻtganingizda ham davom etadi — pastda ingichka qatorda
 nima bajarilayotgani koʻrinadi va uni istalgan joydan toʻxtatasiz. Ish davomida

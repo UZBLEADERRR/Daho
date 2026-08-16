@@ -1,3 +1,4 @@
+import { askUser } from './ask';
 import type { FunctionDeclaration } from './gemini';
 import { getState, setState } from './store';
 import { DAYS } from './types';
@@ -173,6 +174,27 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'ask_user',
+    description:
+      'Foydalanuvchidan aniqlik soʻraydi va javobini kutadi. Ish yoʻnalishi ' +
+      'noaniq boʻlsa, bir nechta yoʻl boʻlsa yoki muhim tanlov kerak boʻlsa shuni chaqir. ' +
+      'Taxmin qilib ishni notoʻgʻri qilgandan koʻra bir marta soʻragan yaxshi. ' +
+      'Lekin mayda-chuyda uchun soʻrama — oddiy narsani oʻzing hal qil.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        question: { type: 'STRING', description: 'Aniq, qisqa savol — oʻzbek tilida' },
+        options: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Tayyor variantlar (2-5 ta). Erkin javob ham har doim mumkin.',
+        },
+        multi: { type: 'STRING', description: '"true" — bir nechta variant tanlansa boʻladi' },
+      },
+      required: ['question'],
+    },
+  },
+  {
     name: 'read_data',
     description:
       'Foydalanuvchining saqlangan maʼlumotlarini oʻqiydi: jadval, vazifalar, konspektlar, loyihalar, ish vaqti qaydlari.',
@@ -197,8 +219,29 @@ function findProjectId(name: string): string | undefined {
   return getState().projects.find((p) => p.name.toLowerCase().includes(needle))?.id;
 }
 
-export function executeTool(name: string, args: Record<string, unknown>): ToolOutcome {
+export async function executeTool(
+  name: string,
+  args: Record<string, unknown>,
+  ctx: { chatId: string; signal?: AbortSignal },
+): Promise<ToolOutcome> {
   switch (name) {
+    case 'ask_user': {
+      const question = str(args.question, 'Qanday davom etay?');
+      const answer = await askUser({
+        scope: 'chat',
+        targetId: ctx.chatId,
+        question,
+        options: Array.isArray(args.options) ? args.options.map(String) : [],
+        multi: str(args.multi) === 'true',
+        signal: ctx.signal,
+      });
+      return {
+        ok: true,
+        summary: `Soʻraldi: ${question.slice(0, 50)} → ${answer.slice(0, 40)}`,
+        payload: { javob: answer },
+      };
+    }
+
     case 'create_note': {
       const note: Note = {
         id: uid('n_'),
