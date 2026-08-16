@@ -100,6 +100,7 @@ export function extractArtifacts(text: string, chatId: string): Artifact[] {
   const out: Artifact[] = [];
   for (const seg of splitSegments(text)) {
     if (seg.type !== 'code' || !seg.closed) continue;
+    if (seg.lang === 'chart') continue; // grafik — alohida chiziladi
     // Bir qatorli qisqa parchalarni artifact qilmaymiz — ular oddiy misol.
     if (seg.value.trim().split('\n').length < 3) continue;
     out.push({

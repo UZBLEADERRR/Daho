@@ -5,7 +5,9 @@ import { renderMarkdown } from '../lib/markdown';
 import { speak, stopSpeaking } from '../lib/speech';
 import { useStore } from '../lib/store';
 import type { Artifact, Message as Msg } from '../lib/types';
+import { parseChart } from '../lib/charts';
 import { ArtifactCard } from './ArtifactView';
+import { Chart } from './Chart';
 import { Check, Copy, Download, Refresh, Speaker } from './Icons';
 import { VideoCard } from './VideoStudio';
 import { Sheet, toast } from './ui';
@@ -105,7 +107,20 @@ export function MessageView({
           );
         }
 
-        const substantial = seg.closed && seg.value.trim().split('\n').length >= 3;
+        if (seg.lang === 'chart') {
+          const spec = seg.closed ? parseChart(seg.value) : null;
+          if (spec) return <Chart key={i} spec={spec} />;
+          if (!seg.closed) {
+            return (
+              <div key={i} className="viz viz-loading">
+                Grafik tayyorlanmoqda…
+              </div>
+            );
+          }
+        }
+
+        const substantial =
+          seg.closed && seg.lang !== 'chart' && seg.value.trim().split('\n').length >= 3;
         if (substantial) codeIndex += 1;
         const artifact = substantial ? linked[codeIndex] : undefined;
 

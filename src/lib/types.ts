@@ -130,6 +130,10 @@ export interface Settings {
   ttsVoiceUri: string;
   sttEngine: Engine;
   sttLang: string;
+  /** GitHub shaxsiy tokeni — faqat shu qurilmada saqlanadi */
+  githubToken: string;
+  /** Nashr uchun oʻz domeningiz (ixtiyoriy) */
+  publishDomain: string;
   userName: string;
   university: string;
   customInstructions: string;
@@ -235,6 +239,25 @@ export interface VideoProject {
   updatedAt: number;
 }
 
+/* ---------- Daho Code ---------- */
+
+export interface CodeFile {
+  path: string;
+  content: string;
+}
+
+export interface CodeProject {
+  id: string;
+  name: string;
+  description: string;
+  files: CodeFile[];
+  messages: Message[];
+  repo?: { owner: string; repo: string; branch: string };
+  publish?: { url: string; domain?: string; at: number };
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AppState {
   version: number;
   settings: Settings;
@@ -249,6 +272,7 @@ export interface AppState {
   apps: MiniApp[];
   courses: Course[];
   videos: VideoProject[];
+  code: CodeProject[];
 }
 
 export const DAYS = [

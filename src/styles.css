@@ -524,8 +524,6 @@ textarea {
   border-collapse: collapse;
   font-size: 13.5px;
   margin-bottom: 10px;
-  display: block;
-  overflow-x: auto;
 }
 
 .md th,
@@ -1356,4 +1354,376 @@ textarea {
 .voice-tile span {
   font-size: 10.5px;
   color: var(--muted);
+}
+
+/* ---------- Grafiklar (dataviz palitrasi) ---------- */
+
+:root {
+  /* Kun rejimi qadamlari — oq sirt uchun tekshirilgan */
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-6: #008300;
+  --viz-7: #4a3aa7;
+  --viz-8: #e34948;
+  --viz-dim: #c9c9d2;
+  --viz-surface: #ffffff;
+  --viz-grid: #e6e6ec;
+}
+
+:root[data-theme='tun'] {
+  /* Tun rejimi — #121215 sirt uchun tekshirilgan qadamlar */
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-6: #008300;
+  --viz-7: #9085e9;
+  --viz-8: #e66767;
+  --viz-dim: #3a3a44;
+  --viz-surface: #121215;
+  --viz-grid: #26262c;
+}
+
+.viz {
+  margin: 10px 0;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.viz-head {
+  margin-bottom: 8px;
+}
+
+.viz-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.viz-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.viz-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.viz-grid {
+  stroke: var(--viz-grid);
+  stroke-width: 1;
+}
+
+.viz-axis {
+  font-size: 9.5px;
+  fill: var(--muted);
+  font-family: inherit;
+}
+
+.viz-value {
+  font-size: 10px;
+  font-weight: 600;
+  fill: var(--text);
+  font-family: inherit;
+}
+
+.viz-hero {
+  font-size: 21px;
+  font-weight: 620;
+  fill: var(--text);
+  font-family: inherit;
+}
+
+.viz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin-top: 9px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.viz-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.viz-legend i,
+.viz-pie-list i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+.viz-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.viz-tip {
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 9px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-toggle {
+  font-size: 11.5px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 11px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* Gorizontal ustunlar */
+
+.viz-hrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.viz-hlabel {
+  width: 84px;
+  flex: 0 0 auto;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-htrack {
+  flex: 1 1 auto;
+  height: 14px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.viz-htrack i {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.viz-hvalue {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: right;
+}
+
+/* Doira */
+
+.viz-pie {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.viz-donut {
+  width: 148px;
+  height: 148px;
+  flex: 0 0 auto;
+}
+
+.viz-pie-list {
+  flex: 1 1 130px;
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.viz-pie-list div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.viz-pie-list b {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Raqamli kartochkalar */
+
+.viz-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.viz-stat {
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 12px 10px;
+  text-align: center;
+  display: grid;
+  gap: 3px;
+}
+
+.viz-stat-icon {
+  font-size: 20px;
+}
+
+.viz-stat b {
+  font-size: 22px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+}
+
+.viz-stat span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Jadval koʻrinishi */
+
+.viz-table-wrap {
+  overflow-x: auto;
+}
+
+.viz-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.viz-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.viz-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.viz-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.viz-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Chat jadvallarini chiroyliroq qilish */
+
+.md {
+  overflow-x: auto;
+}
+
+.md table {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  border-collapse: collapse;
+}
+
+.md thead {
+  background: var(--surface-2);
+}
+
+.md th {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.md td {
+  border: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.md tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.viz-loading {
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+  padding: 22px 12px;
+}
+
+/* ---------- Daho Code ---------- */
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  margin-bottom: 7px;
+}
+
+.code-editor {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  background: var(--surface-2);
+  padding: 12px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  resize: none;
+  white-space: pre;
+  overflow: auto;
+}
+
+.code-editor:focus {
+  border: none;
+  outline: none;
+}
+
+.preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
 }

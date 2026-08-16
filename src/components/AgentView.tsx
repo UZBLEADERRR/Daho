@@ -2,6 +2,7 @@ import type { Artifact } from '../lib/types';
 import { useStore } from '../lib/store';
 import { Apps } from './agent/Apps';
 import { Artifacts } from './agent/Artifacts';
+import { CodeView } from './CodeView';
 import { Courses } from './agent/Courses';
 import { Notes } from './agent/Notes';
 import { Overview } from './agent/Overview';
@@ -52,6 +53,7 @@ export function AgentView({ section, onSection, onOpenArtifact, onOpenVideo }: P
       {section === 'bugun' && <Overview onNavigate={onSection} />}
       {section === 'kurslar' && <Courses onOpenArtifact={onOpenArtifact} />}
       {section === 'ilovalar' && <Apps />}
+      {section === 'kod' && <CodeView />}
       {section === 'jadval' && <Schedule />}
       {section === 'vazifalar' && <Tasks />}
       {section === 'loyihalar' && <Projects />}

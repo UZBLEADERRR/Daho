@@ -21,6 +21,8 @@ export const DEFAULT_SETTINGS: Settings = {
   ttsVoiceUri: '',
   sttEngine: 'gemini',
   sttLang: 'uz-UZ',
+  githubToken: '',
+  publishDomain: '',
   userName: '',
   university: '',
   customInstructions: '',
@@ -40,6 +42,7 @@ const EMPTY_STATE: AppState = {
   apps: [],
   courses: [],
   videos: [],
+  code: [],
 };
 
 /** Eski saqlangan holatdagi ishlamay qolgan model nomlarini tozalaydi. */

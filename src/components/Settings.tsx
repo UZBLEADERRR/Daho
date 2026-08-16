@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { playWavBase64 } from '../lib/audio';
 import { saveBackup } from '../lib/exporter';
+import { whoAmI } from '../lib/github';
 import { byRole, cachedModels, getModels, pickModel, type ModelInfo } from '../lib/models';
 import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
 import { exportState, importState, resetState, updateSettings, useStore } from '../lib/store';
@@ -21,6 +22,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const [deviceVoices, setDeviceVoices] = useState<DeviceVoice[]>([]);
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [ghChecking, setGhChecking] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -305,6 +307,65 @@ export function Settings({ onClose }: { onClose: () => void }) {
           ))}
         </select>
       </div>
+
+      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+        GitHub (Daho Code uchun)
+      </div>
+
+      <div className="field">
+        <label>Shaxsiy token</label>
+        <input
+          type="password"
+          value={settings.githubToken}
+          onChange={(e) => updateSettings({ githubToken: e.target.value.trim() })}
+          placeholder="ghp_… yoki github_pat_…"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+        <div className="tiny" style={{ marginTop: 6 }}>
+          github.com → Settings → Developer settings → Personal access tokens →
+          <b> Tokens (classic)</b> → Generate new token. <b>repo</b> va{' '}
+          <b>workflow</b> ruxsatlarini belgilang. Token faqat shu telefonda saqlanadi.
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Domeningiz (ixtiyoriy)</label>
+        <input
+          value={settings.publishDomain}
+          onChange={(e) => updateSettings({ publishDomain: e.target.value.trim() })}
+          placeholder="daho.uz"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+        <div className="tiny" style={{ marginTop: 6 }}>
+          Loyihani chiqarganda shu domen ishlatiladi. DNS sozlash koʻrsatmasi Daho Code →
+          Nashr boʻlimida.
+        </div>
+      </div>
+
+      <button
+        className="btn ghost wide"
+        disabled={ghChecking}
+        onClick={async () => {
+          if (!settings.githubToken) {
+            toast('Avval tokenni kiriting');
+            return;
+          }
+          setGhChecking(true);
+          try {
+            const user = await whoAmI(settings.githubToken);
+            toast(`Ulandi: ${user.login}`);
+          } catch (err) {
+            toast(String((err as Error)?.message ?? err));
+          } finally {
+            setGhChecking(false);
+          }
+        }}
+      >
+        {ghChecking ? 'Tekshirilmoqda…' : 'GitHub ulanishini tekshirish'}
+      </button>
 
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
         Shaxsiy

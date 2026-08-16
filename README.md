@@ -38,6 +38,24 @@ qahramonlar (koʻrinishi va ovozi), sahna matni va rasm soʻrovi — hammasi
 tahrirlanadi. Video **telefonning oʻzida** yigʻiladi (canvas + MediaRecorder),
 9:16 / 16:9 / 1:1 formatlarda.
 
+**Daho Code** ⌨️
+Alohida boʻlim — telefondagi dasturchi agent. Koʻp fayldan iborat loyiha yuritadi:
+fayllarni oʻzi oʻqiydi va yozadi (`read_file`, `write_file`, `edit_file`,
+`delete_file`), GitHub bilan ishlaydi (repolarni koʻradi, fayl koʻchiradi, yangi
+repo ochadi, bitta commit bilan push qiladi) va loyihani **internetga chiqarib
+jonli havola beradi**.
+
+- *Koʻrinish* — loyiha telefonning oʻzida ishlaydi: `<link href="style.css">` va
+  `<script src="app.js">` avtomatik birlashtiriladi, server kerak emas.
+- *Nashr* — GitHub Pages orqali haqiqiy public URL. Oʻz domeningizni kiritsangiz
+  CNAME fayli oʻzi qoʻshiladi; DNS koʻrsatmasi shu yerda yozilgan.
+
+**Chiroyli natijalar** 📊
+Chat javoblarida grafiklar chiziladi: ustunli, gorizontal, chiziqli, doira va
+raqamli kartochkalar. Har bir grafikda legenda, bosilganda qiymat va **Jadval**
+tugmasi bor. Ranglar rang koʻrmaslikka (CVD) qarshi tekshirilgan palitradan.
+Javoblarda markdown jadvallar va emoji ham ishlatiladi.
+
 **Hujjatlar**
 Har qanday javobni **Word (.docx)**, **PDF**, **slayd (.pptx)** yoki matn
 qilib yuklab olasiz — hammasi qurilmada yasaladi.

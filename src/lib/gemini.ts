@@ -65,6 +65,47 @@ async function assertOk(res: Response): Promise<void> {
   throw new GeminiError(humanError(res.status, body), res.status);
 }
 
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+const wait = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      },
+      { once: true },
+    );
+  });
+
+/**
+ * Google serveri band boʻlsa yoki limitga urilsa — oʻzi kutib qayta uradi.
+ * Foydalanuvchi qoʻlda qayta yuborishi shart emas.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  signal?: AbortSignal,
+  attempts = 4,
+): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') throw err;
+      const status = err instanceof GeminiError ? err.status : 0;
+      const retryable = RETRYABLE.has(status) || status === 0;
+      if (!retryable || i === attempts - 1) throw err;
+      lastError = err;
+      // 1.5s, 3s, 6s + tasodifiy qoʻshimcha
+      await wait(1500 * 2 ** i + Math.random() * 400, signal);
+    }
+  }
+  throw lastError;
+}
+
 export interface StreamOptions {
   apiKey: string;
   model: string;
@@ -107,29 +148,33 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
     body.tools = [{ functionDeclarations: opts.tools }];
   }
 
-  let res: Response;
-  try {
-    res = await fetch(
-      `${BASE}/models/${encodeURIComponent(opts.model)}:streamGenerateContent?alt=sse`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': opts.apiKey,
+  // Soʻrovni boshlash qayta urinishlar bilan — 503/429 shu bosqichda tutiladi.
+  const res = await withRetry(async () => {
+    let response: Response;
+    try {
+      response = await fetch(
+        `${BASE}/models/${encodeURIComponent(opts.model)}:streamGenerateContent?alt=sse`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': opts.apiKey,
+          },
+          body: JSON.stringify(body),
+          signal: opts.signal,
         },
-        body: JSON.stringify(body),
-        signal: opts.signal,
-      },
-    );
-  } catch (err) {
-    if ((err as Error)?.name === 'AbortError') throw err;
-    throw new GeminiError(
-      'Internetga ulanib boʻlmadi. Aloqani tekshiring va qayta urining.',
-      0,
-    );
-  }
+      );
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') throw err;
+      throw new GeminiError(
+        'Internetga ulanib boʻlmadi. Aloqani tekshiring va qayta urining.',
+        0,
+      );
+    }
+    await assertOk(response);
+    return response;
+  }, opts.signal);
 
-  await assertOk(res);
   if (!res.body) throw new GeminiError('Javob oqimi boʻsh keldi.', 0);
 
   const reader = res.body.getReader();
@@ -223,16 +268,19 @@ export async function generateImage(
     { text: prompt },
   ];
 
-  const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts }],
-      generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
-    }),
-    signal,
-  });
-  await assertOk(res);
+  const res = await withRetry(async () => {
+    const r = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts }],
+        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+      }),
+      signal,
+    });
+    await assertOk(r);
+    return r;
+  }, signal);
 
   const data = await res.json();
   const outParts: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
@@ -265,20 +313,23 @@ export async function generateJson<T>(
 ): Promise<T> {
   if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
 
-  const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.85,
-        responseMimeType: 'application/json',
-        responseSchema: schema,
-      },
-    }),
-    signal,
-  });
-  await assertOk(res);
+  const res = await withRetry(async () => {
+    const r = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.85,
+          responseMimeType: 'application/json',
+          responseSchema: schema,
+        },
+      }),
+      signal,
+    });
+    await assertOk(r);
+    return r;
+  }, signal);
 
   const data = await res.json();
   const parts: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
@@ -341,21 +392,24 @@ export async function generateSpeech(
   if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
 
   const prompt = styleHint ? `${styleHint}\n\n${text}` : text;
-  const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseModalities: ['AUDIO'],
-        speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+  const res = await withRetry(async () => {
+    const r = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+          },
         },
-      },
-    }),
-    signal,
-  });
-  await assertOk(res);
+      }),
+      signal,
+    });
+    await assertOk(r);
+    return r;
+  }, signal);
 
   const data = await res.json();
   const parts: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
