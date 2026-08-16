@@ -1,4 +1,5 @@
 import { getState, setState } from './store';
+import { templateById } from './templates';
 import type { CodeFile, CodeProject } from './types';
 import { uid } from './utils';
 
@@ -6,57 +7,18 @@ import { uid } from './utils';
 /*  Loyihalarni boshqarish                                             */
 /* ------------------------------------------------------------------ */
 
-const STARTER: CodeFile[] = [
-  {
-    path: 'index.html',
-    content: `<!doctype html>
-<html lang="uz">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Yangi loyiha</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <main>
-    <h1>Salom, dunyo!</h1>
-    <p>Bu Daho Code’da yaratilgan loyiha.</p>
-  </main>
-  <script src="app.js"></script>
-</body>
-</html>
-`,
-  },
-  {
-    path: 'style.css',
-    content: `:root { color-scheme: dark; }
-
-body {
-  margin: 0;
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: #0e0e12;
-  color: #ededf0;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-}
-
-h1 { font-size: 28px; letter-spacing: -0.02em; }
-`,
-  },
-  {
-    path: 'app.js',
-    content: `console.log('Loyiha ishga tushdi');
-`,
-  },
-];
-
-export function createCodeProject(name: string, description = ''): CodeProject {
+export function createCodeProject(
+  name: string,
+  templateId = 'statik',
+  description = '',
+): CodeProject {
+  const template = templateById(templateId);
   const project: CodeProject = {
     id: uid('cp_'),
     name: name.trim() || 'Yangi loyiha',
     description,
-    files: structuredClone(STARTER),
+    template: template.id,
+    files: structuredClone(template.files),
     messages: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -147,7 +109,7 @@ export function bundlePreview(project: CodeProject, entry = 'index.html'): strin
   // <link rel="stylesheet" href="style.css"> → <style>…</style>
   html = html.replace(
     /<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi,
-    (match, href: string) => {
+    (match: string, href: string) => {
       if (/^https?:/i.test(href)) return match;
       const file = findFile(files, href);
       return file ? `<style>\n${file.content}\n</style>` : '';
@@ -155,7 +117,7 @@ export function bundlePreview(project: CodeProject, entry = 'index.html'): strin
   );
   html = html.replace(
     /<link[^>]*href=["']([^"']+\.css)["'][^>]*>/gi,
-    (match, href: string) => {
+    (match: string, href: string) => {
       if (/^https?:/i.test(href)) return match;
       const file = findFile(files, href);
       return file ? `<style>\n${file.content}\n</style>` : match;
@@ -165,7 +127,7 @@ export function bundlePreview(project: CodeProject, entry = 'index.html'): strin
   // <script src="app.js"></script> → inline
   html = html.replace(
     /<script([^>]*)\ssrc=["']([^"']+)["']([^>]*)><\/script>/gi,
-    (match, before: string, src: string, after: string) => {
+    (match: string, before: string, src: string, after: string) => {
       if (/^https?:/i.test(src)) return match;
       const file = findFile(files, src);
       if (!file) return '';
@@ -176,7 +138,7 @@ export function bundlePreview(project: CodeProject, entry = 'index.html'): strin
 
   // Mahalliy rasm yoʻllari (base64 sifatida saqlangan boʻlsa)
   html = html.replace(/(src|href)=["'](?!https?:|data:|#)([^"']+\.(png|jpe?g|gif|svg|webp))["']/gi,
-    (match, attr: string, path: string, ext: string) => {
+    (match: string, attr: string, path: string, ext: string) => {
       const file = findFile(files, path);
       if (!file) return match;
       const mime = MIME[ext.toLowerCase()] ?? 'application/octet-stream';

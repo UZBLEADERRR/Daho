@@ -7,6 +7,12 @@ export interface GeminiPart {
   inlineData?: { mimeType: string; data: string };
   functionCall?: { name: string; args: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
+  /**
+   * Gemini 3 «fikrlash imzosi». Model qaytargan qismni tarixga aynan shu
+   * imzo bilan qaytarish SHART — aks holda API 400 xato beradi.
+   */
+  thoughtSignature?: string;
+  thought?: boolean;
 }
 
 export interface GeminiContent {
@@ -120,6 +126,11 @@ export interface StreamOptions {
 export interface StreamResult {
   text: string;
   functionCalls: Array<{ name: string; args: Record<string, unknown> }>;
+  /**
+   * Model qaytargan xom qismlar — suhbat tarixiga oʻzgartirmasdan
+   * qaytarish uchun (fikrlash imzolari saqlanadi).
+   */
+  parts: GeminiPart[];
 }
 
 /**
@@ -182,6 +193,18 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
   let buffer = '';
   let text = '';
   const functionCalls: StreamResult['functionCalls'] = [];
+  const modelParts: GeminiPart[] = [];
+
+  /** Qismni saqlaydi; ketma-ket oddiy matnlarni bittaga qoʻshadi. */
+  const keepPart = (part: GeminiPart) => {
+    const last = modelParts[modelParts.length - 1];
+    const plainText =
+      typeof part.text === 'string' && !part.thoughtSignature && !part.thought;
+    const lastPlain =
+      last && typeof last.text === 'string' && !last.thoughtSignature && !last.thought;
+    if (plainText && lastPlain) last.text = (last.text ?? '') + (part.text ?? '');
+    else modelParts.push({ ...part });
+  };
 
   const handlePayload = (raw: string) => {
     if (!raw || raw === '[DONE]') return;
@@ -196,7 +219,8 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
     }
     const parts: GeminiPart[] = parsed?.candidates?.[0]?.content?.parts ?? [];
     for (const part of parts) {
-      if (typeof part.text === 'string' && part.text) {
+      keepPart(part);
+      if (typeof part.text === 'string' && part.text && !part.thought) {
         text += part.text;
         opts.onText(part.text);
       }
@@ -224,7 +248,7 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
   const tail = buffer.trim();
   if (tail.startsWith('data:')) handlePayload(tail.slice(5).trim());
 
-  return { text, functionCalls };
+  return { text, functionCalls, parts: modelParts };
 }
 
 /** Streamsiz oddiy chaqiruv — sarlavha yasash, tarjima kabi kichik ishlar uchun. */

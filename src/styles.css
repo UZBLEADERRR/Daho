@@ -1727,3 +1727,16 @@ textarea {
   border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
 }
+
+.model-chip {
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 4px 10px;
+  flex: 0 0 auto;
+  max-width: 108px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

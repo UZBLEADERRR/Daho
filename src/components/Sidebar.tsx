@@ -9,15 +9,17 @@ interface Props {
   onClose: () => void;
   onOpenSettings: () => void;
   onGoChat: () => void;
+  onGoCode: () => void;
   onGoAgent: (section: AgentSection) => void;
   activeSection: AgentSection;
-  tab: 'chat' | 'agent';
+  tab: 'chat' | 'agent' | 'kod';
 }
 
 export function Sidebar({
   onClose,
   onOpenSettings,
   onGoChat,
+  onGoCode,
   onGoAgent,
   activeSection,
   tab,
@@ -48,6 +50,18 @@ export function Sidebar({
             }}
           >
             <Plus size={17} /> Yangi suhbat
+          </button>
+
+          <button
+            className={tab === 'kod' ? 'side-link on' : 'side-link'}
+            style={{ marginTop: 8 }}
+            onClick={() => {
+              onGoCode();
+              onClose();
+            }}
+          >
+            <span className="side-emoji">⌨️</span>
+            Daho Code
           </button>
 
           <div className="section-label">Agent</div>

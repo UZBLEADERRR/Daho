@@ -2,10 +2,14 @@ import { streamGenerate, type FunctionDeclaration, type GeminiContent, type Gemi
 import {
   commitFiles,
   createRepo,
+  dispatchWorkflow,
   enablePages,
   listContents,
   listRepos,
+  listRunArtifacts,
+  listRuns,
   readFile as ghReadFile,
+  runFailureLog,
 } from './github';
 import {
   deleteProjectFile,
@@ -15,7 +19,8 @@ import {
   writeProjectFile,
 } from './codeproject';
 import { getState, setState } from './store';
-import type { CodeProject, Message, ToolCallRecord } from './types';
+import { templateById } from './templates';
+import type { Attachment, CodeProject, Message, ToolCallRecord } from './types';
 import { uid } from './utils';
 
 const MAX_ROUNDS = 14;
@@ -149,6 +154,41 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
       },
       required: ['owner', 'repo'],
     },
+  },
+  {
+    name: 'write_workflow',
+    description:
+      'GitHub Actions ish oqimini yozadi (.github/workflows/ ichiga). APK yigʻish, ' +
+      'test, bot yoki deploy uchun. `workflow_dispatch` ni har doim qoʻsh — shunda ' +
+      'run_workflow bilan qoʻlda ishga tushirsa boʻladi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        file: { type: 'STRING', description: 'Fayl nomi, masalan "apk.yml"' },
+        yaml: { type: 'STRING', description: 'Ish oqimining toʻliq YAML matni' },
+      },
+      required: ['file', 'yaml'],
+    },
+  },
+  {
+    name: 'run_workflow',
+    description:
+      'GitHub Actions ish oqimini ishga tushiradi — APK yigʻish, deploy va hokazo. ' +
+      'Avval github_push qilingan boʻlishi kerak.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        file: { type: 'STRING', description: 'Ish oqimi fayli, masalan "apk.yml"' },
+      },
+      required: ['file'],
+    },
+  },
+  {
+    name: 'check_workflow',
+    description:
+      'Oxirgi ishga tushishlar holatini tekshiradi: bajarilyaptimi, muvaffaqiyatlimi, ' +
+      'natija fayllari (APK va h.k.) bormi. Yiqilgan boʻlsa sababini qaytaradi.',
+    parameters: { type: 'OBJECT', properties: {} },
   },
   {
     name: 'publish',
@@ -338,6 +378,64 @@ async function runTool(
       };
     }
 
+    case 'write_workflow': {
+      const file = str(args.file, 'ci.yml').replace(/[^\w.-]/g, '');
+      const path = `.github/workflows/${file.endsWith('.yml') ? file : `${file}.yml`}`;
+      writeProjectFile(projectId, path, String(args.yaml ?? ''));
+      return { ok: true, summary: `Ish oqimi yozildi: ${file}`, payload: { path } };
+    }
+
+    case 'run_workflow': {
+      const link = getCodeProject(projectId)?.repo;
+      if (!link) {
+        return {
+          ok: false,
+          summary: 'Repozitoriy ulanmagan',
+          payload: { error: 'avval create_repo va github_push' },
+        };
+      }
+      const file = str(args.file, 'ci.yml');
+      await dispatchWorkflow(token, link.owner, link.repo, file, link.branch);
+      return {
+        ok: true,
+        summary: `Ishga tushirildi: ${file}`,
+        payload: {
+          status: 'boshlandi',
+          eslatma: 'Natijani check_workflow bilan bir necha daqiqadan soʻng tekshiring',
+        },
+      };
+    }
+
+    case 'check_workflow': {
+      const link = getCodeProject(projectId)?.repo;
+      if (!link) {
+        return { ok: false, summary: 'Repozitoriy ulanmagan', payload: { error: 'yoq' } };
+      }
+      const runs = await listRuns(token, link.owner, link.repo, 3);
+      if (!runs.length) {
+        return { ok: true, summary: 'Hali ishga tushish yoʻq', payload: { runs: [] } };
+      }
+      const latest = runs[0];
+      const payload: Record<string, unknown> = {
+        holat: latest.status,
+        natija: latest.conclusion ?? 'hali tugamagan',
+        havola: latest.html_url,
+      };
+      if (latest.conclusion === 'success') {
+        const artifacts = await listRunArtifacts(token, link.owner, link.repo, latest.id);
+        payload.fayllar = artifacts.map(
+          (a) => `${a.name} (${Math.round(a.size_in_bytes / 1024)} KB)`,
+        );
+      } else if (latest.conclusion === 'failure') {
+        payload.sabab = await runFailureLog(token, link.owner, link.repo, latest.id);
+      }
+      return {
+        ok: true,
+        summary: `${latest.name}: ${latest.conclusion ?? latest.status}`,
+        payload,
+      };
+    }
+
     case 'publish': {
       const domain = str(args.domain, getState().settings.publishDomain);
       const result = await publishProject(projectId, domain);
@@ -409,6 +507,7 @@ export async function publishProject(
 
 function systemPrompt(project: CodeProject): string {
   const { settings } = getState();
+  const template = templateById(project.template);
   return `Sen — "Daho Code", telefonda ishlaydigan dasturchi agentsan. Oʻzbek tilida gaplashasan.
 
 ## Loyiha
@@ -417,6 +516,9 @@ ${project.description ? `Tavsif: ${project.description}` : ''}
 GitHub: ${project.repo ? `${project.repo.owner}/${project.repo.repo} (${project.repo.branch})` : 'ulanmagan'}
 Jonli havola: ${project.publish?.url ?? 'hali chiqarilmagan'}
 GitHub tokeni: ${settings.githubToken ? 'kiritilgan' : 'YOʻQ — github vositalari ishlamaydi'}
+
+Shablon: ${template.name}
+${template.brief}
 
 Fayllar:
 ${fileTree(project) || '(boʻsh)'}
@@ -428,12 +530,18 @@ ${fileTree(project) || '(boʻsh)'}
 4. Ish tugagach qisqacha xulosa yoz: nima oʻzgardi va qanday sinash kerak.
 5. Foydalanuvchi "chiqar", "nashr qil", "linkga qoʻy" desa — \`publish\` ni chaqir.
 6. "GitHub’ga yubor" desa — \`github_push\`.
+7. APK, test yoki deploy kerak boʻlsa: \`write_workflow\` → \`github_push\` →
+   \`run_workflow\` → soʻng \`check_workflow\` bilan natijani tekshir. Yiqilsa
+   sababini oʻqib, kodni tuzat va qaytadan yubor.
+8. Foydalanuvchi skrinshot yuborsa — undagi xato matnini diqqat bilan oʻqi,
+   tegishli faylni \`read_file\` bilan ochib, sababini top va tuzat.
 
 ## Kod qoidalari
-- Loyiha statik boʻlsin: HTML + CSS + JS. Telefon ichida ham, GitHub Pages’da ham
-  server’siz ishlashi kerak. Node/Express/build bosqichi ISHLATMA.
-- Tashqi CDN, shrift yoki kutubxona ULAMA — internetsiz ishlamay qoladi.
-  Kerakli kodni oʻzing yoz.
+- Telefonda koʻriladigan qism (index.html va h.k.) tashqi CDN, shrift yoki
+  kutubxonasiz boʻlsin — kerakli kodni oʻzing yoz.
+- Node kodi (bot, backend, build skript) faqat GitHub Actions yoki serverda
+  ishlaydi — telefonda emas. Buni foydalanuvchiga ochiq ayt.
+- Tashqi npm paketiga ehtiyoj boʻlsa avval Node’ning oʻz modullarini koʻrib chiq.
 - \`<link href="style.css">\` va \`<script src="app.js">\` bemalol ishlat —
   ular avtomatik birlashtiriladi.
 - Mobil ekranga moslashgan, katta tugmali, qorongʻi fon.
@@ -448,8 +556,13 @@ Nima qilayotganingni bir jumlada ayt, keyin vositani chaqir.`;
 function toContents(messages: Message[]): GeminiContent[] {
   const out: GeminiContent[] = [];
   for (const msg of messages.slice(-MAX_HISTORY)) {
-    if (!msg.text.trim()) continue;
-    out.push({ role: msg.role, parts: [{ text: msg.text }] });
+    const parts: GeminiPart[] = [];
+    for (const att of msg.attachments ?? []) {
+      parts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
+    }
+    if (msg.text.trim()) parts.push({ text: msg.text });
+    if (!parts.length) continue;
+    out.push({ role: msg.role, parts });
   }
   while (out.length && out[0].role !== 'user') out.shift();
   return out;
@@ -478,6 +591,7 @@ export async function runCodeAgent(
   projectId: string,
   instruction: string,
   signal?: AbortSignal,
+  attachments: Attachment[] = [],
 ): Promise<CodeRunResult> {
   const { settings } = getState();
   const project = getCodeProject(projectId);
@@ -487,6 +601,7 @@ export async function runCodeAgent(
     id: uid('m_'),
     role: 'user',
     text: instruction,
+    attachments: attachments.length ? attachments : undefined,
     createdAt: Date.now(),
   };
   const modelMsg: Message = { id: uid('m_'), role: 'model', text: '', createdAt: Date.now() };
@@ -522,7 +637,7 @@ export async function runCodeAgent(
 
       const result = await streamGenerate({
         apiKey: settings.apiKey,
-        model: settings.model,
+        model: current.model || settings.model,
         contents,
         systemInstruction: systemPrompt(current),
         tools: CODE_TOOLS,
@@ -533,10 +648,8 @@ export async function runCodeAgent(
 
       if (!result.functionCalls.length) break;
 
-      contents.push({
-        role: 'model',
-        parts: result.functionCalls.map((fc) => ({ functionCall: fc })),
-      });
+      // Fikrlash imzolari bilan birga aynan qaytariladi.
+      contents.push({ role: 'model', parts: result.parts });
 
       const responses: GeminiPart[] = [];
       for (const call of result.functionCalls) {

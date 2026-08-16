@@ -5,6 +5,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { AgentView } from './components/AgentView';
 import { ArtifactViewer } from './components/ArtifactView';
 import { ChatView } from './components/ChatView';
+import { CodeView } from './components/CodeView';
 import { Menu, Settings as SettingsIcon } from './components/Icons';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
@@ -15,7 +16,7 @@ import { getModels, pickModel } from './lib/models';
 import { getState, updateSettings, useStore } from './lib/store';
 import type { Artifact } from './lib/types';
 
-type Tab = 'chat' | 'agent';
+type Tab = 'chat' | 'agent' | 'kod';
 
 export default function App() {
   const theme = useStore((s) => s.settings.theme);
@@ -71,7 +72,7 @@ export default function App() {
       else if (settingsOpen) setSettingsOpen(false);
       else if (sidebar) setSidebar(false);
       else if (tab === 'agent' && section !== 'bugun') setSection('bugun');
-      else if (tab === 'agent') setTab('chat');
+      else if (tab !== 'chat') setTab('chat');
       else if (canGoBack) window.history.back();
       else CapApp.exitApp();
     });
@@ -94,6 +95,9 @@ export default function App() {
           <button className={tab === 'agent' ? 'tab on' : 'tab'} onClick={() => setTab('agent')}>
             Agent
           </button>
+          <button className={tab === 'kod' ? 'tab on' : 'tab'} onClick={() => setTab('kod')}>
+            Code
+          </button>
         </div>
 
         <button
@@ -106,9 +110,10 @@ export default function App() {
       </header>
 
       <main className="main">
-        {tab === 'chat' ? (
+        {tab === 'chat' && (
           <ChatView onOpenArtifact={setArtifact} onOpenVideo={setVideoId} />
-        ) : (
+        )}
+        {tab === 'agent' && (
           <AgentView
             section={section}
             onSection={setSection}
@@ -116,6 +121,7 @@ export default function App() {
             onOpenVideo={setVideoId}
           />
         )}
+        {tab === 'kod' && <CodeView />}
       </main>
 
       {sidebar && (
@@ -125,6 +131,7 @@ export default function App() {
           onClose={() => setSidebar(false)}
           onOpenSettings={() => setSettingsOpen(true)}
           onGoChat={() => setTab('chat')}
+          onGoCode={() => setTab('kod')}
           onGoAgent={(s) => {
             setTab('agent');
             setSection(s);

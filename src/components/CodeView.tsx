@@ -11,10 +11,12 @@ import {
 } from '../lib/codeproject';
 import { saveBytes } from '../lib/exporter';
 import { listRepos, type GhRepo } from '../lib/github';
+import { byRole, cachedModels } from '../lib/models';
+import { TEMPLATES } from '../lib/templates';
 import { renderMarkdown } from '../lib/markdown';
 import { useStore, updateSettings } from '../lib/store';
-import type { CodeProject } from '../lib/types';
-import { relativeTime } from '../lib/utils';
+import type { Attachment, CodeProject } from '../lib/types';
+import { relativeTime, shrinkImage } from '../lib/utils';
 import { Back, Check, Close, Copy, Download, Plus, Refresh, Send, Stop, Trash } from './Icons';
 import { copyText } from '../lib/exporter';
 import { Empty, Sheet, toast } from './ui';
@@ -28,6 +30,7 @@ export function CodeView() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  const [template, setTemplate] = useState('statik');
 
   const project = projects.find((p) => p.id === openId) ?? null;
   if (project) return <Workspace project={project} onBack={() => setOpenId(null)} />;
@@ -40,6 +43,7 @@ export function CodeView() {
           style={{ marginBottom: 12 }}
           onClick={() => {
             setName('');
+            setTemplate('statik');
             setCreating(true);
           }}
         >
@@ -71,6 +75,10 @@ export function CodeView() {
                 </div>
               )}
               <div className="row" style={{ gap: 6, marginTop: 8 }}>
+                <span className="chip">
+                  {TEMPLATES.find((t) => t.id === p.template)?.icon ?? '📦'}{' '}
+                  {TEMPLATES.find((t) => t.id === p.template)?.name ?? 'Loyiha'}
+                </span>
                 <span className="chip">{p.files.length} fayl</span>
                 {p.repo && (
                   <span className="chip">
@@ -95,20 +103,32 @@ export function CodeView() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Portfolio sayt"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && name.trim()) {
-                  const p = createCodeProject(name);
-                  setCreating(false);
-                  setOpenId(p.id);
-                }
-              }}
             />
           </div>
+
+          <div className="section-label" style={{ padding: '4px 0 8px' }}>
+            Turi
+          </div>
+          {TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              className={template === t.id ? 'action-row on' : 'action-row'}
+              onClick={() => setTemplate(t.id)}
+            >
+              <span className="action-icon">{t.icon}</span>
+              <span className="grow">
+                <b>{t.name}</b>
+                <div className="tiny">{t.hint}</div>
+              </span>
+            </button>
+          ))}
+
           <button
             className="btn wide"
+            style={{ marginTop: 10 }}
             disabled={!name.trim()}
             onClick={() => {
-              const p = createCodeProject(name);
+              const p = createCodeProject(name, template);
               setCreating(false);
               setOpenId(p.id);
             }}
@@ -129,6 +149,10 @@ type Tab = 'suhbat' | 'fayllar' | 'korinish' | 'nashr';
 
 function Workspace({ project, onBack }: { project: CodeProject; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>('suhbat');
+  const [modelPicker, setModelPicker] = useState(false);
+  const settings = useStore((s) => s.settings);
+  const chatModels = byRole(cachedModels(), 'chat');
+  const activeModel = project.model || settings.model;
 
   return (
     <>
@@ -143,7 +167,52 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
             {project.repo ? ` · ${project.repo.owner}/${project.repo.repo}` : ''}
           </div>
         </div>
+        <button className="model-chip" onClick={() => setModelPicker(true)}>
+          {activeModel.replace(/^gemini-/, '')}
+        </button>
       </div>
+
+      {modelPicker && (
+        <Sheet title="Model tanlang" onClose={() => setModelPicker(false)}>
+          <button
+            className={!project.model ? 'action-row on' : 'action-row'}
+            onClick={() => {
+              patchCodeProject(project.id, { model: undefined });
+              setModelPicker(false);
+            }}
+          >
+            <span className="action-icon">⚙️</span>
+            <span className="grow">
+              <b>Umumiy sozlama</b>
+              <div className="tiny">{settings.model}</div>
+            </span>
+          </button>
+          {chatModels.map((m) => (
+            <button
+              key={m.id}
+              className={project.model === m.id ? 'action-row on' : 'action-row'}
+              onClick={() => {
+                patchCodeProject(project.id, { model: m.id });
+                setModelPicker(false);
+              }}
+            >
+              <span className="action-icon">🧠</span>
+              <span className="grow">
+                <b>{m.label}</b>
+                <div className="tiny">
+                  {m.id}
+                  {m.preview ? ' · sinov' : ''}
+                </div>
+              </span>
+            </button>
+          ))}
+          {chatModels.length === 0 && (
+            <div className="tiny">
+              Roʻyxat boʻsh. Sozlamalar → «Modellarni yangilash» tugmasini bosing.
+            </div>
+          )}
+        </Sheet>
+      )}
 
       <div className="seg">
         {(['suhbat', 'fayllar', 'korinish', 'nashr'] as Tab[]).map((t) => (
@@ -179,9 +248,11 @@ const CODE_STARTERS = [
 function CodeChat({ project }: { project: CodeProject }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [shots, setShots] = useState<Attachment[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -197,14 +268,34 @@ function CodeChat({ project }: { project: CodeProject }) {
 
   const send = async (value: string) => {
     const instruction = value.trim();
-    if (!instruction || busy) return;
+    if ((!instruction && !shots.length) || busy) return;
+    const files = shots;
     setText('');
+    setShots([]);
     setBusy(true);
     const controller = new AbortController();
     abortRef.current = controller;
-    await runCodeAgent(project.id, instruction, controller.signal);
+    await runCodeAgent(
+      project.id,
+      instruction || 'Shu skrinshotdagi xatoni tuzat.',
+      controller.signal,
+      files,
+    );
     abortRef.current = null;
     setBusy(false);
+  };
+
+  const pickShots = async (list: FileList | null) => {
+    if (!list?.length) return;
+    const next: Attachment[] = [];
+    for (const file of Array.from(list).slice(0, 3)) {
+      try {
+        next.push(await shrinkImage(file, 1400));
+      } catch {
+        toast('Rasmni oʻqib boʻlmadi');
+      }
+    }
+    setShots((prev) => [...prev, ...next].slice(0, 3));
   };
 
   return (
@@ -233,8 +324,18 @@ function CodeChat({ project }: { project: CodeProject }) {
           <div className="msgs">
             {project.messages.map((m) =>
               m.role === 'user' ? (
-                <div key={m.id} style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <div className="msg user">{m.text}</div>
+                <div
+                  key={m.id}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
+                >
+                  {!!m.attachments?.length && (
+                    <div className="attach-grid" style={{ justifyContent: 'flex-end' }}>
+                      {m.attachments.map((a, i) => (
+                        <img key={i} src={`data:${a.mimeType};base64,${a.data}`} alt="" />
+                      ))}
+                    </div>
+                  )}
+                  {m.text && <div className="msg user">{m.text}</div>}
                 </div>
               ) : (
                 <div key={m.id} className="msg model">
@@ -260,7 +361,41 @@ function CodeChat({ project }: { project: CodeProject }) {
       </div>
 
       <div className="composer">
+        {!!shots.length && (
+          <div className="pending-strip">
+            {shots.map((a, i) => (
+              <div className="thumb" key={i}>
+                <img src={`data:${a.mimeType};base64,${a.data}`} alt="" />
+                <button
+                  className="x"
+                  onClick={() => setShots((prev) => prev.filter((_, j) => j !== i))}
+                  aria-label="Olib tashlash"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="composer-box">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => {
+              void pickShots(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <button
+            className="round-btn"
+            onClick={() => fileRef.current?.click()}
+            aria-label="Skrinshot qoʻshish"
+          >
+            <Plus size={21} />
+          </button>
           <textarea
             ref={areaRef}
             rows={1}
@@ -285,7 +420,7 @@ function CodeChat({ project }: { project: CodeProject }) {
           ) : (
             <button
               className="round-btn primary"
-              disabled={!text.trim()}
+              disabled={!text.trim() && !shots.length}
               onClick={() => void send(text)}
               aria-label="Yuborish"
             >

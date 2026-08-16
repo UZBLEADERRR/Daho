@@ -256,10 +256,8 @@ export async function sendMessage(
 
       if (!result.functionCalls.length) break;
 
-      contents.push({
-        role: 'model',
-        parts: result.functionCalls.map((fc) => ({ functionCall: fc })),
-      });
+      // Model qismlarini AYNAN qaytaramiz — fikrlash imzolari yoʻqolmasligi kerak.
+      contents.push({ role: 'model', parts: result.parts });
 
       const responseParts: GeminiPart[] = [];
       for (const call of result.functionCalls) {

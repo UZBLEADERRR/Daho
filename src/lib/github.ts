@@ -311,3 +311,86 @@ export function makePublic(token: string, owner: string, repo: string): Promise<
     body: JSON.stringify({ private: false }),
   });
 }
+
+/* ---------- GitHub Actions — telefondagi "build serveri" ---------- */
+
+export interface WorkflowRunInfo {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+  created_at: string;
+  head_sha: string;
+}
+
+/** Repozitoriydagi ishga tushishlar (eng yangisi birinchi). */
+export async function listRuns(
+  token: string,
+  owner: string,
+  repo: string,
+  limit = 5,
+): Promise<WorkflowRunInfo[]> {
+  const data = await gh<{ workflow_runs: WorkflowRunInfo[] }>(
+    token,
+    `/repos/${owner}/${repo}/actions/runs?per_page=${limit}`,
+  );
+  return data.workflow_runs ?? [];
+}
+
+/** `workflow_dispatch` orqali ish oqimini qo'lda ishga tushiradi. */
+export async function dispatchWorkflow(
+  token: string,
+  owner: string,
+  repo: string,
+  workflowFile: string,
+  ref: string,
+): Promise<void> {
+  await gh(token, `/repos/${owner}/${repo}/actions/workflows/${workflowFile}/dispatches`, {
+    method: 'POST',
+    body: JSON.stringify({ ref }),
+  });
+}
+
+export interface RunArtifact {
+  id: number;
+  name: string;
+  size_in_bytes: number;
+  expired: boolean;
+}
+
+export async function listRunArtifacts(
+  token: string,
+  owner: string,
+  repo: string,
+  runId: number,
+): Promise<RunArtifact[]> {
+  const data = await gh<{ artifacts: RunArtifact[] }>(
+    token,
+    `/repos/${owner}/${repo}/actions/runs/${runId}/artifacts`,
+  );
+  return data.artifacts ?? [];
+}
+
+/** Muvaffaqiyatsiz ishning qisqa jurnalini oladi (agentga tuzatish uchun). */
+export async function runFailureLog(
+  token: string,
+  owner: string,
+  repo: string,
+  runId: number,
+): Promise<string> {
+  const jobs = await gh<{ jobs: Array<{ id: number; name: string; conclusion: string; steps?: Array<{ name: string; conclusion: string }> }> }>(
+    token,
+    `/repos/${owner}/${repo}/actions/runs/${runId}/jobs`,
+  );
+  const failed = jobs.jobs?.find((j) => j.conclusion === 'failure');
+  if (!failed) return 'Muvaffaqiyatsiz ish topilmadi.';
+
+  const badSteps = (failed.steps ?? [])
+    .filter((s) => s.conclusion === 'failure')
+    .map((s) => s.name)
+    .join(', ');
+
+  // Jurnal matni ZIP boʻlib keladi; bu yerda faqat qadam nomlarini qaytaramiz.
+  return `Ish: ${failed.name}. Yiqilgan qadam(lar): ${badSteps || 'nomaʼlum'}.`;
+}

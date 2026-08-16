@@ -250,6 +250,10 @@ export interface CodeProject {
   id: string;
   name: string;
   description: string;
+  /** Shu loyiha uchun tanlangan model (boʻsh boʻlsa umumiy sozlama) */
+  model?: string;
+  /** Qaysi shablondan yaratilgan */
+  template: string;
   files: CodeFile[];
   messages: Message[];
   repo?: { owner: string; repo: string; branch: string };
