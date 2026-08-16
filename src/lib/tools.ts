@@ -1,8 +1,11 @@
 import { askUser } from './ask';
+import { generateImage } from './gemini';
 import type { FunctionDeclaration } from './gemini';
 import { getState, setState } from './store';
 import { DAYS } from './types';
 import type {
+  Artifact,
+  Attachment,
   Course,
   CourseTopic,
   Note,
@@ -20,6 +23,8 @@ export interface ToolOutcome {
   summary: string;
   /** Modelga qaytariladigan javob */
   payload: Record<string, unknown>;
+  /** Vosita yasagan artifactlar — xabarga biriktiriladi (rasm va h.k.) */
+  artifacts?: Artifact[];
 }
 
 const str = (v: unknown, fallback = ''): string =>
@@ -192,6 +197,29 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         multi: { type: 'STRING', description: '"true" — bir nechta variant tanlansa boʻladi' },
       },
       required: ['question'],
+    },
+  },
+  {
+    name: 'generate_image',
+    description:
+      'Rasm chizadi yoki suhbatdagi oxirgi rasmni tahrirlaydi. Foydalanuvchi rasm, surat, ' +
+      'illyustratsiya, logotip, plakat, chizma soʻraganda yoki mavjud rasmni oʻzgartirishni ' +
+      'soʻraganda shuni chaqir. Yasalgan rasm chatda darhol koʻrinadi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        prompt: {
+          type: 'STRING',
+          description:
+            'Rasm tavsifi — ingliz tilida, batafsil: nima tasvirlangan, uslub, rang, yorugʻlik, rakurs.',
+        },
+        edit_last: {
+          type: 'STRING',
+          description:
+            '"true" — suhbatdagi oxirgi rasmni asos qilib tahrirlaydi (foydalanuvchi "buni oʻzgartir" desa).',
+        },
+      },
+      required: ['prompt'],
     },
   },
   {
@@ -394,6 +422,54 @@ export async function executeTool(
         summary: `Kurs ochildi: ${course.title} — ${topics.length} ta mavzu`,
         payload: { status: 'ochildi', id: course.id, topics: topics.length },
       };
+    }
+
+    case 'generate_image': {
+      const prompt = str(args.prompt);
+      if (!prompt) {
+        return { ok: false, summary: 'Rasm tavsifi berilmadi', payload: { error: 'prompt_yoq' } };
+      }
+      const { settings, artifacts: saved } = getState();
+      const refs: Attachment[] = [];
+      if (str(args.edit_last) === 'true') {
+        const last = saved.find((a) => a.kind === 'image' && a.chatId === ctx.chatId);
+        if (last) refs.push({ mimeType: last.mimeType ?? 'image/png', data: last.content });
+      }
+      try {
+        const result = await generateImage(
+          settings.apiKey,
+          settings.imageModel,
+          prompt,
+          refs,
+          ctx.signal,
+        );
+        const made: Artifact[] = result.images.map((img, i) => ({
+          id: uid('a_'),
+          kind: 'image',
+          title: prompt.slice(0, 40) || `Rasm ${i + 1}`,
+          content: img.data,
+          mimeType: img.mimeType,
+          chatId: ctx.chatId,
+          createdAt: Date.now(),
+        }));
+        return {
+          ok: true,
+          summary: `Rasm tayyor: ${prompt.slice(0, 40)}`,
+          payload: {
+            status: 'chizildi',
+            soni: made.length,
+            eslatma: 'Rasm foydalanuvchiga koʻrsatildi — uni matn bilan qayta tasvirlab oʻtirma.',
+          },
+          artifacts: made,
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Rasm chizilmadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
     }
 
     case 'read_data': {

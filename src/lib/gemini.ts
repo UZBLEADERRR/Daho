@@ -126,6 +126,8 @@ export interface StreamOptions {
 export interface StreamResult {
   text: string;
   functionCalls: Array<{ name: string; args: Record<string, unknown> }>;
+  /** Model javobida qaytargan rasmlar */
+  images: Attachment[];
   /**
    * Model qaytargan xom qismlar — suhbat tarixiga oʻzgartirmasdan
    * qaytarish uchun (fikrlash imzolari saqlanadi).
@@ -193,6 +195,7 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
   let buffer = '';
   let text = '';
   const functionCalls: StreamResult['functionCalls'] = [];
+  const images: Attachment[] = [];
   const modelParts: GeminiPart[] = [];
 
   /** Qismni saqlaydi; ketma-ket oddiy matnlarni bittaga qoʻshadi. */
@@ -224,6 +227,9 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
         text += part.text;
         opts.onText(part.text);
       }
+      if (part.inlineData?.data && part.inlineData.mimeType?.startsWith('image/')) {
+        images.push({ mimeType: part.inlineData.mimeType, data: part.inlineData.data });
+      }
       if (part.functionCall?.name) {
         functionCalls.push({
           name: part.functionCall.name,
@@ -248,7 +254,7 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
   const tail = buffer.trim();
   if (tail.startsWith('data:')) handlePayload(tail.slice(5).trim());
 
-  return { text, functionCalls, parts: modelParts };
+  return { text, functionCalls, images, parts: modelParts };
 }
 
 /** Streamsiz oddiy chaqiruv — sarlavha yasash, tarjima kabi kichik ishlar uchun. */

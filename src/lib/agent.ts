@@ -4,7 +4,7 @@ import { GeminiError, streamGenerate, generateText } from './gemini';
 import type { GeminiContent, GeminiPart } from './gemini';
 import { getState, setState } from './store';
 import { TOOL_DECLARATIONS, buildContextSummary, executeTool } from './tools';
-import type { Attachment, Chat, Message, ToolCallRecord } from './types';
+import type { Artifact, Attachment, Chat, Message, ToolCallRecord } from './types';
 import { uid } from './utils';
 
 const MAX_HISTORY = 40;
@@ -18,6 +18,7 @@ const STEP_LABEL: Record<string, string> = {
   add_schedule_item: 'jadvalga yozilmoqda',
   create_project: 'loyiha rejasi tuzilmoqda',
   create_course: 'kurs mavzulari tuzilmoqda',
+  generate_image: 'rasm chizilmoqda',
   log_work: 'ish vaqti yozilmoqda',
   complete_task: 'vazifa belgilanmoqda',
   read_data: 'maʼlumotlaringiz oʻqilmoqda',
@@ -77,8 +78,21 @@ Qoidalar: bir grafikda 8 tadan ortiq seriya boʻlmasin; foizlar yigʻindisi 100 
 "unit" ni har doim yoz; grafik oldidan bir jumlada nima koʻrsatilayotganini ayt.
 Grafik faqat haqiqiy sonlar boʻlganda chizilsin — bezak uchun emas.
 
-## Artifact yaratish
-Foydalanuvchi ilova, oʻyin, kalkulyator, test, vizualizatsiya yoki diagramma soʻrasa — javobingda \`\`\`html bloki ichida BITTA toʻliq, mustaqil ishlaydigan HTML fayl ber:
+## Artifact yaratish — FAQAT soʻralganda
+Odatiy savolga oddiy matn bilan javob ber. HTML/kod bloki YOZMA, agar foydalanuvchi
+aniq soʻramagan boʻlsa. Bu tokenni tejaydi va javobni tez qiladi.
+
+Artifact faqat mana bunda yasaladi:
+- foydalanuvchi «ilova yasab ber», «oʻyin qil», «kalkulyator», «test/quiz tuz»,
+  «vizual koʻrsat», «interaktiv qil», «sayt yasa» kabi aniq soʻrov qilsa;
+- kurs mavzusi ochilganda (dars artifacti soʻraladi);
+- foydalanuvchi kod soʻrasa (masalan «Python kodini yoz»).
+
+Shubha boʻlsa — yasama. Oʻrniga bir jumlada «Xohlasangiz shu mavzuni interaktiv
+ilova qilib beraman» deb taklif qil va foydalanuvchi javobini kut.
+Tushuntirish, taʼrif, misol, roʻyxat, taqqoslash, uy vazifasi — bularga artifact KERAK EMAS.
+
+Soʻralganda esa javobingda \`\`\`html bloki ichida BITTA toʻliq, mustaqil ishlaydigan HTML fayl ber:
 - Barcha CSS va JavaScript shu faylning oʻzida boʻlsin (tashqi CDN, tashqi shrift, tashqi rasm ISHLATMA — ular ishlamaydi).
 - Telefon ekraniga moslashgan boʻlsin, tugmalar yirik, barmoq bilan bosishga qulay.
 - Interfeys matni oʻzbekcha boʻlsin.
@@ -105,6 +119,9 @@ Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jim
 - Bajarilgan ish haqida aytsa — \`log_work\`.
 - Biror sohani oʻrganmoqchi boʻlsa (IELTS, dasturlash, ingliz tili…) — \`create_course\` bilan
   kamida 40 ta mavzudan iborat toʻliq kurs och.
+- Rasm, surat, illyustratsiya, logotip yoki chizma soʻrasa — \`generate_image\`.
+  Mavjud rasmni oʻzgartirishni soʻrasa — \`edit_last: "true"\` bilan chaqir.
+  Rasm chatda oʻzi koʻrinadi; uni matn bilan qayta tasvirlab berma.
 Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.
 
 ## Savol berish
@@ -124,6 +141,13 @@ sodir boʻlayotganini koʻrib tursin.
 ${buildContextSummary()}
 
 ${getState().settings.customInstructions ? `## Foydalanuvchining qoʻshimcha koʻrsatmalari\n${getState().settings.customInstructions}` : ''}`.trim();
+}
+
+/** Yasalgan rasm/fayllarni galereyaga qoʻshadi va xabar roʻyxatiga yigʻadi. */
+function addMedia(store: Artifact[], made: Artifact[]): void {
+  if (!made.length) return;
+  store.push(...made);
+  setState((s) => ({ artifacts: [...made, ...s.artifacts] }));
 }
 
 function toContents(messages: Message[]): GeminiContent[] {
@@ -257,6 +281,8 @@ export async function sendMessage(
   );
 
   const toolCalls: ToolCallRecord[] = [];
+  /** Vositalar va model oqimidan kelgan rasm artifactlari */
+  const media: Artifact[] = [];
   let accumulated = '';
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -284,6 +310,23 @@ export async function sendMessage(
         onText,
       });
 
+      // Model javobida rasm boʻlsa — darhol chatda koʻrsatamiz.
+      if (result.images.length) {
+        addMedia(
+          media,
+          result.images.map((img, i) => ({
+            id: uid('a_'),
+            kind: 'image' as const,
+            title: text.slice(0, 40) || `Rasm ${i + 1}`,
+            content: img.data,
+            mimeType: img.mimeType,
+            chatId,
+            createdAt: Date.now(),
+          })),
+        );
+        patchMessage(chatId, modelMsg.id, { artifactIds: media.map((a) => a.id) });
+      }
+
       if (!result.functionCalls.length) {
         // Vosita chaqirilmasa ham foydalanuvchi qoʻshimcha aytgan boʻlishi mumkin.
         const extra = drainInterjections('chat', chatId);
@@ -310,6 +353,10 @@ export async function sendMessage(
           ok: outcome.ok,
           summary: outcome.summary,
         });
+        if (outcome.artifacts?.length) {
+          addMedia(media, outcome.artifacts);
+          patchMessage(chatId, modelMsg.id, { artifactIds: media.map((a) => a.id) });
+        }
         responseParts.push({
           functionResponse: { name: call.name, response: outcome.payload },
         });
@@ -335,10 +382,12 @@ export async function sendMessage(
       setState((s) => ({ artifacts: [...artifacts, ...s.artifacts] }));
     }
 
+    // Rasmlar oldinda, kod artifactlari matndagi tartibida.
+    const ids = [...media, ...artifacts].map((a) => a.id);
     patchMessage(chatId, modelMsg.id, {
       text: accumulated,
       toolCalls: toolCalls.length ? toolCalls : undefined,
-      artifactIds: artifacts.length ? artifacts.map((a) => a.id) : undefined,
+      artifactIds: ids.length ? ids : undefined,
     });
 
     void autoTitle(chatId, text);
@@ -355,6 +404,7 @@ export async function sendMessage(
     patchMessage(chatId, modelMsg.id, {
       text: accumulated,
       toolCalls: toolCalls.length ? toolCalls : undefined,
+      artifactIds: media.length ? media.map((a) => a.id) : undefined,
       error: message,
     });
     return { ok: false, text: accumulated };

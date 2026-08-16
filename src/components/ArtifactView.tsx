@@ -20,36 +20,34 @@ export function ArtifactCard({
   artifact: Artifact;
   onOpen: (a: Artifact) => void;
 }) {
-  return (
-    <div className="artifact-card">
-      <div className="artifact-head">
-        <span className="chip accent">{KIND_LABEL[artifact.kind] ?? 'Fayl'}</span>
-        <div className="grow">
-          <div className="artifact-title">{artifact.title}</div>
-          {artifact.lang && artifact.kind !== 'image' && (
-            <div className="tiny">{artifact.lang}</div>
-          )}
-        </div>
-        <button className="btn mini" onClick={() => onOpen(artifact)}>
-          {isPreviewable(artifact) ? <Play size={14} /> : <Eye size={14} />}
-          {isPreviewable(artifact) ? 'Ochish' : 'Koʻrish'}
-        </button>
-      </div>
-
-      {artifact.kind === 'image' ? (
+  if (artifact.kind === 'image') {
+    return (
+      <button
+        className="msg-image"
+        onClick={() => onOpen(artifact)}
+        aria-label={artifact.title || 'Rasm'}
+      >
         <img
-          className="artifact-img"
           src={`data:${artifact.mimeType ?? 'image/png'};base64,${artifact.content}`}
           alt={artifact.title}
-          onClick={() => onOpen(artifact)}
         />
-      ) : (
-        <pre className="artifact-code">
-          {artifact.content.split('\n').slice(0, 12).join('\n')}
-          {artifact.content.split('\n').length > 12 ? '\n…' : ''}
-        </pre>
-      )}
-    </div>
+      </button>
+    );
+  }
+
+  // Xom kod koʻrsatilmaydi — bitta ochish tugmasi yetarli.
+  return (
+    <button className="artifact-card open" onClick={() => onOpen(artifact)}>
+      <span className="artifact-play">{isPreviewable(artifact) ? <Play size={16} /> : <Eye size={16} />}</span>
+      <span className="grow">
+        <span className="artifact-title">{artifact.title}</span>
+        <span className="tiny">
+          {KIND_LABEL[artifact.kind] ?? 'Fayl'}
+          {artifact.lang ? ` · ${artifact.lang}` : ''} · {artifact.content.split('\n').length} qator
+        </span>
+      </span>
+      <span className="chip accent">{isPreviewable(artifact) ? 'Ochish' : 'Koʻrish'}</span>
+    </button>
   );
 }
 

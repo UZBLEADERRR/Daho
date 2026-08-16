@@ -42,6 +42,10 @@ export function MessageView({
       .filter((a): a is Artifact => Boolean(a));
   }, [message.artifactIds, artifacts]);
 
+  // Rasmlar chatda oʻzi koʻrinadi, qolganlari kod bloklariga bogʻlanadi.
+  const pictures = useMemo(() => linked.filter((a) => a.kind === 'image'), [linked]);
+  const codeLinked = useMemo(() => linked.filter((a) => a.kind !== 'image'), [linked]);
+
   if (message.role === 'user') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
@@ -119,27 +123,46 @@ export function MessageView({
           }
         }
 
-        const substantial =
-          seg.closed && seg.lang !== 'chart' && seg.value.trim().split('\n').length >= 3;
+        const lines = seg.value.trim().split('\n').length;
+        const substantial = seg.closed && seg.lang !== 'chart' && lines >= 3;
         if (substantial) codeIndex += 1;
-        const artifact = substantial ? linked[codeIndex] : undefined;
+        const artifact = substantial ? codeLinked[codeIndex] : undefined;
 
         if (artifact) {
           return <ArtifactCard key={i} artifact={artifact} onOpen={onOpenArtifact} />;
         }
 
-        return (
-          <div key={i} className="artifact-card">
-            <div className="artifact-head">
-              <span className="chip">{seg.lang || 'kod'}</span>
-              <div className="grow">
-                <div className="artifact-title">{seg.closed ? 'Kod' : 'Yozilmoqda…'}</div>
-              </div>
+        // Yozilayotgan yoki hali saqlanmagan katta blok — xom kodni koʻrsatmaymiz.
+        if (!seg.closed || lines >= 3) {
+          return (
+            <div key={i} className="artifact-card pending">
+              <span className="chip accent">{seg.lang === 'html' ? 'Ilova' : 'Kod'}</span>
+              <span className="grow artifact-title">
+                {seg.closed ? 'Tayyorlanmoqda…' : 'Yozilmoqda…'}
+              </span>
+              <span className="typing" />
             </div>
-            <pre className="artifact-code">{seg.value}</pre>
-          </div>
+          );
+        }
+
+        // Qisqa parcha — oddiy misol, shundayligicha koʻrsatiladi.
+        return (
+          <pre key={i} className="snippet">
+            {seg.value}
+          </pre>
         );
       })}
+
+      {pictures.map((img) => (
+        <button
+          key={img.id}
+          className="msg-image"
+          onClick={() => onOpenArtifact(img)}
+          aria-label={img.title || 'Rasm'}
+        >
+          <img src={`data:${img.mimeType ?? 'image/png'};base64,${img.content}`} alt={img.title} />
+        </button>
+      ))}
 
       {message.videoId && <VideoCard projectId={message.videoId} onOpen={onOpenVideo} />}
 

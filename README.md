@@ -19,8 +19,12 @@ toʻgʻridan-toʻgʻri murojaat qiladi.
   mikrofon yuborish tugmasiga aylanadi
 - `+` menyusi: rasm biriktirish, rasm yaratish, video yasash, ilova yasash,
   kurs ochish, hujjat yasash
+- **Rasm chizish**: «logotip chizib ber» desangiz kifoya — rasm chatning
+  oʻzida chiqadi (mavjud rasmni «buni oʻzgartir» deb tahrirlash ham mumkin)
 - **Artifactlar**: AI yasagan HTML ilova, oʻyin, test, kalkulyator yoki
-  diagramma darhol ilova ichida ochiladi va ishlaydi
+  diagramma darhol ilova ichida ochiladi va ishlaydi. Chatda xom kod
+  koʻrinmaydi — bitta ▶ tugmali ixcham kartochka boʻladi, va artifact faqat
+  siz soʻraganingizda yasaladi (token bekorga sarflanmaydi)
 
 **Mini ilovalar**
 AI yasagan ilovani nom va emoji ikonka bilan «Ilovalarim» boʻlimiga qoʻshasiz —
