@@ -2,6 +2,10 @@ import { Capacitor } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { fileExtension } from './artifacts';
+import { buildDocx } from './docx';
+import { buildPdf } from './pdf';
+import { buildPptx } from './pptx';
+import { bytesToB64 } from './audio';
 import type { Artifact } from './types';
 
 function safeName(title: string): string {
@@ -100,4 +104,74 @@ export async function saveBackup(json: string): Promise<string> {
   });
   await Share.share({ title: 'Daho zaxira nusxasi', url: written.uri }).catch(() => undefined);
   return 'Zaxira nusxa tayyor';
+}
+
+/* ------------------------------------------------------------------ */
+/*  Hujjat eksporti                                                    */
+/* ------------------------------------------------------------------ */
+
+export type DocFormat = 'docx' | 'pdf' | 'pptx' | 'md';
+
+const DOC_MIME: Record<DocFormat, string> = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  pdf: 'application/pdf',
+  md: 'text/markdown',
+};
+
+export const DOC_LABEL: Record<DocFormat, string> = {
+  docx: 'Word (.docx)',
+  pptx: 'Slayd (.pptx)',
+  pdf: 'PDF',
+  md: 'Matn (.md)',
+};
+
+/** Ixtiyoriy baytlarni faylga saqlaydi va ulashish oynasini ochadi. */
+export async function saveBytes(
+  filename: string,
+  bytes: Uint8Array,
+  mime: string,
+): Promise<string> {
+  if (!Capacitor.isNativePlatform()) {
+    const href = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: mime }));
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+    return `${filename} yuklab olindi`;
+  }
+
+  const written = await Filesystem.writeFile({
+    path: filename,
+    data: bytesToB64(bytes),
+    directory: Directory.Cache,
+  });
+  const canShare = await Share.canShare().catch(() => ({ value: false }));
+  if (canShare.value) {
+    await Share.share({ title: filename, url: written.uri, dialogTitle: 'Faylni saqlash' });
+    return 'Ulashish oynasi ochildi';
+  }
+  return `Saqlandi: ${filename}`;
+}
+
+/** Markdown matnni Word / PDF / slayd qilib chiqaradi. */
+export async function exportDocument(
+  markdown: string,
+  format: DocFormat,
+  title: string,
+): Promise<string> {
+  const name = `${safeName(title)}.${format}`;
+  if (format === 'md') {
+    return saveBytes(name, new TextEncoder().encode(markdown), DOC_MIME.md);
+  }
+  const bytes =
+    format === 'docx'
+      ? buildDocx(markdown)
+      : format === 'pptx'
+        ? buildPptx(markdown)
+        : buildPdf(markdown);
+  return saveBytes(name, bytes, DOC_MIME[format]);
 }

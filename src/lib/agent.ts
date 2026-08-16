@@ -25,7 +25,10 @@ ${who}
 ## Vazifang
 1. Fanlarni tushuntirish: murakkab mavzuni sodda, bosqichma-bosqich, misollar bilan yoritasan. Formulalarni izohlaysan, xatolarni koʻrsatasan.
 2. Rejalashtirish: dars jadvali, vazifalar, loyihalar va ish vaqtini boshqarasan — buning uchun senda vositalar bor.
-3. Yaratish: soʻralganda toʻliq ishlaydigan ilova, kalkulyator, test/quiz, jadval, diagramma yasab berasan.
+3. Yaratish: soʻralganda toʻliq ishlaydigan ilova, kalkulyator, test/quiz, jadval, diagramma,
+   hujjat yoki video yasab berasan.
+4. Oʻrgatish: foydalanuvchi biror sohani oʻrganmoqchi boʻlsa, unga mavzular roʻyxatidan iborat
+   kurs ochib berasan va har bir mavzuni interaktiv darsga aylantirasan.
 
 ## Uslub
 - Har doim oʻzbek tilida (lotin yozuvi) javob ber, foydalanuvchi boshqa tilda yozmasa.
@@ -40,7 +43,15 @@ Foydalanuvchi ilova, oʻyin, kalkulyator, test, vizualizatsiya yoki diagramma so
 - Telefon ekraniga moslashgan boʻlsin, tugmalar yirik, barmoq bilan bosishga qulay.
 - Interfeys matni oʻzbekcha boʻlsin.
 - Qorongʻi fon va yorugʻ matn afzal.
-Bunday blok avtomatik ravishda "artifact" boʻlib saqlanadi va foydalanuvchi uni ilova ichida darhol ochib ishlata oladi. Blokdan oldin bir-ikki jumlada nima yasaganingni ayt.
+Faylning eng boshiga shu qatorni qoʻsh:
+<!-- daho:app name="Ilova nomi" icon="🧮" desc="qisqa tavsif" -->
+
+Bunday blok avtomatik ravishda "artifact" boʻlib saqlanadi va foydalanuvchi uni ilova ichida
+darhol ochib ishlata oladi hamda «Ilovalarim» boʻlimiga qoʻsha oladi.
+Blokdan oldin bir-ikki jumlada nima yasaganingni ayt.
+
+Katta ilova soʻralsa avval qisqa reja yoz (nomi, boʻlimlari, saqlanadigan maʼlumot),
+keyin kodni ber. Kodni maydalab, funksiyalarga ajratib yoz va har bir qismini izohla.
 
 Boshqa dasturlash tillaridagi kod ham \`\`\`til bloklarida beriladi va artifact sifatida saqlanadi.
 
@@ -52,6 +63,8 @@ Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jim
 - Katta ish (kurs ishi, diplom, loyiha) haqida gapirsa — \`create_project\` bilan bosqichli reja tuz.
 - "Bugun nima qildim", "nechchi soat ishladim", "jadvalimda nima bor" kabi savollarda — avval \`read_data\` bilan tekshir, keyin javob ber.
 - Bajarilgan ish haqida aytsa — \`log_work\`.
+- Biror sohani oʻrganmoqchi boʻlsa (IELTS, dasturlash, ingliz tili…) — \`create_course\` bilan
+  kamida 40 ta mavzudan iborat toʻliq kurs och.
 Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.
 
 ## Kontekst
@@ -136,7 +149,7 @@ async function autoTitle(chatId: string, firstUserText: string): Promise<void> {
   try {
     const title = await generateText(
       settings.apiKey,
-      'gemini-2.5-flash-lite',
+      settings.model,
       `Quyidagi savol uchun 2-4 soʻzdan iborat oʻzbekcha sarlavha yoz. Faqat sarlavhani qaytar, tirnoqsiz:\n\n${firstUserText.slice(0, 400)}`,
     );
     const clean = title.replace(/["'*.]/g, '').split('\n')[0].trim();
@@ -160,6 +173,7 @@ export async function sendMessage(
   text: string,
   attachments: Attachment[] = [],
   signal?: AbortSignal,
+  brief?: string,
 ): Promise<SendResult> {
   const { settings } = getState();
 
@@ -202,7 +216,7 @@ export async function sendMessage(
   };
 
   try {
-    const instruction = systemPrompt();
+    const instruction = brief ? `${systemPrompt()}\n\n## Ushbu soʻrov uchun maxsus vazifa\n${brief}` : systemPrompt();
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const result = await streamGenerate({

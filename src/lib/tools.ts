@@ -1,7 +1,16 @@
 import type { FunctionDeclaration } from './gemini';
 import { getState, setState } from './store';
 import { DAYS } from './types';
-import type { Note, Priority, Project, ScheduleItem, Task, TimeLog } from './types';
+import type {
+  Course,
+  CourseTopic,
+  Note,
+  Priority,
+  Project,
+  ScheduleItem,
+  Task,
+  TimeLog,
+} from './types';
 import { fmtDuration, todayISO, uid, weekdayIndex } from './utils';
 
 export interface ToolOutcome {
@@ -135,6 +144,35 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'create_course',
+    description:
+      'Foydalanuvchi biror sohani oʻrganmoqchi boʻlsa (IELTS, dasturlash, matematika va h.k.) ' +
+      'toʻliq kurs ochadi: mavzular roʻyxati bilan. Har bir mavzu keyinchalik bosilganda ' +
+      'interaktiv darsga aylanadi. Mavzular soni 20 tadan 100 tagacha boʻlsin, oson mavzudan ' +
+      'murakkabiga qarab tartiblangan.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        title: { type: 'STRING', description: 'Kurs nomi' },
+        field: { type: 'STRING', description: 'Soha, masalan "IELTS" yoki "Python"' },
+        goal: { type: 'STRING', description: 'Foydalanuvchining maqsadi' },
+        level: { type: 'STRING', description: 'boshlangʻich | oʻrta | yuqori' },
+        topics: {
+          type: 'ARRAY',
+          description: 'Mavzular, tartib boʻyicha',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              title: { type: 'STRING', description: 'Mavzu nomi' },
+              summary: { type: 'STRING', description: 'Bir jumlada nima oʻrganiladi' },
+            },
+          },
+        },
+      },
+      required: ['title', 'field', 'topics'],
+    },
+  },
+  {
     name: 'read_data',
     description:
       'Foydalanuvchining saqlangan maʼlumotlarini oʻqiydi: jadval, vazifalar, konspektlar, loyihalar, ish vaqti qaydlari.',
@@ -143,7 +181,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       properties: {
         what: {
           type: 'STRING',
-          description: 'schedule | tasks | notes | projects | timelogs | all',
+          description: 'schedule | tasks | notes | projects | timelogs | courses | apps | all',
         },
         query: { type: 'STRING', description: 'Ixtiyoriy qidiruv soʻzi' },
       },
@@ -280,6 +318,41 @@ export function executeTool(name: string, args: Record<string, unknown>): ToolOu
       };
     }
 
+    case 'create_course': {
+      const rawTopics = Array.isArray(args.topics) ? args.topics : [];
+      const topics: CourseTopic[] = rawTopics.slice(0, 120).map((t) => {
+        const item = (t ?? {}) as Record<string, unknown>;
+        return {
+          id: uid('ct_'),
+          title: str(item.title, 'Mavzu'),
+          summary: str(item.summary),
+          done: false,
+        };
+      });
+      if (!topics.length) {
+        return {
+          ok: false,
+          summary: 'Kurs uchun mavzular berilmadi',
+          payload: { status: 'mavzu_yoq' },
+        };
+      }
+      const course: Course = {
+        id: uid('k_'),
+        title: str(args.title, 'Kurs'),
+        field: str(args.field, str(args.title, 'Umumiy')),
+        goal: str(args.goal),
+        level: str(args.level, 'boshlangʻich'),
+        topics,
+        createdAt: Date.now(),
+      };
+      setState((s) => ({ courses: [course, ...s.courses] }));
+      return {
+        ok: true,
+        summary: `Kurs ochildi: ${course.title} — ${topics.length} ta mavzu`,
+        payload: { status: 'ochildi', id: course.id, topics: topics.length },
+      };
+    }
+
     case 'read_data': {
       const what = str(args.what, 'all').toLowerCase();
       const q = str(args.query).toLowerCase();
@@ -306,6 +379,17 @@ export function executeTool(name: string, args: Record<string, unknown>): ToolOu
         out.projects = s.projects
           .filter((p) => match(p.name))
           .map((p) => `${p.name} — ${p.steps.filter((x) => x.done).length}/${p.steps.length} bosqich`);
+      }
+      if (what === 'courses' || what === 'all') {
+        out.courses = s.courses
+          .filter((c) => match(c.title + c.field))
+          .map(
+            (c) =>
+              `${c.title} — ${c.topics.filter((t) => t.done).length}/${c.topics.length} mavzu oʻrganilgan`,
+          );
+      }
+      if (what === 'apps' || what === 'all') {
+        out.apps = s.apps.filter((a) => match(a.name)).map((a) => `${a.icon} ${a.name}`);
       }
       if (what === 'timelogs' || what === 'all') {
         out.timelogs = s.timeLogs
@@ -373,6 +457,19 @@ export function buildContextSummary(): string {
   if (s.notes.length) {
     const subjects = [...new Set(s.notes.map((n) => n.subject))].slice(0, 10);
     lines.push(`Konspekt fanlari: ${subjects.join(', ')} (jami ${s.notes.length} ta)`);
+  }
+
+  if (s.courses.length) {
+    lines.push(
+      `Kurslar: ${s.courses
+        .slice(0, 5)
+        .map((c) => `${c.title} (${c.topics.filter((t) => t.done).length}/${c.topics.length})`)
+        .join('; ')}`,
+    );
+  }
+
+  if (s.apps.length) {
+    lines.push(`Saqlangan ilovalar: ${s.apps.slice(0, 8).map((a) => a.name).join(', ')}`);
   }
 
   return lines.join('\n');

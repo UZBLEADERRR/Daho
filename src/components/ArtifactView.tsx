@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { isPreviewable, toPreviewDocument } from '../lib/artifacts';
+import { saveApp } from '../lib/creations';
 import { copyText, saveArtifact } from '../lib/exporter';
 import type { Artifact } from '../lib/types';
-import { Back, Code, Copy, Download, Eye, Play, Refresh } from './Icons';
+import { Back, Code, Copy, Download, Eye, Play, Plus, Refresh } from './Icons';
 import { toast } from './ui';
 
 const KIND_LABEL: Record<string, string> = {
@@ -93,6 +94,18 @@ export function ArtifactViewer({
         <div className="grow" style={{ minWidth: 0 }}>
           <div className="artifact-title">{artifact.title}</div>
         </div>
+        {artifact.kind === 'html' && (
+          <button
+            className="icon-btn"
+            onClick={() => {
+              const app = saveApp(artifact.content, artifact.title);
+              toast(`«${app.name}» Ilovalarimga qoʻshildi`);
+            }}
+            aria-label="Ilovalarimga qoʻshish"
+          >
+            <Plus size={19} />
+          </button>
+        )}
         {previewable && artifact.kind === 'html' && (
           <>
             <button

@@ -9,13 +9,38 @@ toʻgʻridan-toʻgʻri murojaat qiladi.
 
 **Chat tarafi**
 - Gemini bilan oqim (streaming) tarzida suhbat, oʻzbek tilida
+- Model roʻyxati Google’dan **jonli olinadi** — yangi model chiqsa oʻzi paydo
+  boʻladi, eskisi ishlamay qolsa avtomatik almashtiriladi
 - Rasm biriktirish — daftar yoki kitob sahifasini surat qilib savol berish
-- Ovozli kiritish (mikrofon) va javoblarni ovoz bilan tinglash — qurilmaning
-  bepul tizim ovozi ishlatiladi, hech qanday toʻlov yoʻq
-- Rasm yaratish rejimi (uchqun tugmasi)
+- **Mikrofon**: ovoz yozib olinadi va Gemini orqali matnga oʻgiriladi —
+  oʻzbekchani qurilmaning oʻz xizmatidan ancha yaxshi tushunadi
+- **Tabiiy ovoz**: Sardor, Madina, Bekzod, Nilufar… — Gemini TTS ovozlari
+- Bitta yumaloq input: chapda `+`, oʻngda doim mikrofon; matn yozilsa
+  mikrofon yuborish tugmasiga aylanadi
+- `+` menyusi: rasm biriktirish, rasm yaratish, video yasash, ilova yasash,
+  kurs ochish, hujjat yasash
 - **Artifactlar**: AI yasagan HTML ilova, oʻyin, test, kalkulyator yoki
-  diagramma darhol ilova ichida ochiladi va ishlaydi; kodni koʻrish, nusxalash
-  va faylga saqlash mumkin
+  diagramma darhol ilova ichida ochiladi va ishlaydi
+
+**Mini ilovalar**
+AI yasagan ilovani nom va emoji ikonka bilan «Ilovalarim» boʻlimiga qoʻshasiz —
+telefondagi oddiy ilovadek grid koʻrinishida turadi va toʻliq ekranda ochiladi.
+
+**Kurslar**
+«IELTS 7.0 olmoqchiman» deysiz — agent 40-100 ta mavzudan iborat kurs ochadi.
+Istagan mavzuni bosasiz: vizual, misollar va interaktiv testdan iborat dars
+oʻsha zahoti yasaladi. Progress saqlanadi.
+
+**Video studiya**
+Mavzuni yozasiz — ssenariy, sahna rasmlari, diktor ovozi va subtitr avtomatik
+tayyorlanadi. Subtitr uslubi (oʻlcham, rang, chekka, joylashuv, fon),
+qahramonlar (koʻrinishi va ovozi), sahna matni va rasm soʻrovi — hammasi
+tahrirlanadi. Video **telefonning oʻzida** yigʻiladi (canvas + MediaRecorder),
+9:16 / 16:9 / 1:1 formatlarda.
+
+**Hujjatlar**
+Har qanday javobni **Word (.docx)**, **PDF**, **slayd (.pptx)** yoki matn
+qilib yuklab olasiz — hammasi qurilmada yasaladi.
 
 **Agent tarafi**
 - *Bugun* — kunlik xulosa: darslar, muddati kelgan vazifalar, ish vaqti

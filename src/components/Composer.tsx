@@ -1,47 +1,95 @@
 import { useEffect, useRef, useState } from 'react';
 import { startListening, type ListenHandle } from '../lib/speech';
-import { useStore } from '../lib/store';
 import type { Attachment } from '../lib/types';
 import { shrinkImage } from '../lib/utils';
-import { Image, Mic, Send, Sparkle, Stop } from './Icons';
-import { toast } from './ui';
+import { Close, Mic, Plus, Send, Stop } from './Icons';
+import { Sheet, toast } from './ui';
+
+export type ComposerMode = 'chat' | 'rasm' | 'video' | 'ilova' | 'kurs' | 'hujjat';
+
+interface ModeInfo {
+  id: ComposerMode;
+  icon: string;
+  label: string;
+  hint: string;
+  placeholder: string;
+}
+
+export const MODES: ModeInfo[] = [
+  {
+    id: 'rasm',
+    icon: '✨',
+    label: 'Rasm yaratish',
+    hint: 'Tasvirlab bering — chizib beraman',
+    placeholder: 'Qanday rasm chizay?',
+  },
+  {
+    id: 'video',
+    icon: '🎬',
+    label: 'Video yasash',
+    hint: 'Ssenariy, ovoz, subtitr — hammasi avtomatik',
+    placeholder: 'Video mavzusi?',
+  },
+  {
+    id: 'ilova',
+    icon: '🧩',
+    label: 'Ilova yasash',
+    hint: 'Ishlaydigan mini ilova, telefoningizga saqlanadi',
+    placeholder: 'Qanday ilova kerak?',
+  },
+  {
+    id: 'kurs',
+    icon: '🎓',
+    label: 'Kurs ochish',
+    hint: 'Mavzular roʻyxati va interaktiv darslar',
+    placeholder: 'Qaysi sohani oʻrganmoqchisiz?',
+  },
+  {
+    id: 'hujjat',
+    icon: '📄',
+    label: 'Hujjat yasash',
+    hint: 'Word, PDF yoki slayd qilib yuklab olasiz',
+    placeholder: 'Qanday hujjat kerak?',
+  },
+];
 
 interface Props {
   busy: boolean;
-  imageMode: boolean;
-  onToggleImageMode: () => void;
+  mode: ComposerMode;
+  onMode: (m: ComposerMode) => void;
   onSend: (text: string, attachments: Attachment[]) => void;
   onStop: () => void;
 }
 
-export function Composer({ busy, imageMode, onToggleImageMode, onSend, onStop }: Props) {
-  const sttLang = useStore((s) => s.settings.sttLang);
+export function Composer({ busy, mode, onMode, onSend, onStop }: Props) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [listening, setListening] = useState(false);
+  const [mic, setMic] = useState<'oʻchiq' | 'yozilmoqda' | 'tahlil'>('oʻchiq');
+  const [menu, setMenu] = useState(false);
   const listenRef = useRef<ListenHandle | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const active = MODES.find((m) => m.id === mode) ?? null;
+  const canSend = Boolean(text.trim() || attachments.length);
 
   useEffect(() => {
     const el = areaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 132)}px`;
   }, [text]);
 
   useEffect(
     () => () => {
-      listenRef.current?.stop().catch(() => undefined);
+      listenRef.current?.cancel();
     },
     [],
   );
 
   const submit = () => {
-    const value = text.trim();
-    if (!value && !attachments.length) return;
-    if (busy) return;
-    onSend(value, attachments);
+    if (busy || !canSend) return;
+    onSend(text.trim(), attachments);
     setText('');
     setAttachments([]);
   };
@@ -61,32 +109,50 @@ export function Composer({ busy, imageMode, onToggleImageMode, onSend, onStop }:
   };
 
   const toggleMic = async () => {
-    if (listening) {
-      await listenRef.current?.stop();
+    if (mic !== 'oʻchiq') {
+      const handle = listenRef.current;
       listenRef.current = null;
-      setListening(false);
+      await handle?.stop();
       return;
     }
-    setListening(true);
-    const handle = await startListening(sttLang, {
-      onPartial: (value) => setText(value),
+    setMic('yozilmoqda');
+    const handle = await startListening({
+      onState: (s) => setMic(s),
       onFinal: (value) => {
-        setText(value);
-        setListening(false);
+        setText((prev) => (prev ? `${prev} ${value}` : value));
+        setMic('oʻchiq');
         listenRef.current = null;
+        requestAnimationFrame(() => areaRef.current?.focus());
       },
       onError: (message) => {
         toast(message);
-        setListening(false);
+        setMic('oʻchiq');
         listenRef.current = null;
       },
     });
     listenRef.current = handle;
-    if (!handle) setListening(false);
+    if (!handle) setMic('oʻchiq');
   };
+
+  const placeholder =
+    mic === 'yozilmoqda'
+      ? 'Tinglayapman…'
+      : mic === 'tahlil'
+        ? 'Matnga oʻgirilmoqda…'
+        : (active?.placeholder ?? 'Savolingizni yozing…');
 
   return (
     <div className="composer">
+      {active && (
+        <div className="mode-chip">
+          <span>{active.icon}</span>
+          <span className="grow">{active.label}</span>
+          <button onClick={() => onMode('chat')} aria-label="Rejimni bekor qilish">
+            <Close size={14} />
+          </button>
+        </div>
+      )}
+
       {!!attachments.length && (
         <div className="pending-strip">
           {attachments.map((a, i) => (
@@ -104,7 +170,7 @@ export function Composer({ busy, imageMode, onToggleImageMode, onSend, onStop }:
         </div>
       )}
 
-      <div className="composer-box">
+      <div className={mic === 'oʻchiq' ? 'composer-box' : 'composer-box listening'}>
         <input
           ref={fileRef}
           type="file"
@@ -116,32 +182,16 @@ export function Composer({ busy, imageMode, onToggleImageMode, onSend, onStop }:
             e.target.value = '';
           }}
         />
-        <button
-          className="icon-btn"
-          onClick={() => fileRef.current?.click()}
-          aria-label="Rasm biriktirish"
-        >
-          <Image />
-        </button>
-        <button
-          className={imageMode ? 'icon-btn on' : 'icon-btn'}
-          onClick={onToggleImageMode}
-          aria-label="Rasm yaratish rejimi"
-        >
-          <Sparkle />
+
+        <button className="round-btn" onClick={() => setMenu(true)} aria-label="Qoʻshish">
+          <Plus size={21} />
         </button>
 
         <textarea
           ref={areaRef}
           value={text}
           rows={1}
-          placeholder={
-            listening
-              ? 'Tinglanmoqda…'
-              : imageMode
-                ? 'Qanday rasm chizay?'
-                : 'Savolingizni yozing…'
-          }
+          placeholder={placeholder}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) {
@@ -151,29 +201,61 @@ export function Composer({ busy, imageMode, onToggleImageMode, onSend, onStop }:
           }}
         />
 
-        <button
-          className={listening ? 'icon-btn rec' : 'icon-btn'}
-          onClick={toggleMic}
-          aria-label="Ovozli kiritish"
-        >
-          <Mic />
-        </button>
-
         {busy ? (
-          <button className="send" onClick={onStop} aria-label="Toʻxtatish">
-            <Stop />
+          <button className="round-btn primary" onClick={onStop} aria-label="Toʻxtatish">
+            <Stop size={16} />
+          </button>
+        ) : canSend ? (
+          <button className="round-btn primary" onClick={submit} aria-label="Yuborish">
+            <Send size={19} />
           </button>
         ) : (
           <button
-            className="send"
-            onClick={submit}
-            disabled={!text.trim() && !attachments.length}
-            aria-label="Yuborish"
+            className={mic === 'oʻchiq' ? 'round-btn' : 'round-btn rec'}
+            onClick={toggleMic}
+            disabled={mic === 'tahlil'}
+            aria-label="Ovozli kiritish"
           >
-            <Send />
+            <Mic size={20} />
           </button>
         )}
       </div>
+
+      {menu && (
+        <Sheet title="Nima qilamiz?" onClose={() => setMenu(false)}>
+          <button
+            className="action-row"
+            onClick={() => {
+              setMenu(false);
+              fileRef.current?.click();
+            }}
+          >
+            <span className="action-icon">🖼</span>
+            <span className="grow">
+              <b>Rasm biriktirish</b>
+              <div className="tiny">Daftar yoki kitob sahifasini surat qilib soʻrang</div>
+            </span>
+          </button>
+
+          {MODES.map((m) => (
+            <button
+              key={m.id}
+              className={mode === m.id ? 'action-row on' : 'action-row'}
+              onClick={() => {
+                onMode(mode === m.id ? 'chat' : m.id);
+                setMenu(false);
+                requestAnimationFrame(() => areaRef.current?.focus());
+              }}
+            >
+              <span className="action-icon">{m.icon}</span>
+              <span className="grow">
+                <b>{m.label}</b>
+                <div className="tiny">{m.hint}</div>
+              </span>
+            </button>
+          ))}
+        </Sheet>
+      )}
     </div>
   );
 }

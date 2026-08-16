@@ -1,19 +1,21 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { splitSegments } from '../lib/artifacts';
-import { copyText } from '../lib/exporter';
+import { copyText, exportDocument, DOC_LABEL, type DocFormat } from '../lib/exporter';
 import { renderMarkdown } from '../lib/markdown';
-import { speak } from '../lib/speech';
+import { speak, stopSpeaking } from '../lib/speech';
 import { useStore } from '../lib/store';
 import type { Artifact, Message as Msg } from '../lib/types';
 import { ArtifactCard } from './ArtifactView';
-import { Check, Copy, Refresh, Speaker } from './Icons';
-import { toast } from './ui';
+import { Check, Copy, Download, Refresh, Speaker } from './Icons';
+import { VideoCard } from './VideoStudio';
+import { Sheet, toast } from './ui';
 
 interface Props {
   message: Msg;
   streaming: boolean;
   isLast: boolean;
   onOpenArtifact: (a: Artifact) => void;
+  onOpenVideo: (id: string) => void;
   onRegenerate: () => void;
 }
 
@@ -22,10 +24,12 @@ export function MessageView({
   streaming,
   isLast,
   onOpenArtifact,
+  onOpenVideo,
   onRegenerate,
 }: Props) {
   const artifacts = useStore((s) => s.artifacts);
-  const settings = useStore((s) => s.settings);
+  const [exporting, setExporting] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
 
   const segments = useMemo(() => splitSegments(message.text), [message.text]);
 
@@ -51,6 +55,33 @@ export function MessageView({
     );
   }
 
+  const onExport = async (format: DocFormat) => {
+    setExporting(false);
+    try {
+      const title =
+        message.text.match(/^#\s+(.+)$/m)?.[1] ??
+        message.text.replace(/[#*`]/g, '').trim().split('\n')[0]?.slice(0, 50) ??
+        'Daho hujjat';
+      toast(await exportDocument(message.text, format, title));
+    } catch (err) {
+      toast(`Chiqarib boʻlmadi: ${(err as Error).message}`);
+    }
+  };
+
+  const onSpeak = async () => {
+    if (speaking) {
+      await stopSpeaking();
+      setSpeaking(false);
+      return;
+    }
+    setSpeaking(true);
+    try {
+      await speak(message.text);
+    } finally {
+      setSpeaking(false);
+    }
+  };
+
   let codeIndex = -1;
 
   return (
@@ -64,10 +95,13 @@ export function MessageView({
 
       {segments.map((seg, i) => {
         if (seg.type === 'text') {
-          const html = renderMarkdown(seg.value);
           if (!seg.value.trim()) return null;
           return (
-            <div key={i} className="md" dangerouslySetInnerHTML={{ __html: html }} />
+            <div
+              key={i}
+              className="md"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.value) }}
+            />
           );
         }
 
@@ -84,15 +118,15 @@ export function MessageView({
             <div className="artifact-head">
               <span className="chip">{seg.lang || 'kod'}</span>
               <div className="grow">
-                <div className="artifact-title">
-                  {seg.closed ? 'Kod' : 'Yozilmoqda…'}
-                </div>
+                <div className="artifact-title">{seg.closed ? 'Kod' : 'Yozilmoqda…'}</div>
               </div>
             </div>
             <pre className="artifact-code">{seg.value}</pre>
           </div>
         );
       })}
+
+      {message.videoId && <VideoCard projectId={message.videoId} onOpen={onOpenVideo} />}
 
       {streaming && <span className="typing" />}
 
@@ -107,16 +141,11 @@ export function MessageView({
           >
             <Copy size={12} /> Nusxa
           </button>
-          <button
-            onClick={() =>
-              speak(message.text, {
-                lang: settings.ttsLang,
-                rate: settings.ttsRate,
-                voiceUri: settings.ttsVoiceUri,
-              })
-            }
-          >
-            <Speaker size={12} /> Ovoz
+          <button onClick={onSpeak}>
+            <Speaker size={12} /> {speaking ? 'Toʻxtat' : 'Ovoz'}
+          </button>
+          <button onClick={() => setExporting(true)}>
+            <Download size={12} /> Yuklash
           </button>
           {isLast && (
             <button onClick={onRegenerate}>
@@ -124,6 +153,30 @@ export function MessageView({
             </button>
           )}
         </div>
+      )}
+
+      {exporting && (
+        <Sheet title="Qaysi koʻrinishda?" onClose={() => setExporting(false)}>
+          {(['docx', 'pdf', 'pptx', 'md'] as DocFormat[]).map((f) => (
+            <button key={f} className="action-row" onClick={() => void onExport(f)}>
+              <span className="action-icon">
+                {f === 'docx' ? '📄' : f === 'pdf' ? '📕' : f === 'pptx' ? '📊' : '📝'}
+              </span>
+              <span className="grow">
+                <b>{DOC_LABEL[f]}</b>
+                <div className="tiny">
+                  {f === 'docx'
+                    ? 'Word va Google Docs’da ochiladi'
+                    : f === 'pdf'
+                      ? 'Har qanday qurilmada bir xil koʻrinadi'
+                      : f === 'pptx'
+                        ? 'Har bir sarlavha — alohida slayd'
+                        : 'Oddiy matn fayli'}
+                </div>
+              </span>
+            </button>
+          ))}
+        </Sheet>
       )}
     </div>
   );

@@ -2,30 +2,8 @@ import { createChat, deleteChat } from '../lib/agent';
 import { setState, useStore } from '../lib/store';
 import { relativeTime } from '../lib/utils';
 import type { AgentSection } from './agent/sections';
-import { AGENT_SECTIONS, SECTION_LABEL } from './agent/sections';
-import {
-  Calendar,
-  Chat,
-  Clock,
-  Close,
-  Folder,
-  Layers,
-  Note,
-  Plus,
-  Settings as SettingsIcon,
-  Sparkle,
-  Trash,
-} from './Icons';
-
-const SECTION_ICON: Record<AgentSection, JSX.Element> = {
-  bugun: <Sparkle size={17} />,
-  jadval: <Calendar size={17} />,
-  vazifalar: <Chat size={17} />,
-  loyihalar: <Folder size={17} />,
-  konspekt: <Note size={17} />,
-  vaqt: <Clock size={17} />,
-  artifact: <Layers size={17} />,
-};
+import { AGENT_SECTIONS, SECTION_EMOJI, SECTION_LABEL } from './agent/sections';
+import { Close, Plus, Settings as SettingsIcon, Trash } from './Icons';
 
 interface Props {
   onClose: () => void;
@@ -82,7 +60,7 @@ export function Sidebar({
                 onClose();
               }}
             >
-              {SECTION_ICON[s]}
+              <span className="side-emoji">{SECTION_EMOJI[s]}</span>
               {SECTION_LABEL[s]}
             </button>
           ))}

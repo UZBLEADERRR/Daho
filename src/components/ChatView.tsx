@@ -1,27 +1,48 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ensureActiveChat, regenerate, sendMessage } from '../lib/agent';
+import { splitSegments } from '../lib/artifacts';
+import {
+  APP_BUILDER_BRIEF,
+  COURSE_BRIEF,
+  DOC_BRIEF,
+  VIDEO_BRIEF,
+  saveApp,
+} from '../lib/creations';
 import { generateImage } from '../lib/gemini';
 import { speak } from '../lib/speech';
 import { getState, setState, useStore } from '../lib/store';
 import type { Artifact, Attachment, Message } from '../lib/types';
 import { uid } from '../lib/utils';
-import { Composer } from './Composer';
+import { planVideo } from '../lib/video';
+import { Composer, type ComposerMode } from './Composer';
 import { MessageView } from './Message';
 import { Empty, toast } from './ui';
 
 const STARTERS = [
   'Bugungi darslarim boʻyicha reja tuz',
   'Hosila mavzusini misollar bilan tushuntir',
-  'Menga formulalar yodlash uchun test ilovasi yasab ber',
-  'Kurs ishim uchun bosqichli reja tuz',
+  'IELTS 7.0 olmoqchiman, kurs ochib ber',
+  'Formulalarni yodlash uchun ilova yasab ber',
 ];
 
-export function ChatView({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => void }) {
+interface Props {
+  onOpenArtifact: (a: Artifact) => void;
+  onOpenVideo: (id: string) => void;
+}
+
+const BRIEFS: Partial<Record<ComposerMode, string>> = {
+  ilova: APP_BUILDER_BRIEF,
+  kurs: COURSE_BRIEF,
+  hujjat: DOC_BRIEF,
+  video: VIDEO_BRIEF,
+};
+
+export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
   const chats = useStore((s) => s.chats);
   const activeChatId = useStore((s) => s.activeChatId);
   const settings = useStore((s) => s.settings);
   const [busy, setBusy] = useState(false);
-  const [imageMode, setImageMode] = useState(false);
+  const [mode, setMode] = useState<ComposerMode>('chat');
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -53,6 +74,34 @@ export function ChatView({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => 
     setBusy(false);
   };
 
+  /** Chatga model xabarini qo'shib, uni yangilash funksiyasini qaytaradi. */
+  const openModelMessage = (chatId: string, user: Message, initial: string) => {
+    const modelMsg: Message = {
+      id: uid('m_'),
+      role: 'model',
+      text: initial,
+      createdAt: Date.now(),
+    };
+    setState((s) => ({
+      chats: s.chats.map((c) =>
+        c.id === chatId
+          ? { ...c, updatedAt: Date.now(), messages: [...c.messages, user, modelMsg] }
+          : c,
+      ),
+    }));
+    return (patch: Partial<Message>) =>
+      setState((s) => ({
+        chats: s.chats.map((c) =>
+          c.id === chatId
+            ? {
+                ...c,
+                messages: c.messages.map((m) => (m.id === modelMsg.id ? { ...m, ...patch } : m)),
+              }
+            : c,
+        ),
+      }));
+  };
+
   const runImage = async (chatId: string, prompt: string, refs: Attachment[]) => {
     const userMsg: Message = {
       id: uid('m_'),
@@ -61,36 +110,9 @@ export function ChatView({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => 
       attachments: refs.length ? refs : undefined,
       createdAt: Date.now(),
     };
-    const modelMsg: Message = {
-      id: uid('m_'),
-      role: 'model',
-      text: 'Rasm chizilmoqda…',
-      createdAt: Date.now(),
-    };
-    setState((s) => ({
-      chats: s.chats.map((c) =>
-        c.id === chatId
-          ? { ...c, updatedAt: Date.now(), messages: [...c.messages, userMsg, modelMsg] }
-          : c,
-      ),
-    }));
-
+    const patch = openModelMessage(chatId, userMsg, 'Rasm chizilmoqda…');
     const controller = new AbortController();
     abortRef.current = controller;
-
-    const patch = (patchValue: Partial<Message>) =>
-      setState((s) => ({
-        chats: s.chats.map((c) =>
-          c.id === chatId
-            ? {
-                ...c,
-                messages: c.messages.map((m) =>
-                  m.id === modelMsg.id ? { ...m, ...patchValue } : m,
-                ),
-              }
-            : c,
-        ),
-      }));
 
     try {
       const result = await generateImage(
@@ -110,10 +132,35 @@ export function ChatView({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => 
         createdAt: Date.now(),
       }));
       setState((s) => ({ artifacts: [...artifacts, ...s.artifacts] }));
+      patch({ text: result.text || 'Rasm tayyor.', artifactIds: artifacts.map((a) => a.id) });
+    } catch (err) {
+      const aborted = (err as Error)?.name === 'AbortError';
       patch({
-        text: result.text || 'Rasm tayyor.',
-        artifactIds: artifacts.map((a) => a.id),
+        text: '',
+        error: aborted ? 'Toʻxtatildi.' : String((err as Error)?.message ?? err),
       });
+    } finally {
+      abortRef.current = null;
+      setBusy(false);
+    }
+  };
+
+  const runVideo = async (chatId: string, topic: string) => {
+    const userMsg: Message = { id: uid('m_'), role: 'user', text: topic, createdAt: Date.now() };
+    const patch = openModelMessage(chatId, userMsg, 'Ssenariy yozilmoqda…');
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const project = await planVideo(topic, { chatId }, controller.signal);
+      patch({
+        text:
+          `**${project.title}** — ${project.scenes.length} sahnadan iborat ssenariy tayyor.\n\n` +
+          'Kartani bosing: rasm va ovozni yasaymiz, subtitr koʻrinishini sozlaysiz, ' +
+          'soʻng video telefoningizning oʻzida yigʻiladi.',
+        videoId: project.id,
+      });
+      onOpenVideo(project.id);
     } catch (err) {
       const aborted = (err as Error)?.name === 'AbortError';
       patch({
@@ -135,23 +182,40 @@ export function ChatView({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => 
     stickRef.current = true;
     setBusy(true);
 
-    if (imageMode) {
+    if (mode === 'rasm') {
       await runImage(chatId, text, attachments);
+      return;
+    }
+    if (mode === 'video') {
+      await runVideo(chatId, text);
       return;
     }
 
     const controller = new AbortController();
     abortRef.current = controller;
-    const result = await sendMessage(chatId, text, attachments, controller.signal);
+    const result = await sendMessage(
+      chatId,
+      text,
+      attachments,
+      controller.signal,
+      BRIEFS[mode],
+    );
     abortRef.current = null;
     setBusy(false);
 
+    // «Ilova yasash» rejimida natijani darhol Ilovalarimga saqlaymiz.
+    if (mode === 'ilova' && result.ok) {
+      const html = splitSegments(result.text).find(
+        (seg) => seg.type === 'code' && seg.lang === 'html' && seg.closed,
+      );
+      if (html && html.type === 'code') {
+        const app = saveApp(html.value, text.slice(0, 30) || 'Ilova');
+        toast(`«${app.name}» Ilovalarimga qoʻshildi`);
+      }
+    }
+
     if (result.ok && settings.autoSpeak && result.text) {
-      void speak(result.text, {
-        lang: settings.ttsLang,
-        rate: settings.ttsRate,
-        voiceUri: settings.ttsVoiceUri,
-      });
+      void speak(result.text);
     }
   };
 
@@ -181,7 +245,7 @@ export function ChatView({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => 
           <div style={{ padding: '30px 16px' }}>
             <Empty
               title="Salom! Men Dahoman."
-              hint="Fanlarni tushuntiraman, jadval va rejalaringizni yuritaman, ilova yasab beraman."
+              hint="Fanlarni tushuntiraman, kurs ochaman, ilova va video yasab beraman, jadvalingizni yuritaman."
             />
             <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
               {STARTERS.map((s) => (
@@ -205,6 +269,7 @@ export function ChatView({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => 
                 streaming={busy && i === messages.length - 1 && m.role === 'model'}
                 isLast={i === lastModelIndex && !busy}
                 onOpenArtifact={onOpenArtifact}
+                onOpenVideo={onOpenVideo}
                 onRegenerate={onRegenerate}
               />
             ))}
@@ -212,13 +277,7 @@ export function ChatView({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => 
         )}
       </div>
 
-      <Composer
-        busy={busy}
-        imageMode={imageMode}
-        onToggleImageMode={() => setImageMode((v) => !v)}
-        onSend={onSend}
-        onStop={stop}
-      />
+      <Composer busy={busy} mode={mode} onMode={setMode} onSend={onSend} onStop={stop} />
     </>
   );
 }

@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { playWavBase64 } from '../lib/audio';
 import { saveBackup } from '../lib/exporter';
-import { listVoices, speak, type VoiceOption } from '../lib/speech';
+import { byRole, cachedModels, getModels, pickModel, type ModelInfo } from '../lib/models';
+import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
 import { exportState, importState, resetState, updateSettings, useStore } from '../lib/store';
+import { Refresh } from './Icons';
 import { Sheet, Switch, toast } from './ui';
-
-const MODELS = [
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash — tez, kundalik ish uchun' },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro — eng kuchli, murakkab masalalar' },
-  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite — eng tejamkor' },
-];
 
 const TTS_LANGS = [
   { id: 'uz-UZ', label: 'Oʻzbekcha' },
@@ -19,22 +16,83 @@ const TTS_LANGS = [
 
 export function Settings({ onClose }: { onClose: () => void }) {
   const settings = useStore((s) => s.settings);
-  const [voices, setVoices] = useState<VoiceOption[]>([]);
+  const [models, setModels] = useState<ModelInfo[]>(cachedModels());
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [deviceVoices, setDeviceVoices] = useState<DeviceVoice[]>([]);
   const [showKey, setShowKey] = useState(false);
+  const [testing, setTesting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    void listVoices().then(setVoices);
+    void listDeviceVoices().then(setDeviceVoices);
   }, []);
 
-  const matching = voices.filter((v) =>
+  const refreshModels = async (force = true) => {
+    if (!settings.apiKey) {
+      toast('Avval API kalitni kiriting');
+      return;
+    }
+    setLoadingModels(true);
+    try {
+      const list = await getModels(settings.apiKey, force);
+      setModels(list);
+      updateSettings({
+        model: pickModel(list, 'chat', settings.model) ?? settings.model,
+        imageModel: pickModel(list, 'image', settings.imageModel) ?? settings.imageModel,
+        ttsModel: pickModel(list, 'tts', settings.ttsModel) ?? settings.ttsModel,
+      });
+      toast(`${list.length} ta model topildi`);
+    } catch (err) {
+      toast(String((err as Error)?.message ?? err));
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  const chatModels = byRole(models, 'chat');
+  const imageModels = byRole(models, 'image');
+  const ttsModels = byRole(models, 'tts');
+
+  const deviceMatching = deviceVoices.filter((v) =>
     v.lang?.toLowerCase().startsWith(settings.ttsLang.slice(0, 2).toLowerCase()),
   );
+
+  const tryVoice = async () => {
+    if (testing) return;
+    setTesting(true);
+    const sample = 'Salom! Men Daho — sizning oʻquv yordamchingizman. Keling, birga oʻrganamiz.';
+    try {
+      if (settings.ttsEngine === 'gemini' && settings.apiKey) {
+        playWavBase64(await synthesize(sample));
+      } else {
+        await speak(sample);
+      }
+    } catch (err) {
+      toast(String((err as Error)?.message ?? err));
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const onImport = async (file: File | undefined) => {
     if (!file) return;
     const text = await file.text();
     toast(importState(text) ? 'Maʼlumotlar tiklandi' : 'Fayl notoʻgʻri');
+  };
+
+  const modelOptions = (list: ModelInfo[], current: string) => {
+    const known = list.some((m) => m.id === current);
+    return (
+      <>
+        {!known && <option value={current}>{current} (roʻyxatda yoʻq)</option>}
+        {list.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.label}
+            {m.preview ? ' · sinov' : ''}
+          </option>
+        ))}
+      </>
+    );
   };
 
   return (
@@ -61,32 +119,45 @@ export function Settings({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div className="tiny" style={{ marginTop: 6 }}>
-          Kalitni bepul olish: aistudio.google.com/apikey. Kalit faqat shu telefonda saqlanadi,
-          hech qayerga yuborilmaydi.
+          Kalitni bepul olish: aistudio.google.com/apikey. Kalit faqat shu telefonda saqlanadi.
         </div>
       </div>
 
+      <button
+        className="btn ghost wide"
+        onClick={() => void refreshModels()}
+        disabled={loadingModels}
+        style={{ marginBottom: 12 }}
+      >
+        <Refresh size={15} /> {loadingModels ? 'Qidirilmoqda…' : 'Modellarni yangilash'}
+      </button>
+      <div className="tiny" style={{ margin: '-6px 0 12px' }}>
+        Roʻyxat Google’dan jonli olinadi — yangi model chiqsa shu yerda oʻzi paydo boʻladi.
+        Eski model ishlamay qolsa ham shu tugma tuzatadi.
+      </div>
+
       <div className="field">
-        <label>Model</label>
-        <select
-          value={settings.model}
-          onChange={(e) => updateSettings({ model: e.target.value })}
-        >
-          {MODELS.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
+        <label>Suhbat modeli</label>
+        <select value={settings.model} onChange={(e) => updateSettings({ model: e.target.value })}>
+          {modelOptions(chatModels, settings.model)}
         </select>
       </div>
 
       <div className="field">
         <label>Rasm modeli</label>
-        <input
-          value={settings.imageModel}
-          onChange={(e) => updateSettings({ imageModel: e.target.value.trim() })}
-          placeholder="gemini-2.5-flash-image"
-        />
+        {imageModels.length ? (
+          <select
+            value={settings.imageModel}
+            onChange={(e) => updateSettings({ imageModel: e.target.value })}
+          >
+            {modelOptions(imageModels, settings.imageModel)}
+          </select>
+        ) : (
+          <input
+            value={settings.imageModel}
+            onChange={(e) => updateSettings({ imageModel: e.target.value.trim() })}
+          />
+        )}
       </div>
 
       <div className="field">
@@ -106,76 +177,123 @@ export function Settings({ onClose }: { onClose: () => void }) {
         Ovoz
       </div>
 
+      <div className="field">
+        <label>Ovoz manbai</label>
+        <select
+          value={settings.ttsEngine}
+          onChange={(e) => updateSettings({ ttsEngine: e.target.value as 'gemini' | 'qurilma' })}
+        >
+          <option value="gemini">Gemini — tabiiy, jonli ovoz</option>
+          <option value="qurilma">Telefon ovozi — internetsiz, lekin robotroq</option>
+        </select>
+      </div>
+
+      {settings.ttsEngine === 'gemini' ? (
+        <>
+          <div className="field">
+            <label>Diktor</label>
+            <div className="voice-grid">
+              {VOICES.map((v) => (
+                <button
+                  key={v.id}
+                  className={settings.ttsVoice === v.id ? 'voice-tile on' : 'voice-tile'}
+                  onClick={() => updateSettings({ ttsVoice: v.id })}
+                >
+                  <b>{v.name}</b>
+                  <span>{v.note}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          {ttsModels.length > 0 && (
+            <div className="field">
+              <label>Ovoz modeli</label>
+              <select
+                value={settings.ttsModel}
+                onChange={(e) => updateSettings({ ttsModel: e.target.value })}
+              >
+                {modelOptions(ttsModels, settings.ttsModel)}
+              </select>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="field">
+            <label>Ovoz tili</label>
+            <select
+              value={settings.ttsLang}
+              onChange={(e) => updateSettings({ ttsLang: e.target.value, ttsVoiceUri: '' })}
+            >
+              {TTS_LANGS.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {deviceMatching.length > 0 && (
+            <div className="field">
+              <label>Ovoz</label>
+              <select
+                value={settings.ttsVoiceUri}
+                onChange={(e) => updateSettings({ ttsVoiceUri: e.target.value })}
+              >
+                <option value="">Standart</option>
+                {deviceMatching.map((v) => (
+                  <option key={v.uri} value={v.uri}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="field">
+            <label>Oʻqish tezligi: {settings.ttsRate.toFixed(1)}×</label>
+            <input
+              type="range"
+              min={0.5}
+              max={2}
+              step={0.1}
+              value={settings.ttsRate}
+              onChange={(e) => updateSettings({ ttsRate: Number(e.target.value) })}
+              style={{ padding: 0, background: 'none', border: 'none' }}
+            />
+          </div>
+        </>
+      )}
+
       <Switch
         on={settings.autoSpeak}
         onChange={(v) => updateSettings({ autoSpeak: v })}
         label="Javoblarni avtomatik oʻqib berish"
-        hint="Qurilmaning bepul ovoz sintezatori ishlatiladi"
       />
 
-      <div className="field">
-        <label>Ovoz tili</label>
-        <select
-          value={settings.ttsLang}
-          onChange={(e) => updateSettings({ ttsLang: e.target.value, ttsVoiceUri: '' })}
-        >
-          {TTS_LANGS.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.label}
-            </option>
-          ))}
-        </select>
-        <div className="tiny" style={{ marginTop: 5 }}>
-          Oʻzbekcha ovoz koʻp qurilmalarda oʻrnatilmagan. Boʻlmasa, Play Store’dan “Google Text-to-Speech”
-          ni yangilang yoki ruscha ovozni tanlang.
-        </div>
-      </div>
-
-      {matching.length > 0 && (
-        <div className="field">
-          <label>Ovoz</label>
-          <select
-            value={settings.ttsVoiceUri}
-            onChange={(e) => updateSettings({ ttsVoiceUri: e.target.value })}
-          >
-            <option value="">Standart</option>
-            {matching.map((v) => (
-              <option key={v.uri} value={v.uri}>
-                {v.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      <div className="field">
-        <label>Oʻqish tezligi: {settings.ttsRate.toFixed(1)}×</label>
-        <input
-          type="range"
-          min={0.5}
-          max={2}
-          step={0.1}
-          value={settings.ttsRate}
-          onChange={(e) => updateSettings({ ttsRate: Number(e.target.value) })}
-          style={{ padding: 0, background: 'none', border: 'none' }}
-        />
-      </div>
-
-      <button
-        className="btn ghost wide"
-        onClick={() =>
-          speak('Salom! Men Daho, sizning oʻquv yordamchingizman.', {
-            lang: settings.ttsLang,
-            rate: settings.ttsRate,
-            voiceUri: settings.ttsVoiceUri,
-          })
-        }
-      >
-        Ovozni sinab koʻrish
+      <button className="btn ghost wide" onClick={() => void tryVoice()} disabled={testing}>
+        {testing ? 'Tayyorlanmoqda…' : 'Ovozni sinab koʻrish'}
       </button>
 
-      <div className="field" style={{ marginTop: 12 }}>
-        <label>Mikrofon tili</label>
+      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+        Mikrofon
+      </div>
+
+      <div className="field">
+        <label>Nutqni tanish</label>
+        <select
+          value={settings.sttEngine}
+          onChange={(e) => updateSettings({ sttEngine: e.target.value as 'gemini' | 'qurilma' })}
+        >
+          <option value="gemini">Gemini — oʻzbekchani yaxshi tushunadi</option>
+          <option value="qurilma">Telefon xizmati — tezroq, lekin aniqligi past</option>
+        </select>
+        <div className="tiny" style={{ marginTop: 5 }}>
+          Gemini rejimida gapirib boʻlgach mikrofon tugmasini yana bosing — yozuv matnga
+          aylanadi.
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Gapirish tili</label>
         <select
           value={settings.sttLang}
           onChange={(e) => updateSettings({ sttLang: e.target.value })}
@@ -264,7 +382,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
         className="btn ghost wide"
         style={{ marginTop: 9, color: 'var(--danger)' }}
         onClick={() => {
-          if (window.confirm('Barcha suhbat, konspekt va jadval oʻchiriladi. Davom etamizmi?')) {
+          if (window.confirm('Barcha suhbat, kurs, ilova va jadval oʻchiriladi. Davom etamizmi?')) {
             resetState();
             toast('Hammasi tozalandi');
             onClose();
@@ -275,7 +393,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
       </button>
 
       <div className="tiny" style={{ textAlign: 'center', marginTop: 16 }}>
-        Daho 1.0 · maʼlumotlar faqat shu telefonda saqlanadi
+        Daho 2.0 · maʼlumotlar faqat shu telefonda saqlanadi
       </div>
     </Sheet>
   );

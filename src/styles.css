@@ -618,52 +618,90 @@ textarea {
 
 .composer {
   flex: 0 0 auto;
-  border-top: 1px solid var(--line);
   background: var(--bg);
-  padding: 8px 10px calc(8px + var(--safe-bottom));
+  padding: 6px 10px calc(10px + var(--safe-bottom));
+}
+
+.mode-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 6px 8px 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0 4px 7px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.mode-chip button {
+  color: inherit;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(127, 127, 127, 0.18);
 }
 
 .composer-box {
   display: flex;
   align-items: flex-end;
-  gap: 6px;
+  gap: 4px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 20px;
-  padding: 4px 4px 4px 6px;
+  border-radius: 999px;
+  padding: 5px;
+  transition: border-color 0.18s;
+}
+
+.composer-box.listening {
+  border-color: var(--danger);
 }
 
 .composer textarea {
   flex: 1 1 auto;
   background: none;
   border: none;
-  padding: 9px 4px;
+  padding: 10px 6px;
   min-height: 22px;
-  max-height: 140px;
+  max-height: 132px;
   resize: none;
   line-height: 1.45;
+  font-size: 15px;
 }
 
-.send {
+.round-btn {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
   display: grid;
   place-items: center;
-  flex: 0 0 auto;
-}
-
-.send:disabled {
-  background: var(--surface-2);
   color: var(--muted);
+  flex: 0 0 auto;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
 }
 
-.rec {
-  background: var(--danger) !important;
-  color: #fff !important;
+.round-btn:active {
+  transform: scale(0.92);
+}
+
+.round-btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.round-btn.rec {
+  background: var(--danger);
+  color: #fff;
   animation: pulse 1.2s infinite;
+}
+
+.round-btn:disabled {
+  opacity: 0.5;
 }
 
 @keyframes pulse {
@@ -675,7 +713,7 @@ textarea {
 .pending-strip {
   display: flex;
   gap: 6px;
-  padding: 0 4px 7px;
+  padding: 0 6px 8px;
   overflow-x: auto;
 }
 
@@ -688,7 +726,7 @@ textarea {
   width: 54px;
   height: 54px;
   object-fit: cover;
-  border-radius: 9px;
+  border-radius: 12px;
   border: 1px solid var(--line);
 }
 
@@ -704,6 +742,43 @@ textarea {
   font-size: 11px;
   display: grid;
   place-items: center;
+}
+
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 12px;
+  border-radius: 13px;
+  border: 1px solid transparent;
+  margin-bottom: 4px;
+}
+
+.action-row.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.action-row:active {
+  background: var(--surface-2);
+}
+
+.action-row b {
+  font-size: 14.5px;
+  font-weight: 550;
+}
+
+.action-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  flex: 0 0 auto;
 }
 
 /* ---------- Artifact ---------- */
@@ -1041,4 +1116,244 @@ textarea {
 .switch.on i {
   transform: translateX(17px);
   background: #fff;
+}
+
+/* ---------- Yangi bo'limlar ---------- */
+
+.side-emoji {
+  width: 22px;
+  text-align: center;
+  font-size: 15px;
+  flex: 0 0 auto;
+}
+
+/* Mini ilovalar */
+
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+
+.app-tile {
+  position: relative;
+}
+
+.app-open {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 14px 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.app-open:active {
+  transform: scale(0.95);
+  border-color: var(--accent);
+}
+
+.app-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+}
+
+.app-name {
+  font-size: 12.5px;
+  text-align: center;
+  line-height: 1.3;
+  color: var(--text);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.app-edit {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  background: var(--surface-2);
+}
+
+.icon-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.icon-picker button {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  font-size: 20px;
+  display: grid;
+  place-items: center;
+}
+
+.icon-picker button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Kurslar */
+
+.course-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.topic-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 7px;
+}
+
+.topic-num {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+}
+
+/* Video */
+
+.video-card {
+  display: flex;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  padding: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin: 9px 0;
+}
+
+.video-cover {
+  position: relative;
+  width: 62px;
+  height: 92px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.video-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-cover-empty {
+  font-size: 24px;
+}
+
+.video-aspect {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+}
+
+.scene-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.scene-thumb {
+  width: 54px;
+  height: 78px;
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 15px;
+  flex: 0 0 auto;
+}
+
+.scene-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.subtitle-preview {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  display: block;
+  background: var(--surface-2);
+}
+
+/* Ovoz tanlash */
+
+.voice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 7px;
+}
+
+.voice-tile {
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+
+.voice-tile.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.voice-tile b {
+  font-size: 13.5px;
+  font-weight: 570;
+}
+
+.voice-tile span {
+  font-size: 10.5px;
+  color: var(--muted);
 }

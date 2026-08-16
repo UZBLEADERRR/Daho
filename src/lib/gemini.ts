@@ -48,7 +48,7 @@ function humanError(status: number, body: string): string {
     case 403:
       return `API kalit qabul qilinmadi. Sozlamalardan kalitni tekshiring. (${detail})`;
     case 404:
-      return `Model topilmadi. Sozlamalarda model nomini tekshiring. (${detail})`;
+      return `Bu model endi mavjud emas. Sozlamalar → «Modellarni yangilash» tugmasini bosing. (${detail})`;
     case 429:
       return 'Limit tugadi — biroz kutib qayta urining (bepul reja daqiqalik cheklovga ega).';
     case 500:
@@ -255,13 +255,128 @@ export async function generateImage(
   return { images, text: text.trim() };
 }
 
+/** Modeldan qatʼiy JSON javob oladi (sxema boʻyicha). */
+export async function generateJson<T>(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  schema: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
+
+  const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.85,
+        responseMimeType: 'application/json',
+        responseSchema: schema,
+      },
+    }),
+    signal,
+  });
+  await assertOk(res);
+
+  const data = await res.json();
+  const parts: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
+  const raw = parts.map((p) => p.text ?? '').join('').trim();
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    // Baʼzan model JSON ni kod bloki ichida qaytaradi.
+    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenced) return JSON.parse(fenced[1]) as T;
+    throw new GeminiError('Model tushunarsiz javob qaytardi. Qaytadan urining.', 0);
+  }
+}
+
+export interface RemoteModel {
+  name: string;
+  displayName?: string;
+  description?: string;
+  supportedGenerationMethods?: string[];
+}
+
+/** Hisobga ochiq boʻlgan barcha modellar roʻyxati. */
+export async function listModels(apiKey: string): Promise<RemoteModel[]> {
+  if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
+  const out: RemoteModel[] = [];
+  let pageToken = '';
+
+  for (let page = 0; page < 5; page += 1) {
+    const url = new URL(`${BASE}/models`);
+    url.searchParams.set('pageSize', '200');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+
+    let res: Response;
+    try {
+      res = await fetch(url.toString(), { headers: { 'x-goog-api-key': apiKey } });
+    } catch {
+      throw new GeminiError('Internetga ulanib boʻlmadi.', 0);
+    }
+    await assertOk(res);
+    const data = await res.json();
+    out.push(...((data?.models ?? []) as RemoteModel[]));
+    pageToken = data?.nextPageToken ?? '';
+    if (!pageToken) break;
+  }
+  return out;
+}
+
+/**
+ * Gemini TTS — tabiiy ovozda oʻqish. PCM (L16) qaytaradi,
+ * ijro etishdan oldin WAV ga oʻralishi kerak.
+ */
+export async function generateSpeech(
+  apiKey: string,
+  model: string,
+  text: string,
+  voiceName: string,
+  styleHint?: string,
+  signal?: AbortSignal,
+): Promise<{ data: string; mimeType: string }> {
+  if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
+
+  const prompt = styleHint ? `${styleHint}\n\n${text}` : text;
+  const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+        },
+      },
+    }),
+    signal,
+  });
+  await assertOk(res);
+
+  const data = await res.json();
+  const parts: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
+  const audio = parts.find((p) => p.inlineData?.data);
+  if (!audio?.inlineData) {
+    throw new GeminiError('Model ovoz qaytarmadi. Sozlamalarda TTS modelini tekshiring.', 0);
+  }
+  return { data: audio.inlineData.data, mimeType: audio.inlineData.mimeType || 'audio/L16;rate=24000' };
+}
+
 /** Ovozli yozuvni matnga o'giradi (qurilmada STT bo'lmasa, zaxira yo'l). */
 export async function transcribeAudio(
   apiKey: string,
   model: string,
   audio: Attachment,
   signal?: AbortSignal,
+  lang = 'uz-UZ',
 ): Promise<string> {
+  const langName =
+    { 'uz-UZ': 'oʻzbek', 'ru-RU': 'rus', 'en-US': 'ingliz', 'tr-TR': 'turk' }[lang] ?? 'oʻzbek';
+
   const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -272,7 +387,10 @@ export async function transcribeAudio(
           parts: [
             { inlineData: { mimeType: audio.mimeType, data: audio.data } },
             {
-              text: 'Ushbu audiodagi nutqni aynan matnga oʻgir. Faqat matnni qaytar, izohsiz.',
+              text:
+                `Ushbu audiodagi nutq ${langName} tilida. Uni aynan matnga oʻgir. ` +
+                'Faqat matnning oʻzini qaytar — izoh, tirnoq yoki qoʻshimcha soʻzsiz. ' +
+                'Agar nutq eshitilmasa, boʻsh javob qaytar.',
             },
           ],
         },

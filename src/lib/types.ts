@@ -22,6 +22,10 @@ export interface Message {
   /** Ushbu xabar davomida yaratilgan artifact id lari */
   artifactIds?: string[];
   toolCalls?: ToolCallRecord[];
+  /** Shu xabar ochgan video loyihasi */
+  videoId?: string;
+  /** Shu xabardan saqlangan mini ilova */
+  appId?: string;
   createdAt: number;
   error?: string;
 }
@@ -108,20 +112,127 @@ export interface TimeLog {
 
 export type ThemeName = 'tun' | 'kun';
 
+export type Engine = 'gemini' | 'qurilma';
+
 export interface Settings {
   apiKey: string;
   model: string;
   imageModel: string;
+  ttsModel: string;
   theme: ThemeName;
   temperature: number;
   autoSpeak: boolean;
+  /** 'gemini' — tabiiy ovoz, 'qurilma' — tizim sintezatori */
+  ttsEngine: Engine;
+  ttsVoice: string;
   ttsLang: string;
   ttsRate: number;
   ttsVoiceUri: string;
+  sttEngine: Engine;
   sttLang: string;
   userName: string;
   university: string;
   customInstructions: string;
+}
+
+/* ---------- Mini ilovalar ---------- */
+
+export interface MiniApp {
+  id: string;
+  name: string;
+  icon: string; // emoji
+  description: string;
+  html: string;
+  createdAt: number;
+  updatedAt: number;
+  opens: number;
+}
+
+/* ---------- Kurslar ---------- */
+
+export interface CourseTopic {
+  id: string;
+  title: string;
+  summary: string;
+  /** Tayyorlangan dars artifact id si (bosilgach yaratiladi) */
+  lessonArtifactId?: string;
+  done: boolean;
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  field: string;
+  goal: string;
+  level: string;
+  topics: CourseTopic[];
+  createdAt: number;
+}
+
+/* ---------- Video ---------- */
+
+export interface SubtitleStyle {
+  font: string;
+  size: number;
+  color: string;
+  stroke: string;
+  strokeWidth: number;
+  background: string;
+  position: 'past' | 'orta' | 'yuqori';
+  uppercase: boolean;
+}
+
+export interface VideoCharacter {
+  id: string;
+  name: string;
+  /** Tashqi koʻrinish tavsifi — sahna rasmlarida ishlatiladi */
+  look: string;
+  voiceId: string;
+  /** Ixtiyoriy tayanch rasm (base64) */
+  refImage?: string;
+}
+
+export interface VideoScene {
+  id: string;
+  /** Ekранda eshitiladigan matn (ovoz va subtitr) */
+  narration: string;
+  /** Rasm uchun tasvir soʻrovi */
+  imagePrompt: string;
+  imageData?: string;
+  imageMime?: string;
+  audioWav?: string;
+  durationSec: number;
+  characterId?: string;
+}
+
+export type VideoStage =
+  | 'reja'
+  | 'ssenariy'
+  | 'sahnalar'
+  | 'rasmlar'
+  | 'ovoz'
+  | 'tayyor'
+  | 'render'
+  | 'yakunlandi';
+
+export interface VideoProject {
+  id: string;
+  chatId?: string;
+  topic: string;
+  title: string;
+  stage: VideoStage;
+  aspect: '9:16' | '16:9' | '1:1';
+  style: string;
+  voiceId: string;
+  scenes: VideoScene[];
+  characters: VideoCharacter[];
+  subtitle: SubtitleStyle;
+  /** Render natijasi — obyekt URL emas, base64 webm */
+  outputMime?: string;
+  outputSize?: number;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface AppState {
@@ -135,6 +246,9 @@ export interface AppState {
   projects: Project[];
   schedule: ScheduleItem[];
   timeLogs: TimeLog[];
+  apps: MiniApp[];
+  courses: Course[];
+  videos: VideoProject[];
 }
 
 export const DAYS = [

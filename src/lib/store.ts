@@ -1,18 +1,25 @@
 import { useSyncExternalStore } from 'react';
+import { FALLBACK_MODELS } from './models';
 import type { AppState, Settings } from './types';
 
 const STORAGE_KEY = 'daho.state.v1';
 
 export const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
-  model: 'gemini-2.5-flash',
-  imageModel: 'gemini-2.5-flash-image',
+  // Model roʻyxati birinchi ulanishda API dan olinadi va bu qiymat
+  // avtomatik eng yangi modelga almashtiriladi.
+  model: FALLBACK_MODELS.chat,
+  imageModel: FALLBACK_MODELS.image,
+  ttsModel: FALLBACK_MODELS.tts,
   theme: 'tun',
   temperature: 0.8,
   autoSpeak: false,
+  ttsEngine: 'gemini',
+  ttsVoice: 'sardor',
   ttsLang: 'uz-UZ',
   ttsRate: 1,
   ttsVoiceUri: '',
+  sttEngine: 'gemini',
   sttLang: 'uz-UZ',
   userName: '',
   university: '',
@@ -20,7 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 const EMPTY_STATE: AppState = {
-  version: 1,
+  version: 2,
   settings: DEFAULT_SETTINGS,
   chats: [],
   activeChatId: null,
@@ -30,17 +37,25 @@ const EMPTY_STATE: AppState = {
   projects: [],
   schedule: [],
   timeLogs: [],
+  apps: [],
+  courses: [],
+  videos: [],
 };
+
+/** Eski saqlangan holatdagi ishlamay qolgan model nomlarini tozalaydi. */
+const RETIRED_MODELS = /^(gemini-1\.|gemini-2\.0|gemini-2\.5-(flash|pro)$)/;
 
 function load(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return structuredClone(EMPTY_STATE);
     const parsed = JSON.parse(raw) as Partial<AppState>;
+    const settings = { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) };
+    if (RETIRED_MODELS.test(settings.model)) settings.model = DEFAULT_SETTINGS.model;
     return {
       ...structuredClone(EMPTY_STATE),
       ...parsed,
-      settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
+      settings,
     };
   } catch {
     return structuredClone(EMPTY_STATE);
