@@ -32,6 +32,9 @@ telefondagi oddiy ilovadek grid koʻrinishida turadi va toʻliq ekranda ochiladi
 Ilovalar oʻz maʼlumotini saqlaydi (hisob, natija, roʻyxat) — qumbox ichida
 xavfsiz saqlash qatlami ishlaydi, ilova ilovaning oʻz maʼlumotiga tegmaydi.
 Yasalgan ilova avtomatik sinovdan oʻtadi: xato boʻlsa darhol ogohlantiradi.
+Havola bilan qoʻshilgan ilovalar ham bor. ChatGPT, Google, Instagram kabi saytlar
+boshqa ilova ichida ochilishni taqiqlaydi (`X-Frame-Options`) — ular telefon
+brauzerida ochiladi. Har bir havolali ilova uchun buni qoʻlda ham sozlash mumkin.
 
 **Kurslar**
 «IELTS 7.0 olmoqchiman» deysiz — agent 40-100 ta mavzudan iborat kurs ochadi.

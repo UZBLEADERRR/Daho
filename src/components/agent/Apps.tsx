@@ -1,12 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { deleteApp, saveLinkApp, updateApp } from '../../lib/creations';
 import { saveArtifact } from '../../lib/exporter';
+import { blocksEmbedding, openExternal } from '../../lib/openlink';
 import { clearSandboxStore, sandboxDocument } from '../../lib/sandbox';
 import { useStore } from '../../lib/store';
 import type { MiniApp } from '../../lib/types';
 import { relativeTime, uid } from '../../lib/utils';
 import { Back, Download, Refresh, Trash } from '../Icons';
-import { Empty, Sheet, toast } from '../ui';
+import { Empty, Sheet, Switch, toast } from '../ui';
+
+/** Ilova brauzerda ochiladimi — qoʻlda belgilanmagan boʻlsa oʻzimiz aniqlaymiz. */
+function goesExternal(app: MiniApp): boolean {
+  if (!app.url) return false;
+  return app.external ?? blocksEmbedding(app.url);
+}
 
 const ICONS = ['🧮', '📊', '🎯', '📝', '🎲', '⏱', '💡', '🔤', '🧠', '📚', '🎨', '🔬', '💰', '🗂', '🏆', '⚡'];
 
@@ -22,6 +29,11 @@ export function Apps() {
 
   const launch = (app: MiniApp) => {
     updateApp(app.id, { opens: app.opens + 1 });
+    // Iframe’ni taqiqlaydigan saytlar telefon brauzerida ochiladi.
+    if (goesExternal(app)) {
+      if (!openExternal(app.url!)) toast('Havolani ochib boʻlmadi');
+      return;
+    }
     setOpen(app.id);
   };
 
@@ -37,6 +49,15 @@ export function Apps() {
               {running.icon} {running.name}
             </div>
           </div>
+          {running.url && (
+            <button
+              className="btn mini ghost"
+              onClick={() => openExternal(running.url!)}
+              aria-label="Brauzerda ochish"
+            >
+              Brauzerda
+            </button>
+          )}
           <button
             className="icon-btn"
             onClick={() => setReloadKey((k) => k + 1)}
@@ -45,9 +66,17 @@ export function Apps() {
             <Refresh />
           </button>
         </div>
+        {running.url && <LinkHint app={running} />}
         <div className="viewer-body">
           {running.url ? (
             <iframe key={reloadKey} title={running.name} src={running.url} />
+          ) : !running.html.trim() ? (
+            <div className="pad">
+              <Empty
+                title="Ilova boʻsh"
+                hint="Bu ilovaning kodi saqlanmagan. Chatda «shu ilovani qaytadan yasab ber» deb soʻrang."
+              />
+            </div>
           ) : (
             <iframe
               key={reloadKey}
@@ -147,7 +176,8 @@ export function Apps() {
             Qoʻshish
           </button>
           <div className="tiny" style={{ marginTop: 8 }}>
-            Havolali ilova internet talab qiladi. Ichki ilovalar esa oflayn ishlaydi.
+            Havolali ilova internet talab qiladi. ChatGPT, Google, Instagram kabi saytlar
+            ilova ichida ochilishni taqiqlaydi — ular telefon brauzerida ochiladi.
           </div>
         </Sheet>
       )}
@@ -208,9 +238,20 @@ export function Apps() {
           </button>
 
           {edit.url && (
-            <div className="tiny" style={{ marginBottom: 10, wordBreak: 'break-all' }}>
-              🔗 {edit.url}
-            </div>
+            <>
+              <div className="tiny" style={{ marginBottom: 10, wordBreak: 'break-all' }}>
+                🔗 {edit.url}
+              </div>
+              <Switch
+                on={goesExternal(edit)}
+                label="Brauzerda ochilsin"
+                hint="Baʼzi saytlar ilova ichida ochilishni taqiqlaydi — shu yoqilsa telefon brauzerida ochiladi."
+                onChange={(v) => {
+                  setEdit({ ...edit, external: v });
+                  updateApp(edit.id, { external: v });
+                }}
+              />
+            </>
           )}
 
           {!edit.url && (
@@ -253,6 +294,40 @@ export function Apps() {
           </button>
         </Sheet>
       )}
+    </div>
+  );
+}
+
+/**
+ * Havolali ilova ustidagi ogohlantirish. Sayt iframe ichida ochilishni
+ * taqiqlagan boʻlsa (ERR_BLOCKED_BY_RESPONSE) foydalanuvchi boʻsh oq sahifa
+ * koʻradi — shuning uchun brauzerda ochish tugmasini koʻrsatamiz.
+ */
+function LinkHint({ app }: { app: MiniApp }) {
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    setSlow(false);
+    const timer = setTimeout(() => setSlow(true), 5000);
+    return () => clearTimeout(timer);
+  }, [app.id, app.url]);
+
+  if (!slow) return null;
+
+  return (
+    <div className="link-hint">
+      <span className="grow">
+        Sayt ochilmadimi? Baʼzi saytlar ilova ichida ochilishni taqiqlaydi.
+      </span>
+      <button
+        className="btn mini"
+        onClick={() => {
+          updateApp(app.id, { external: true });
+          openExternal(app.url!);
+        }}
+      >
+        Brauzerda ochish
+      </button>
     </div>
   );
 }

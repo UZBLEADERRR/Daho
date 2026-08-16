@@ -1,4 +1,5 @@
 import { streamGenerate } from './gemini';
+import { blocksEmbedding, normalizeUrl } from './openlink';
 import { getState, setState } from './store';
 import type { Artifact, Course, CourseTopic, MiniApp } from './types';
 import { uid } from './utils';
@@ -51,7 +52,7 @@ export function saveApp(
 
 /** Tashqi havolani mini ilova sifatida qoʻshadi. */
 export function saveLinkApp(url: string, name: string, icon = '🔗', description = ''): MiniApp {
-  const clean = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  const clean = normalizeUrl(url);
   const app: MiniApp = {
     id: uid('app_'),
     name: name.trim().slice(0, 40) || new URL(clean).hostname,
@@ -59,6 +60,8 @@ export function saveLinkApp(url: string, name: string, icon = '🔗', descriptio
     description: description.slice(0, 120),
     html: '',
     url: clean,
+    // Bunday saytlar iframe’da ochilmaydi — darhol brauzerga yoʻnaltiramiz.
+    external: blocksEmbedding(clean),
     createdAt: Date.now(),
     updatedAt: Date.now(),
     opens: 0,

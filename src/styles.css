@@ -2037,3 +2037,16 @@ textarea {
   height: 100%;
   object-fit: cover;
 }
+
+/* Havolali mini ilova ogohlantirishi */
+.link-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}

@@ -156,6 +156,8 @@ export interface MiniApp {
   html: string;
   /** Tashqi havola bilan qoʻshilgan ilova */
   url?: string;
+  /** Sayt iframe’da ochilishni taqiqlaydi — brauzerda ochiladi */
+  external?: boolean;
   createdAt: number;
   updatedAt: number;
   opens: number;
