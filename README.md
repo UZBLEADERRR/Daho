@@ -255,7 +255,8 @@ fayl yaratish va kod agenti uchun yaroqli):
 | `qwen/qwen3-coder` | kod yozish |
 | `deepseek/deepseek-chat` | narx/samaradorlik |
 | `openai/gpt-4o-mini` | tez va barqaror |
-| `google/gemini-2.5-flash-image` | **rasm** (muqova, illyustratsiya) |
+| `google/gemini-2.5-flash-image-preview` | **rasm** (muqova, illyustratsiya) |
+| `black-forest-labs/flux.2-pro` | **rasm** — sifatliroq, qimmatroq |
 
 > ⚠️ Vositalarni (function calling) qoʻllab-quvvatlamaydigan modellar bilan
 > suhbat ishlaydi, lekin jadval yozish, kurs ochish, kitob va Code agenti

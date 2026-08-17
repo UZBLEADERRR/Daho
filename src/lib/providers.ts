@@ -55,6 +55,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
       'openai/gpt-4o-mini',
       'anthropic/claude-3.5-sonnet',
       'meta-llama/llama-3.3-70b-instruct',
+      // Rasm modellari — muqova va illyustratsiya uchun
+      'google/gemini-2.5-flash-image-preview',
+      'black-forest-labs/flux.2-pro',
     ],
   },
   {
