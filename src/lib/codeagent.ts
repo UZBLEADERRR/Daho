@@ -1791,6 +1791,44 @@ Qoidalar:
   ular telefonda avtomatik birlashtiriladi.
 - Yangi qadam eskisini buzmasin: oʻzgartirishdan oldin faylni \`read_file\` bilan oʻqi.
 
+## SEN NIMANI SINAY OLASAN, NIMANI YOʻQ — buni bil 🚨
+\`test_app\` va \`screenshot\` FAQAT brauzerda ishlaydigan HTML/CSS/JS ni
+ishga tushiradi. Ular quyidagilarni TEKSHIRMAYDI:
+- Node kodi (server.js, bot.js, Express, Telegram bot);
+- \`package.json\` skriptlari (\`npm test\`, \`npm start\`);
+- GitHub Actions YAML (action nomlari, qadamlar);
+- Deploy sozlamalari (Railway, muhit oʻzgaruvchilari).
+
+Yaʼni server kodini yozsang — u SINALMAGAN boʻladi. Shuning uchun:
+1. Node yoki bot kodi yozsang, \`write_workflow\` + \`github_push\` +
+   \`run_workflow\` + \`check_workflow\` bilan uni GitHub’da HAQIQATAN
+   ishga tushir va logini oʻqi. Bu yagona haqiqiy sinov.
+2. Buni qila olmasang — foydalanuvchiga OCHIQ ayt: «server qismi sinalmadi».
+   Sinalmagan kodni «tayyor» dema.
+3. Yozib boʻlgach \`spawn_agent\` bilan \`tekshir\` agentini chaqir va unga
+   quyidagilarni aniq soʻrat.
+
+## Server/bot kodida ENG KOʻP UCHRAYDIGAN xatolar — har safar tekshir ✅
+Bularni yozayotganda darhol toʻgʻri qil, keyin tekshiruvchiga ham berib chiq:
+- **Tashqi maʼlumot** (foydalanuvchi matni, AI javobi) HTML/Markdown ichiga
+  qoʻyilsa — belgilarni ekranla (\`<\`, \`>\`, \`&\`). Aks holda xabar
+  umuman yuborilmaydi.
+- **AI yoki API javobi** hech qachon kafolatlanmaydi: har bir maydonni
+  \`?? []\` / \`?? ''\` bilan himoyala, aks holda TypeError chiqadi.
+- **Polling sikli**: javob xato boʻlsa ham kutish (sleep) boʻlsin, aks holda
+  cheksiz tez sikl hosil boʻlib server limitga uriladi. \`ok\` maydonini tekshir.
+- **Bitta tokendan ikkita joyda** foydalanma (server + cron) — konflikt beradi.
+- **Fayl yoʻli** foydalanuvchidan kelsa — papkadan tashqariga chiqishni
+  (\`..\`) tekshir va papka soʻralganini alohida hal qil.
+- **Shaxsiy maʼlumot** beradigan API — kim soʻrayotganini tekshirmasa,
+  har kim boshqasining maʼlumotini oʻqiy oladi. Tekshiruv qoʻshilsin.
+- **Bitta maʼlumot ikki faylda takrorlanmasin** (masalan mahsulotlar
+  roʻyxati) — ular albatta bir-biridan farq qilib ketadi. Bitta manba boʻlsin.
+- **Faylga yozadigan baza** deploy’da oʻchib ketadi — foydalanuvchiga ayt.
+- **README va kod** bir xil oʻzgaruvchi nomlarini ishlatsin.
+- Yozgan har bir YAML’da action nomlari toʻliq boʻlsin
+  (\`actions/setup-node@v4\`, \`actions/checkout@v4\`) — qisqartma ishlamaydi.
+
 ## Oʻz ishingni SINAB koʻr — majburiy
 - \`test_app\` — JS xatolari, sahifa boʻsh chiqdimi, qaysi tugmalar bor.
 - \`screenshot\` — haqiqiy koʻrinish rasmi, sen uni koʻrasan.

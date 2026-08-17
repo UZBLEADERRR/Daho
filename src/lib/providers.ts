@@ -1180,6 +1180,22 @@ function jobScore(m: ModelInfo, job: JobKind): number {
   const id = m.label.toLowerCase();
   let score = priorityRank(m.label) + m.score / 10;
 
+  /**
+   * Yengil model («flash», «lite», «mini») — faqat mayda ish uchun.
+   * Rejalashtirish, kod va tekshirishda ular bitta qadamdan keyin toʻxtab
+   * qoladi va sifatsiz kod yozadi, shuning uchun jiddiy ishlarda pastga
+   * tushiramiz. Aks holda «gemini-3.7-flash» kabi nom «gemini-3» boʻlgani
+   * uchun yuqori baho olib, bosh agent boʻlib qolardi.
+   */
+  const light = /flash|lite|mini|nano|haiku|small|turbo|8b|4b|\b[0-3]b\b/.test(id);
+  if (light && job !== 'tez') score -= 55;
+
+  if (job === 'reja') {
+    // Bosh agent — eng kuchli boʻlishi kerak: u rejalashtiradi, boʻlib
+    // beradi va oxirigacha olib boradi.
+    if (/opus|max|sonnet|thinking|reasoner|\bpro\b|gpt-[5-9]|k2|k3/.test(id)) score += 50;
+  }
+
   if (job === 'kod') {
     if (/coder|code/.test(id)) score += 60;
     if (/qwen|deepseek|claude|gpt-[5-9]|kimi/.test(id)) score += 25;
@@ -1222,8 +1238,11 @@ function jobScore(m: ModelInfo, job: JobKind): number {
  */
 export function pickForProject(job: JobKind, pinned?: string): string {
   const { settings } = getState();
+  // Loyihaga ATAYLAB tanlangan model — eng ustun. Foydalanuvchi model
+  // tanlagan boʻlsa, u aynan oʻshani kutadi.
+  if (pinned) return pinned;
   if (settings.autoPickModel !== false) return pickForJob(job);
-  return pinned || settings.model;
+  return settings.model;
 }
 
 export function pickForJob(job: JobKind, fallback?: string): string {

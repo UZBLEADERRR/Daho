@@ -222,8 +222,10 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
   // AVTO yoqilgan boʻlsa Avto ustun — yorliqda ham aynan shu koʻrinsin,
   // aks holda foydalanuvchi «avtoni yoqdim, lekin eski model turibdi» deb
   // oʻylaydi.
-  const auto = settings.autoPickModel !== false;
-  const activeModel = auto ? pickForProject('reja', project.model) : project.model || settings.model;
+  // Uch holat: 📌 loyihaga tanlangan · ⚡ avto · oddiy asosiy model.
+  const pinned = Boolean(project.model);
+  const auto = !pinned && settings.autoPickModel !== false;
+  const activeModel = pickForProject('reja', project.model);
 
   return (
     <>
@@ -239,22 +241,26 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
           </div>
         </div>
         <button className="model-chip" onClick={() => setModelPicker(true)}>
-          {auto && '⚡ '}
+          {pinned ? '📌 ' : auto ? '⚡ ' : ''}
           {parseRef(activeModel).model.replace(/^gemini-/, '')}
         </button>
       </div>
 
       {modelPicker && (
         <Sheet title="Model tanlang" onClose={() => setModelPicker(false)}>
-          {auto && (
+          {pinned ? (
             <div className="notice" style={{ marginBottom: 12 }}>
-              <b>⚡ Avto rejim yoqilgan.</b> Har bir ish uchun model oʻzi tanlanadi
-              (reja, kod, dizayn, tekshirish alohida). Hozir:{' '}
-              <b>{modelLabel(activeModel)}</b>.
+              <b>📌 Bu loyihaga model qadalgan:</b> {modelLabel(activeModel)}.
               <br />
-              Qoʻlda tanlash uchun Sozlamalar → AI modellar → «Avto» ni oʻchiring.
+              Avto rejim ishlashi uchun pastdagi «⚡ Avto» ni tanlang.
             </div>
-          )}
+          ) : auto ? (
+            <div className="notice" style={{ marginBottom: 12 }}>
+              <b>⚡ Avto yoqilgan.</b> Har bir ish uchun alohida model tanlanadi:
+              reja, kod, dizayn va tekshirish uchun har xil. Rejalashtirishda
+              hozir: <b>{modelLabel(activeModel)}</b>.
+            </div>
+          ) : null}
           <button
             className={!project.model ? 'action-row on' : 'action-row'}
             onClick={() => {
@@ -262,10 +268,14 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
               setModelPicker(false);
             }}
           >
-            <span className="action-icon">⚙️</span>
+            <span className="action-icon">{settings.autoPickModel !== false ? '⚡' : '⚙️'}</span>
             <span className="grow">
-              <b>Umumiy sozlama</b>
-              <div className="tiny">{modelLabel(settings.model)}</div>
+              <b>{settings.autoPickModel !== false ? 'Avto — ishga qarab tanlaydi' : 'Umumiy sozlama'}</b>
+              <div className="tiny">
+                {settings.autoPickModel !== false
+                  ? 'reja, kod, dizayn, tekshirish — har biriga mos model'
+                  : modelLabel(settings.model)}
+              </div>
             </span>
           </button>
           {chatModels.map((m) => (
