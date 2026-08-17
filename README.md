@@ -235,14 +235,44 @@ Har bir push'dan soʻng GitHub Actions APK yigʻadi:
 
 ## Birinchi ishga tushirish
 
-Ilova ochilganda Sozlamalar oynasi chiqadi. U yerga bepul Gemini API kalitini
-kiriting:
+Ilova ochilganda Sozlamalar oynasi chiqadi. Ikki yoʻldan birini tanlang —
+**bittasi kifoya**.
+
+### A) OpenRouter bilan (bitta kalit, koʻp model)
+
+1. https://openrouter.ai/keys ga kiring, kalit yasang (`sk-or-…`)
+2. Ilovada Sozlamalar → **AI modellar** → «+ Model provayderi ulash» →
+   **OpenRouter**
+3. Kalitni qoʻyib, **«Model roʻyxatini olish»** ni bosing
+4. Tamom — asosiy model oʻzi tanlanadi
+
+Tavsiya qilinadigan modellar (vositalar bilan ishlaydi, yaʼni jadval yozish,
+fayl yaratish va kod agenti uchun yaroqli):
+
+| Model | Nima uchun |
+|---|---|
+| `moonshotai/kimi-k2` | uzun kontekst, kuchli agentlik |
+| `qwen/qwen3-coder` | kod yozish |
+| `deepseek/deepseek-chat` | narx/samaradorlik |
+| `openai/gpt-4o-mini` | tez va barqaror |
+| `google/gemini-2.5-flash-image` | **rasm** (muqova, illyustratsiya) |
+
+> ⚠️ Vositalarni (function calling) qoʻllab-quvvatlamaydigan modellar bilan
+> suhbat ishlaydi, lekin jadval yozish, kurs ochish, kitob va Code agenti
+> ishlamaydi. Yuqoridagi roʻyxatdan tanlash xavfsiz.
+
+### B) Gemini bilan
 
 1. https://aistudio.google.com/apikey ga kiring
-2. Google hisobingiz bilan kiring va **Create API key** bosing
-3. Kalitni nusxalab, ilovadagi «API kalit» maydoniga qoʻying
+2. **Create API key** bosing
+3. Kalitni «API kalit» maydoniga qoʻying
 
-Kalit faqat telefoningizning xotirasida saqlanadi.
+Gemini qoʻshimcha imkoniyat beradi: **internet qidiruvi**, **tabiiy ovoz**
+(TTS) va **mikrofonni matnga oʻgirish**. OpenRouter bilan ishlaganda ovoz
+telefonning oʻz xizmati orqali ketadi. Ikkalasini birga ulasangiz — eng
+yaxshisi: Daho har vazifaga mos modelni oʻzi tanlaydi.
+
+Kalitlar faqat telefoningizning xotirasida saqlanadi.
 
 ## Oʻzi yigʻib olish
 
