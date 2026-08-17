@@ -28,7 +28,7 @@ import {
   setTopics,
   updateRepo,
 } from './github';
-import { cachedModels, getModels } from './models';
+import { cachedModels, geminiModel, getModels } from './models';
 import {
   bundlePreview,
   deleteProjectFile,
@@ -1096,7 +1096,7 @@ async function runTool(
       const query = str(args.query);
       if (!query) return { ok: false, summary: 'Soʻrov boʻsh', payload: { error: 'boʻsh' } };
       const { settings } = getState();
-      const answer = await searchAnswer(settings.apiKey, settings.model, query, signal);
+      const answer = await searchAnswer(settings.apiKey, geminiModel(settings.model), query, signal);
       return {
         ok: true,
         summary: `Qidirildi: ${query.slice(0, 40)}`,

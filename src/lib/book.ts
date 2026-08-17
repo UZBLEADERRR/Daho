@@ -20,6 +20,7 @@
  */
 
 import { generateImage, generateJson } from './gemini';
+import { geminiModel } from './models';
 import { streamResilient } from './resilient';
 import { completeAny } from './providers';
 import { getState, setState } from './store';
@@ -154,7 +155,7 @@ Qoidalar:
 
   const res = await generateJson<{
     savollar: Array<{ savol: string; variantlar: string[]; koʻp?: boolean }>;
-  }>(settings.apiKey, settings.model, prompt, QUESTION_SCHEMA, signal);
+  }>(settings.apiKey, geminiModel(getState().settings.model), prompt, QUESTION_SCHEMA, signal);
 
   return (res.savollar ?? []).slice(0, 6).map((q) => ({
     question: q.savol,
@@ -269,7 +270,7 @@ Javob faqat JSON.`;
 
   const plan = await generateJson<PlanResponse>(
     settings.apiKey,
-    settings.model,
+    geminiModel(getState().settings.model),
     prompt,
     PLAN_SCHEMA,
     signal,

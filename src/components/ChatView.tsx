@@ -28,6 +28,7 @@ const STARTERS = [
   'Hosila mavzusini misollar bilan tushuntir',
   'IELTS 7.0 olmoqchiman, kurs ochib ber',
   'Formulalarni yodlash uchun ilova yasab ber',
+  'Menga kitob yozib ber',
 ];
 
 interface Props {

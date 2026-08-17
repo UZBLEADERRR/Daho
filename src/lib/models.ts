@@ -165,6 +165,21 @@ export function pickModel(
   return (stable[0] ?? pool[0]).id;
 }
 
+/**
+ * Gemini-ga xos ishlar uchun model nomi.
+ *
+ * Sxema boʻyicha JSON, Google qidiruvi, audio va PDF oʻqish — bularni
+ * faqat Gemini bajaradi. Foydalanuvchi asosiy modelni tashqi provayderga
+ * (Kimi, Qwen, GPT…) almashtirgan boʻlsa, shu vositalar baribir ishlashi
+ * uchun bu yerda Gemini modeliga qaytamiz.
+ */
+export function geminiModel(preferred?: string): string {
+  if (preferred && !preferred.includes('::')) return preferred;
+  const list = cachedModels().filter((m) => m.role === 'chat' && !m.provider);
+  const stable = list.find((m) => !m.preview);
+  return (stable ?? list[0])?.id ?? FALLBACK_MODELS.chat;
+}
+
 /** Standart taxminlar — API hali soʻralmaganda ishlatiladi. */
 export const FALLBACK_MODELS: Record<Exclude<ModelRole, 'embed' | 'other'>, string> = {
   chat: 'gemini-flash-latest',

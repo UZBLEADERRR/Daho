@@ -4,7 +4,7 @@ import { applyAppLook } from '../lib/applook';
 import { saveBackup } from '../lib/exporter';
 import { getRepo, whoAmI } from '../lib/github';
 import { transcribeAudio } from '../lib/gemini';
-import { byRole, cachedModels, getModels, pickModel, type ModelInfo } from '../lib/models';
+import { byRole, cachedModels, geminiModel, getModels, pickModel, type ModelInfo } from '../lib/models';
 import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
 import { exportState, getState, importState, resetState, updateSettings, useStore } from '../lib/store';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
@@ -713,7 +713,7 @@ function MicCheck() {
       try {
         const text = await transcribeAudio(
           settings.apiKey,
-          settings.model,
+          geminiModel(settings.model),
           { mimeType, data },
           undefined,
           settings.sttLang,

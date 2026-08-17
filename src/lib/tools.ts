@@ -1,6 +1,7 @@
 import { askUser } from './ask';
 import { b64ToBytes } from './audio';
 import { createBook, writeBook } from './book';
+import { geminiModel } from './models';
 import { saveBytes } from './exporter';
 import { generateImage, generateJson, generateText, searchAnswer } from './gemini';
 import {
@@ -694,7 +695,7 @@ export async function executeTool(
       if (!query) return { ok: false, summary: 'Savol berilmadi', payload: { error: 'query_yoq' } };
       const { settings } = getState();
       try {
-        const answer = await searchAnswer(settings.apiKey, settings.model, query, ctx.signal);
+        const answer = await searchAnswer(settings.apiKey, geminiModel(settings.model), query, ctx.signal);
         return {
           ok: true,
           summary: `Qidirildi: ${query.slice(0, 40)}`,
@@ -801,7 +802,7 @@ export async function executeTool(
       } else {
         text = await generateText(
           settings.apiKey,
-          settings.model,
+          geminiModel(settings.model),
           'Ushbu PDF hujjatning BARCHA matnini oʻzgartirmasdan, tartibi bilan yozib ber. ' +
             'Izoh qoʻshma, faqat matnning oʻzi.',
           [source],

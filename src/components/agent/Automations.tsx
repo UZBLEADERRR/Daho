@@ -87,8 +87,9 @@ export function Automations() {
                     </div>
                   </button>
                   <Switch
+                    compact
                     on={item.enabled}
-                    label=""
+                    label={`${item.title} — yoqish`}
                     onChange={(on) => patchAutomation(item.id, { enabled: on })}
                   />
                 </div>

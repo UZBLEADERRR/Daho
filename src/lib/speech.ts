@@ -3,7 +3,7 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { blobToWavBytes, bytesToB64, playWavBase64, stopPlayback, ttsToWavBase64 } from './audio';
 import { generateSpeech, transcribeAudio } from './gemini';
-import { cachedModels } from './models';
+import { cachedModels, geminiModel } from './models';
 import { getState } from './store';
 
 const isNative = () => Capacitor.isNativePlatform();
@@ -225,10 +225,7 @@ export interface ListenCallbacks {
  * modelini tanlaymiz.
  */
 function sttModel(): string {
-  const { settings } = getState();
-  if (settings.model && !settings.model.includes('::')) return settings.model;
-  const gemini = cachedModels().find((m) => m.role === 'chat' && !m.provider);
-  return gemini?.id ?? 'gemini-flash-latest';
+  return geminiModel(getState().settings.model);
 }
 
 /** Mikrofon ruxsatini so'raydi. */

@@ -15,6 +15,8 @@ const KIND_LABEL: Record<string, string> = {
   video: '🎬',
   dars: '🎓',
   rasm: '🖼',
+  kitob: '📚',
+  avto: '🔁',
 };
 
 /**

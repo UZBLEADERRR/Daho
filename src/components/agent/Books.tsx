@@ -1,18 +1,21 @@
 import { useState } from 'react';
 import {
+  askBookQuestions,
   bookProgress,
   bookToMarkdown,
+  createBook,
   deleteBook,
   makeCover,
   rewriteChapter,
   writeBook,
+  type BookQuestion,
 } from '../../lib/book';
 import { exportDocument, type DocFormat } from '../../lib/exporter';
 import { updateView, useStore } from '../../lib/store';
 import { stopFor, useTaskFor } from '../../lib/tasks';
 import type { Artifact, Book, BookChapter } from '../../lib/types';
 import { Back, Download, Play, Refresh, Stop, Trash } from '../Icons';
-import { Empty, Sheet, toast } from '../ui';
+import { Empty, Sheet, Switch, toast } from '../ui';
 
 const STAGE_TEXT: Record<Book['stage'], string> = {
   soʻrov: 'savollar kutilmoqda',
@@ -27,6 +30,7 @@ export function Books({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => voi
   const books = useStore((s) => s.books);
   // Ochiq kitob store da saqlanadi — boʻlim almashsangiz ham shu joyda qolasiz.
   const openId = useStore((s) => s.view.bookId);
+  const [wizard, setWizard] = useState(false);
 
   const book = books.find((b) => b.id === openId) ?? null;
   if (book) {
@@ -42,16 +46,188 @@ export function Books({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => voi
   return (
     <div className="scroll">
       <div className="pad">
+        <button className="btn wide" style={{ marginBottom: 12 }} onClick={() => setWizard(true)}>
+          + Yangi kitob yozdirish
+        </button>
+
         {books.length === 0 ? (
           <Empty
             title="Kitob yoʻq"
-            hint="Chatda «kitob yozmoqchiman» deb yozing. Daho savollar beradi, keyin rejasini tuzadi, muqova chizadi va boblarni bittalab yozadi."
+            hint="Yuqoridagi tugmani bosing yoki chatda «kitob yozmoqchiman» deng. Daho savollar beradi, rejasini tuzadi, muqova chizadi va boblarni bittalab yozadi."
           />
         ) : (
           books.map((b) => <BookCard key={b.id} book={b} onOpen={() => updateView({ bookId: b.id })} />)
         )}
       </div>
+
+      {wizard && <BookWizard onClose={() => setWizard(false)} />}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Yangi kitob — savol-javob                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Kitob boshlash sehrgari. Foydalanuvchi gʻoyasini yozadi, Daho unga qarab
+ * aniqlovchi savollar tuzadi (tayyor variantlar bilan — telefonda yozish
+ * qiyin), javoblar toʻplangach yozish boshlanadi.
+ */
+function BookWizard({ onClose }: { onClose: () => void }) {
+  const [idea, setIdea] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [questions, setQuestions] = useState<BookQuestion[] | null>(null);
+  const [answers, setAnswers] = useState<string[]>([]);
+  const [custom, setCustom] = useState('');
+  const [step, setStep] = useState(0);
+  const [chapters, setChapters] = useState(12);
+  const [words, setWords] = useState(1200);
+  const [images, setImages] = useState(true);
+
+  const ask = async () => {
+    if (idea.trim().length < 8) {
+      toast('Kitob haqida biroz batafsilroq yozing');
+      return;
+    }
+    setBusy(true);
+    try {
+      const list = await askBookQuestions(idea.trim());
+      setQuestions(list);
+      setAnswers(new Array(list.length).fill(''));
+    } catch (err) {
+      // Savollar chiqmasa ham kitob yozilaveradi — toʻxtatib qoʻymaymiz.
+      toast(`Savollar tuzilmadi (${String((err as Error)?.message ?? err)}) — toʻgʻridan-toʻgʻri boshlaymiz`);
+      setQuestions([]);
+      setAnswers([]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const answer = (value: string) => {
+    const next = [...answers];
+    next[step] = value;
+    setAnswers(next);
+    setCustom('');
+    setStep((s) => s + 1);
+  };
+
+  const start = () => {
+    const summary = (questions ?? [])
+      .map((q, i) => (answers[i] ? `${q.question} → ${answers[i]}` : ''))
+      .filter(Boolean)
+      .join('\n');
+
+    const book = createBook({
+      request: summary ? `${idea.trim()}\n\nAniqlashtirilgan javoblar:\n${summary}` : idea.trim(),
+      wordsPerChapter: words,
+      withImages: images,
+    });
+    void writeBook(book.id, { chapterCount: chapters, answers: summary });
+    updateView({ bookId: book.id });
+    onClose();
+  };
+
+  // 1-bosqich: gʻoya
+  if (!questions) {
+    return (
+      <Sheet title="Yangi kitob" onClose={onClose}>
+        <label className="field">
+          <span>Qanday kitob yozdirmoqchisiz?</span>
+          <textarea
+            autoFocus
+            rows={5}
+            value={idea}
+            onChange={(e) => setIdea(e.target.value)}
+            placeholder="Masalan: Samarqandda yashovchi yosh dasturchi haqida qissa — u eski qoʻlyozmadan sirli algoritm topib oladi…"
+          />
+        </label>
+        <div className="tiny" style={{ marginBottom: 12 }}>
+          Qancha koʻp aytsangiz, kitob shuncha sizniki boʻladi. Qolganini Daho soʻraydi.
+        </div>
+        <button className="btn wide" disabled={busy} onClick={() => void ask()}>
+          {busy ? 'Savollar tayyorlanmoqda…' : 'Davom etish'}
+        </button>
+      </Sheet>
+    );
+  }
+
+  // 2-bosqich: savollar
+  if (step < questions.length) {
+    const q = questions[step];
+    return (
+      <Sheet title={`Savol ${step + 1}/${questions.length}`} onClose={onClose}>
+        <div style={{ fontSize: 16, marginBottom: 14 }}>{q.question}</div>
+        {q.options.map((option) => (
+          <button key={option} className="action-row" onClick={() => answer(option)}>
+            <span className="action-icon">•</span>
+            <span className="grow">
+              <b>{option}</b>
+            </span>
+          </button>
+        ))}
+        <label className="field" style={{ marginTop: 12 }}>
+          <span>Yoki oʻzingiz yozing</span>
+          <input
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            placeholder="Erkin javob…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && custom.trim()) answer(custom.trim());
+            }}
+          />
+        </label>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn ghost grow" onClick={() => answer('')}>
+            Oʻtkazib yuborish
+          </button>
+          <button className="btn grow" disabled={!custom.trim()} onClick={() => answer(custom.trim())}>
+            Keyingisi
+          </button>
+        </div>
+      </Sheet>
+    );
+  }
+
+  // 3-bosqich: hajm
+  return (
+    <Sheet title="Kitob hajmi" onClose={onClose}>
+      <div className="field">
+        <label>Boblar soni: {chapters}</label>
+        <input
+          type="range"
+          min={3}
+          max={40}
+          value={chapters}
+          onChange={(e) => setChapters(Number(e.target.value))}
+        />
+      </div>
+      <div className="field">
+        <label>Har bobda taxminan: {words.toLocaleString('uz-UZ')} soʻz</label>
+        <input
+          type="range"
+          min={400}
+          max={3000}
+          step={100}
+          value={words}
+          onChange={(e) => setWords(Number(e.target.value))}
+        />
+      </div>
+      <Switch
+        on={images}
+        onChange={setImages}
+        label="Rasmlar bilan"
+        hint="Muqova va har bobga bir uslubdagi illyustratsiya"
+      />
+      <div className="tiny" style={{ margin: '12px 0' }}>
+        Jami taxminan {(chapters * words).toLocaleString('uz-UZ')} soʻz. Yozish fonda
+        davom etadi — boshqa boʻlimga oʻtsangiz ham toʻxtamaydi.
+      </div>
+      <button className="btn wide" onClick={start}>
+        📚 Yozishni boshlash
+      </button>
+    </Sheet>
   );
 }
 

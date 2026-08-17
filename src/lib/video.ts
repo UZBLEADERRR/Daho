@@ -1,6 +1,7 @@
 import { b64ToBytes } from './audio';
 import { generateImage, generateJson } from './gemini';
 import { synthesize } from './speech';
+import { geminiModel } from './models';
 import { getState, setState } from './store';
 import type {
   SubtitleStyle,
@@ -144,7 +145,7 @@ export async function planVideo(
 
   const plan = await generateJson<PlanResponse>(
     settings.apiKey,
-    settings.model,
+    geminiModel(settings.model),
     planPrompt(topic, sceneCount, style),
     PLAN_SCHEMA,
     signal,

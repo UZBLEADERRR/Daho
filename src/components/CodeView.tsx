@@ -12,7 +12,7 @@ import {
 import { saveBytes } from '../lib/exporter';
 import { getRepo, listRepos, whoAmI, type GhRepo } from '../lib/github';
 import { saveLinkApp } from '../lib/creations';
-import { byRole, cachedModels } from '../lib/models';
+import { modelLabel, parseRef, usableChatModels } from '../lib/providers';
 import { TEMPLATES } from '../lib/templates';
 import { renderMarkdown } from '../lib/markdown';
 import { sandboxDocument } from '../lib/sandbox';
@@ -178,11 +178,49 @@ async function connectSelfRepo(projectId: string): Promise<void> {
 
 type Tab = 'suhbat' | 'fayllar' | 'korinish' | 'nashr';
 
+/**
+ * Agentning joriy rejasi. Nima bajarilgani va nima qolganini koʻrsatadi —
+ * katta loyihada ish qayerga yetganini kuzatib turish uchun.
+ */
+function PlanCard({ project }: { project: CodeProject }) {
+  const [open, setOpen] = useState(true);
+  const plan = project.plan ?? [];
+  if (!plan.length) return null;
+
+  const done = plan.filter((s) => s.done).length;
+  const next = plan.find((s) => !s.done);
+
+  return (
+    <div className="plan-card">
+      <button className="plan-head" onClick={() => setOpen((v) => !v)}>
+        <span className="grow" style={{ textAlign: 'left', minWidth: 0 }}>
+          <b>
+            📋 Reja — {done}/{plan.length}
+          </b>
+          {!open && next && <div className="tiny">Keyingi: {next.title}</div>}
+        </span>
+        <span className="tiny">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="plan-steps">
+          {plan.map((step, i) => (
+            <div key={step.id} className={step.done ? 'plan-step done' : 'plan-step'}>
+              <span className="plan-mark">{step.done ? '✓' : i + 1}</span>
+              <span className="grow">{step.title}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Workspace({ project, onBack }: { project: CodeProject; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>('suhbat');
   const [modelPicker, setModelPicker] = useState(false);
   const settings = useStore((s) => s.settings);
-  const chatModels = byRole(cachedModels(), 'chat');
+  // Barcha ulangan provayderlarning modellari — Gemini, Kimi, Qwen, GPT…
+  const chatModels = usableChatModels();
   const activeModel = project.model || settings.model;
 
   return (
@@ -199,7 +237,7 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
           </div>
         </div>
         <button className="model-chip" onClick={() => setModelPicker(true)}>
-          {activeModel.replace(/^gemini-/, '')}
+          {parseRef(activeModel).model.replace(/^gemini-/, '')}
         </button>
       </div>
 
@@ -215,7 +253,7 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
             <span className="action-icon">⚙️</span>
             <span className="grow">
               <b>Umumiy sozlama</b>
-              <div className="tiny">{settings.model}</div>
+              <div className="tiny">{modelLabel(settings.model)}</div>
             </span>
           </button>
           {chatModels.map((m) => (
@@ -231,7 +269,7 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
               <span className="grow">
                 <b>{m.label}</b>
                 <div className="tiny">
-                  {m.id}
+                  {m.providerLabel ?? 'Gemini'}
                   {m.preview ? ' · sinov' : ''}
                 </div>
               </span>
@@ -242,6 +280,10 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
               Roʻyxat boʻsh. Sozlamalar → «Modellarni yangilash» tugmasini bosing.
             </div>
           )}
+          <div className="tiny" style={{ marginTop: 10, opacity: 0.7 }}>
+            Yordamchi agentlar (dizayn, kod, tekshir) uchun alohida model tanlash —
+            Sozlamalar → AI modellar → Rollar.
+          </div>
         </Sheet>
       )}
 
@@ -444,6 +486,8 @@ function CodeChat({ project }: { project: CodeProject }) {
           </div>
         )}
       </div>
+
+      <PlanCard project={project} />
 
       {busy && !question && (
         <div className="interject-hint">

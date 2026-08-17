@@ -11,7 +11,11 @@ import type { Artifact, Attachment, Chat, Message, ToolCallRecord } from './type
 import { uid } from './utils';
 
 const MAX_HISTORY = 40;
-const MAX_TOOL_ROUNDS = 8;
+/**
+ * Bitta javob ichida nechta marta vosita chaqirilishi mumkin.
+ * Jadval kiritish yoki kurs ochish kabi ishlarda koʻp chaqiruv kerak boʻladi.
+ */
+const MAX_TOOL_ROUNDS = 16;
 
 /** Vosita nomining foydalanuvchiga koʻrinadigan tavsifi. */
 const STEP_LABEL: Record<string, string> = {
