@@ -1078,12 +1078,14 @@ async function runTool(
           payload: { error: shot.error ?? 'nomaʼlum' },
         };
       }
+      const cut = (shot.fullHeight ?? 0) > shot.height;
       return {
         ok: true,
         summary: `Skrinshot olindi (${shot.width}×${shot.height})`,
         payload: {
           status: 'rasm keyingi xabarda koʻrsatiladi',
           oʻlcham: `${shot.width}×${shot.height}`,
+          ...(cut ? { eslatma_2: `Sahifa ${shot.fullHeight}px — rasmda faqat yuqori qismi` } : {}),
           eslatma:
             'Rasmga qara: joylashuv, boʻsh joy, matn oʻlchami, ranglar mos kelyaptimi. ' +
             'Kamchilik koʻrsang tuzat va qayta suratga ol.',

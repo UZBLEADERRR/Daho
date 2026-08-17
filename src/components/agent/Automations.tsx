@@ -16,6 +16,25 @@ import { Empty, Sheet, Switch, toast } from '../ui';
 
 const DAY_NAMES = ['Du', 'Se', 'Cho', 'Pay', 'Ju', 'Sha', 'Yak'];
 
+/**
+ * Keyingi ishga tushish vaqti oʻzbekcha.
+ * `toLocaleString('uz-UZ')` hafta kunini inglizcha qaytaradi, shuning
+ * uchun kun nomini oʻzimiz yozamiz.
+ */
+function describeNext(at: number): string {
+  const date = new Date(at);
+  const time = date.toTimeString().slice(0, 5);
+  const today = new Date();
+  const sameDay = date.toDateString() === today.toDateString();
+  if (sameDay) return `bugun ${time}`;
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  if (date.toDateString() === tomorrow.toDateString()) return `ertaga ${time}`;
+
+  return `${DAY_NAMES[(date.getDay() + 6) % 7]} ${time}`;
+}
+
 const TEMPLATES = [
   {
     icon: '📰',
@@ -106,20 +125,11 @@ export function Automations() {
                 ) : (
                   <div className="tiny" style={{ marginTop: 8, opacity: 0.75 }}>
                     {item.lastRunAt
-                      ? `Oxirgi: ${new Date(item.lastRunAt).toLocaleString('uz-UZ', {
-                          day: 'numeric',
-                          month: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}${item.lastOk === false ? ' — xato' : ''}`
+                      ? `Oxirgi: ${describeNext(item.lastRunAt)}${
+                          item.lastOk === false ? ' — xato' : ''
+                        }`
                       : 'Hali ishlamagan'}
-                    {next
-                      ? ` · Keyingi: ${new Date(next).toLocaleString('uz-UZ', {
-                          weekday: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}`
-                      : ''}
+                    {next ? ` · Keyingi: ${describeNext(next)}` : ''}
                   </div>
                 )}
 

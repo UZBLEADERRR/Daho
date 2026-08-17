@@ -21,6 +21,8 @@ export interface ShotResult {
   data?: string;
   width: number;
   height: number;
+  /** Sahifaning haqiqiy balandligi — rasm kesilgan boʻlishi mumkin */
+  fullHeight?: number;
   error?: string;
 }
 
@@ -49,24 +51,35 @@ const SHOOTER = `<script>(function(){
   function shoot(){
     try{
       var w=Math.min(document.documentElement.clientWidth||412,900);
-      var h=Math.min(Math.max(document.body.scrollHeight||800,400),2400);
+      // Balandlikni cheklaymiz: juda uzun rasm modelga koʻp token yeydi
+      // va foyda bermaydi — dizayn muammosi yuqori qismda koʻrinadi.
+      var full=document.body.scrollHeight||800;
+      var h=Math.min(Math.max(full,400),1600);
 
       var clone=document.body.cloneNode(true);
       // Skript va koʻrinmas elementlar rasmga kerak emas.
-      var junk=clone.querySelectorAll('script,noscript,link,meta');
+      var junk=clone.querySelectorAll('script,noscript,link,meta,iframe');
       for(var k=junk.length-1;k>=0;k--) junk[k].parentNode.removeChild(junk[k]);
       inline(document.body,clone);
 
-      var holder=document.createElement('div');
-      holder.appendChild(clone);
-      var bg=getComputedStyle(document.body).backgroundColor||'#0e0e12';
+      var bg=getComputedStyle(document.body).backgroundColor;
+      if(!bg||bg==='rgba(0, 0, 0, 0)'||bg==='transparent') bg='#0e0e12';
+
+      // foreignObject ichi XML boʻlishi SHART: innerHTML yopilmagan teglar
+      // (<input>, <br>) qoldiradi va rasm yuklanmaydi. XMLSerializer esa
+      // ularni <input/> koʻrinishida, toʻgʻri nom maydoni bilan yozadi.
+      var body=new XMLSerializer().serializeToString(clone);
+      // <body> tegini <div> ga aylantiramiz — SVG ichida body boʻlmaydi.
+      body=body
+        .replace(/^<body/i,'<div')
+        .replace(/<\\/body>$/i,'</div>');
 
       var svg=
         '<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'">'+
         '<rect width="100%" height="100%" fill="'+bg+'"/>'+
-        '<foreignObject width="100%" height="100%">'+
+        '<foreignObject x="0" y="0" width="'+w+'" height="'+h+'">'+
         '<div xmlns="http://www.w3.org/1999/xhtml" style="width:'+w+'px">'+
-        holder.innerHTML+
+        body+
         '</div></foreignObject></svg>';
 
       var img=new Image();
@@ -78,7 +91,7 @@ const SHOOTER = `<script>(function(){
           ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
           ctx.drawImage(img,0,0);
           var url=canvas.toDataURL('image/png');
-          send({data:url.slice(url.indexOf(',')+1),width:w,height:h});
+          send({data:url.slice(url.indexOf(',')+1),width:w,height:h,full:full});
         }catch(e){ send({error:'canvas: '+e.message}); }
       };
       img.onerror=function(){ send({error:'rasmga oʻgirib boʻlmadi'}); };
@@ -119,7 +132,15 @@ export function screenshotHtml(html: string, waitMs = 1400): Promise<ShotResult>
 
     const onMessage = (event: MessageEvent) => {
       const payload = event.data as
-        | { __daho?: string; id?: string; data?: string; width?: number; height?: number; error?: string }
+        | {
+            __daho?: string;
+            id?: string;
+            data?: string;
+            width?: number;
+            height?: number;
+            full?: number;
+            error?: string;
+          }
         | null;
       if (!payload || payload.__daho !== 'shot' || payload.id !== id) return;
       if (payload.error || !payload.data) {
@@ -131,6 +152,7 @@ export function screenshotHtml(html: string, waitMs = 1400): Promise<ShotResult>
         data: payload.data,
         width: payload.width ?? 0,
         height: payload.height ?? 0,
+        fullHeight: payload.full ?? payload.height ?? 0,
       });
     };
 
