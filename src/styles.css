@@ -1742,16 +1742,43 @@ textarea {
 
 /* Chat jadvallarini chiroyliroq qilish */
 
+/*
+  Xabarning oʻzi yonga siljimaydi — faqat jadval siljiydi. Aks holda uzun
+  jadval butun xabarni cho'zib, matnni ekrandan chiqarib yuboradi.
+*/
 .md {
+  overflow-wrap: anywhere;
+}
+
+/* Jadval uchun siljiydigan quti (markdown.ts oʻzi oʻraydi) */
+.table-scroll {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  /* Yon tomonda yana siljish borligini bildiradigan yumshoq soya */
+  background:
+    linear-gradient(to right, var(--surface) 30%, transparent),
+    linear-gradient(to left, var(--surface) 30%, transparent) 100% 0;
+  background-size: 24px 100%, 24px 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, local;
 }
 
 .md table {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  overflow: hidden;
+  /* Tabiiy kenglik: ustunlar siqilmaydi, matn vertikal tushmaydi */
+  width: auto;
+  min-width: 100%;
+  border: none;
   border-collapse: collapse;
+  margin: 0;
+}
+
+.md .table-scroll td,
+.md .table-scroll th {
+  /* Yacheykadagi matn bir qatorda qolsin — siljitib oʻqiladi */
+  white-space: nowrap;
 }
 
 .md thead {
@@ -2476,4 +2503,35 @@ textarea {
 .plan-step.done .plan-mark {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+/* ---------- Kartochka ichidagi yozuvlar chiqib ketmasin ---------- */
+
+/*
+  Loyiha nomi va repozitoriy nomi uzun boʻlsa kartochkadan chiqib ketardi.
+  Endi nom ikki qatorga sigʻadi, chiplar esa yangi qatorga tushadi.
+*/
+.ellipsis-2 {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+/* Uzun repozitoriy nomi — kesib, uch nuqta bilan */
+.chip.clip {
+  max-width: 52%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

@@ -14,6 +14,12 @@ export interface ModelInfo {
   /** Tashqi provayder id si; boʻsh boʻlsa — Gemini */
   provider?: string;
   providerLabel?: string;
+  /** Rasmni koʻra oladimi */
+  vision?: boolean;
+  /** Vositalarni chaqira oladimi */
+  tools?: boolean;
+  /** Kontekst oynasi (token) */
+  context?: number;
 }
 
 const CACHE_KEY = 'daho.models.v1';

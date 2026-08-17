@@ -18,7 +18,6 @@ import { interject, usePendingQuestion } from '../lib/ask';
 import { noteTask, startTask, stopFor, useTaskFor } from '../lib/tasks';
 import { planVideo } from '../lib/video';
 import { Composer, type ComposerMode } from './Composer';
-import { LiveVoice } from './LiveVoice';
 import { MessageView } from './Message';
 import { QuestionCard } from './QuestionCard';
 import { Empty, toast } from './ui';
@@ -55,7 +54,6 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
   const activeChatId = useStore((s) => s.activeChatId);
   const settings = useStore((s) => s.settings);
   const [mode, setMode] = useState<ComposerMode>('chat');
-  const [live, setLive] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
 
@@ -304,12 +302,7 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         onSend={onSend}
         onStop={stop}
         onLocation={() => onSend('Men hozir qayerdaman? Yaqin atrofda nima bor?', [])}
-        onLive={() => setLive(true)}
       />
-
-      {live && (
-        <LiveVoice chatId={activeChatId ?? ensureActiveChat()} onClose={() => setLive(false)} />
-      )}
     </>
   );
 }

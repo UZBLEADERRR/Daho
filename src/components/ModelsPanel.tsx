@@ -7,6 +7,7 @@ import {
   listProviderModels,
   parseRef,
   presetById,
+  searchModels,
 } from '../lib/providers';
 import { updateSettings, useStore } from '../lib/store';
 import type { ProviderConfig, RoleModels } from '../lib/types';
@@ -251,9 +252,13 @@ function ProviderEditor({
     }
     setBusy(true);
     try {
-      const ids = await listProviderModels(live, true);
-      setFound(ids);
-      toast(ids.length ? `${ids.length} ta model topildi` : 'Roʻyxat boʻsh — model nomini qoʻlda yozing');
+      const list = await listProviderModels(live, true);
+      setFound(list.map((m) => m.id));
+      toast(
+        list.length
+          ? `${list.length} ta model topildi`
+          : 'Roʻyxat boʻsh — model nomini qoʻlda yozing',
+      );
     } catch (err) {
       toast(String((err as Error)?.message ?? err));
     } finally {
@@ -371,9 +376,9 @@ function ModelList({ onClose }: { onClose: () => void }) {
   const [, force] = useState(0);
 
   const hidden = new Set(settings.hiddenModels ?? []);
-  const all = allCachedModels();
-  const q = query.trim().toLowerCase();
-  const visible = q ? all.filter((m) => m.id.toLowerCase().includes(q)) : all;
+  // Qidiruv BARCHA modellar boʻyicha ketadi (roʻyxat chegarasi qoʻllanmaydi),
+  // qidiruvsiz esa faqat kerakli oilalar koʻrinadi.
+  const visible = query.trim() ? searchModels(query) : allCachedModels();
 
   const toggle = (id: string) => {
     const next = hidden.has(id)
@@ -407,7 +412,7 @@ function ModelList({ onClose }: { onClose: () => void }) {
           className="grow"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Qidirish: kimi, qwen, flash…"
+          placeholder="Qidirish: kimi, qwen, claude, llama…"
         />
         <button className="btn mini ghost" disabled={busy} onClick={() => void refresh()}>
           <Refresh size={14} />

@@ -20,7 +20,7 @@
  */
 
 import { streamResilient } from './resilient';
-import { canMakeImages, completeAny, imageAny, jsonAny } from './providers';
+import { canMakeImages, completeAny, imageAny, jsonAny, pickForJob } from './providers';
 import { getState, setState } from './store';
 import { noteTask, startTask } from './tasks';
 import type { Artifact, Book, BookBible, BookChapter } from './types';
@@ -367,7 +367,8 @@ async function writeChapter(
   const book = getBook(bookId);
   if (!book) return;
 
-  const model = settings.roleModels.matn || settings.model;
+  // Kitob matni uchun eng mos model (avto rejim yoqilgan boʻlsa oʻzi tanlaydi).
+  const model = pickForJob('matn');
   const context = continuityContext(book, chapter.number);
   const isLast = chapter.number === book.chapters.length;
 

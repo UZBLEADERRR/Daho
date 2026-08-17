@@ -74,7 +74,7 @@ export function CodeView() {
               onClick={() => setOpenId(p.id)}
             >
               <div className="between">
-                <div className="grow" style={{ fontSize: 15.5, fontWeight: 580 }}>
+                <div className="grow ellipsis-2" style={{ fontSize: 15.5, fontWeight: 580 }}>
                   {p.name}
                 </div>
                 {p.publish && <span className="chip accent">jonli</span>}
@@ -84,20 +84,18 @@ export function CodeView() {
                   {p.description}
                 </div>
               )}
-              <div className="row" style={{ gap: 6, marginTop: 8 }}>
+              <div className="card-meta">
                 <span className="chip">
                   {TEMPLATES.find((t) => t.id === p.template)?.icon ?? '📦'}{' '}
                   {TEMPLATES.find((t) => t.id === p.template)?.name ?? 'Loyiha'}
                 </span>
                 <span className="chip">{p.files.length} fayl</span>
                 {p.repo && (
-                  <span className="chip">
-                    {p.repo.owner}/{p.repo.repo}
+                  <span className="chip clip" title={`${p.repo.owner}/${p.repo.repo}`}>
+                    {p.repo.repo}
                   </span>
                 )}
-                <span className="tiny" style={{ marginLeft: 'auto' }}>
-                  {relativeTime(p.updatedAt)}
-                </span>
+                <span className="tiny">{relativeTime(p.updatedAt)}</span>
               </div>
             </button>
           ))

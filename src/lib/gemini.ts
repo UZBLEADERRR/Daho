@@ -126,6 +126,8 @@ export interface StreamOptions {
   onText: (chunk: string) => void;
   /** Server band boʻlib qayta urinilayotganda chaqiriladi */
   onRetry?: (attempt: number, seconds: number) => void;
+  /** Holat haqida qisqa xabar (soʻrov soddalashtirildi, model almashtirildi…) */
+  onStep?: (step: string) => void;
 }
 
 export interface StreamResult {

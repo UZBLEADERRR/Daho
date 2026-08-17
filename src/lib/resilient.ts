@@ -122,6 +122,7 @@ export async function streamResilient(opts: ResilientOptions): Promise<StreamRes
           },
           onRetry: (n, seconds) =>
             opts.onStep?.(`server band — ${seconds} s kutib qayta urinaman (${n})`),
+          onStep: opts.onStep,
         });
       } catch (err) {
         if ((err as Error)?.name === 'AbortError') throw err;

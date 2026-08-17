@@ -190,6 +190,17 @@ export interface Settings {
   maxContinues: number;
   /** Code agenti uchun qadamlar chegarasi */
   agentRounds: number;
+  /**
+   * AVTO rejim: Daho har vazifaga oʻzi mos model tanlaydi (rollarga
+   * biriktirilgan modellar va imkoniyatlarga qarab). Oʻchirilgan boʻlsa
+   * hamma joyda faqat asosiy model ishlatiladi.
+   */
+  autoPickModel: boolean;
+  /**
+   * Avto rejim faqat shu modellardan tanlaydi. Boʻsh boʻlsa — oʻchirilmagan
+   * barcha modellar ichidan.
+   */
+  autoPool: string[];
 }
 
 /* ---------- Mini ilovalar ---------- */

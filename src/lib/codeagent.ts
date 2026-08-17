@@ -40,7 +40,14 @@ import {
 import { describeProbe, probeApp } from './probe';
 import { screenshotHtml, shotToAttachment } from './shot';
 import { searchAnswer } from './gemini';
-import { allCachedModels, modelLabel, usableChatModels } from './providers';
+import {
+  allCachedModels,
+  modelLabel,
+  pickForJob,
+  supportsVision,
+  usableChatModels,
+  visionCapableRef,
+} from './providers';
 import { askUser, drainInterjections } from './ask';
 import { isModelReadable } from './attach';
 import { getState, setState } from './store';
@@ -1079,18 +1086,51 @@ async function runTool(
         };
       }
       const cut = (shot.fullHeight ?? 0) > shot.height;
+      const size = `${shot.width}×${shot.height}`;
+      const cutNote = cut
+        ? { eslatma_2: `Sahifa ${shot.fullHeight}px — rasmda faqat yuqori qismi` }
+        : {};
+
+      // Joriy model rasmni koʻra oladimi? Koʻrmasa rasmni YUBORMAYMIZ —
+      // aks holda provayder «rasm kiritishni qoʻllab-quvvatlamaydi» deb xato
+      // beradi va agentning ishi oʻrtada uzilib qoladi.
+      const active = getCodeProject(projectId)?.model || pickForJob('reja');
+      if (supportsVision(active)) {
+        return {
+          ok: true,
+          summary: `Skrinshot olindi (${size})`,
+          payload: {
+            status: 'rasm keyingi xabarda koʻrsatiladi',
+            oʻlcham: size,
+            ...cutNote,
+            eslatma:
+              'Rasmga qara: joylashuv, boʻsh joy, matn oʻlchami, ranglar mos kelyaptimi. ' +
+              'Kamchilik koʻrsang tuzat va qayta suratga ol.',
+          },
+          image,
+        };
+      }
+
+      // Koʻrmaydigan model uchun: rasmni KOʻRADIGAN modelga baholab beramiz
+      // va matnli xulosani qaytaramiz — shunda ish davom etadi.
+      onStep?.('skrinshot boshqa modelga baholashga berildi');
+      const critique = await critiqueShot(image, project.name, signal).catch((err) => {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return '';
+      });
       return {
         ok: true,
-        summary: `Skrinshot olindi (${shot.width}×${shot.height})`,
+        summary: critique ? `Skrinshot baholandi (${size})` : `Skrinshot olindi (${size})`,
         payload: {
-          status: 'rasm keyingi xabarda koʻrsatiladi',
-          oʻlcham: `${shot.width}×${shot.height}`,
-          ...(cut ? { eslatma_2: `Sahifa ${shot.fullHeight}px — rasmda faqat yuqori qismi` } : {}),
-          eslatma:
-            'Rasmga qara: joylashuv, boʻsh joy, matn oʻlchami, ranglar mos kelyaptimi. ' +
-            'Kamchilik koʻrsang tuzat va qayta suratga ol.',
+          oʻlcham: size,
+          ...cutNote,
+          eslatma: critique
+            ? 'Sening modeling rasmni koʻrmaydi, shuning uchun rasmni koʻra oladigan ' +
+              'boshqa model baholab berdi. Quyidagi xulosaga tayanib tuzat.'
+            : 'Sening modeling rasmni koʻrmaydi va baholaydigan model ham topilmadi. ' +
+              'test_app hisobotiga tayanib ishla.',
+          dizayn_xulosasi: critique || undefined,
         },
-        image,
       };
     }
 
@@ -1136,6 +1176,55 @@ async function runTool(
     default:
       return { ok: false, summary: `Nomaʼlum vosita: ${name}`, payload: { error: 'unknown' } };
   }
+}
+
+/**
+ * Skrinshotni KOʻRA OLADIGAN modelga berib, dizayn xulosasini oladi.
+ *
+ * Asosiy model (masalan DeepSeek) rasmni koʻrmaydi. Shunday paytda ishni
+ * toʻxtatmaymiz: rasmni koʻradigan modeldan (Gemini, GPT, Claude, Kimi…)
+ * qisqa tanqid olib, matn koʻrinishida asosiy modelga uzatamiz.
+ */
+async function critiqueShot(
+  image: Attachment,
+  projectName: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const ref = visionCapableRef();
+  if (!ref) return '';
+  const { settings } = getState();
+
+  let out = '';
+  await streamResilient({
+    apiKey: settings.apiKey,
+    model: ref,
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { inlineData: { mimeType: image.mimeType, data: image.data } },
+          {
+            text:
+              `Bu «${projectName}» mobil ilovasining skrinshoti. Dizaynini qisqa baholab ber ` +
+              '(5-8 qator, oʻzbekcha):\n' +
+              '- Nima yaxshi koʻrinadi?\n' +
+              '- Aniq KAMCHILIKLAR: matn sigʻmagan, element chiqib ketgan, boʻsh joy ' +
+              'notoʻgʻri, rang oʻqilmaydi, tugma kichik, tekislanmagan — koʻrganingni ayt.\n' +
+              '- Har kamchilikka bitta aniq tuzatish taklifi (masalan «sarlavha 20px, ' +
+              'kartochkalar orasi 12px»).\n' +
+              'Umumiy maslahat berma — faqat rasmda KOʻRINGAN narsani ayt.',
+          },
+        ],
+      },
+    ],
+    temperature: 0.3,
+    signal,
+    onText: (chunk) => {
+      out += chunk;
+    },
+    autoContinue: false,
+  });
+  return out.trim().slice(0, 2500);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1238,11 +1327,9 @@ async function runSubAgent(
   // Model oʻzidan model nomi oʻylab topishi mumkin — roʻyxatda boʻlmasa
   // eʼtiborsiz qoldiramiz, aks holda yordamchi «kalit yoʻq» xatosiga uriladi.
   const known = usableChatModels().some((m) => m.id === modelOverride);
+  // Rol uchun model: qoʻlda belgilangani → avto tanlov → loyiha modeli.
   const model =
-    (known ? modelOverride : '') ||
-    settings.roleModels[role.slot] ||
-    project.model ||
-    settings.model;
+    (known ? modelOverride : '') || pickForJob(role.slot, project.model || settings.model);
 
   const tools = CODE_TOOLS.filter((t) => SUB_TOOL_NAMES.has(t.name));
   const contents: GeminiContent[] = [
@@ -1620,7 +1707,8 @@ export async function runCodeAgent(
 
       const result = await streamResilient({
         apiKey: settings.apiKey,
-        model: current.model || settings.model,
+        // Loyihaga model tanlangan boʻlsa oʻsha, aks holda avto tanlov.
+        model: current.model || pickForJob('reja'),
         contents,
         systemInstruction: systemPrompt(current),
         tools: CODE_TOOLS,

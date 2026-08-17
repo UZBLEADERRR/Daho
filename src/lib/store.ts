@@ -35,6 +35,8 @@ export const DEFAULT_SETTINGS: Settings = {
   autoContinue: true,
   maxContinues: 6,
   agentRounds: 60,
+  autoPickModel: true,
+  autoPool: [],
 };
 
 const EMPTY_STATE: AppState = {
@@ -71,6 +73,7 @@ function migrate(parsed: Partial<AppState>): AppState {
     roleModels: { ...DEFAULT_SETTINGS.roleModels, ...(saved.roleModels ?? {}) },
     providers: Array.isArray(saved.providers) ? saved.providers : [],
     hiddenModels: Array.isArray(saved.hiddenModels) ? saved.hiddenModels : [],
+    autoPool: Array.isArray(saved.autoPool) ? saved.autoPool : [],
     favoriteModels: Array.isArray(saved.favoriteModels) ? saved.favoriteModels : [],
   };
   if (RETIRED_MODELS.test(settings.model)) settings.model = DEFAULT_SETTINGS.model;

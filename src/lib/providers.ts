@@ -20,9 +20,9 @@ import {
   type StreamOptions,
   type StreamResult,
 } from './gemini';
-import { cachedModels, getModels, type ModelInfo, type ModelRole } from './models';
+import { cachedModels, geminiModel, getModels, type ModelInfo, type ModelRole } from './models';
 import { getState } from './store';
-import type { Attachment, ProviderConfig } from './types';
+import type { Attachment, ProviderConfig, RoleModels } from './types';
 
 export const REF_SEPARATOR = '::';
 
@@ -187,15 +187,41 @@ export function canMakeImages(): boolean {
  * kalitisiz ham muqova va illyustratsiya yasash mumkin.
  */
 export function imageCapableRef(): string | null {
-  const IMAGE = /image|imagen|flux|dall-e|sdxl|stable-diffusion/i;
   const hidden = new Set(getState().settings.hiddenModels ?? []);
   for (const cfg of activeProviders()) {
-    const ids = [...new Set([...(cfg.manual ?? []), ...cachedProviderModels(cfg.id)])];
-    const hit = ids.find((id) => IMAGE.test(id) && !hidden.has(makeRef(cfg.id, id)));
-    if (hit) return makeRef(cfg.id, hit);
+    const pool = [
+      ...cachedProviderModels(cfg.id),
+      ...(cfg.manual ?? []).map(guessProviderModel),
+    ];
+    const hit = pool.find((m) => m.draws && !hidden.has(makeRef(cfg.id, m.id)));
+    if (hit) return makeRef(cfg.id, hit.id);
   }
   return null;
 }
+
+/**
+ * Rasmni koʻra oladigan model — skrinshotni tahlil qilish uchun.
+ * Asosiy model koʻrmasa, koʻradigan modeldan «dizaynni baholab ber» deb
+ * soʻraymiz va matnli xulosani asosiy modelga beramiz.
+ */
+export function visionCapableRef(): string | null {
+  const { settings } = getState();
+  const hidden = new Set(settings.hiddenModels ?? []);
+  // Foydalanuvchi rollarga model biriktirgan boʻlsa — avval oʻshalar.
+  for (const preferred of [settings.roleModels?.dizayn, settings.roleModels?.bosh, settings.model]) {
+    if (preferred && supportsVision(preferred) && !hidden.has(preferred)) return preferred;
+  }
+  if (hasGemini()) return geminiModel(getState().settings.model);
+  for (const cfg of activeProviders()) {
+    const hit = cachedProviderModels(cfg.id).find(
+      (m) => m.vision && !m.draws && !hidden.has(makeRef(cfg.id, m.id)),
+    );
+    if (hit) return makeRef(cfg.id, hit.id);
+  }
+  return null;
+}
+
+
 
 /** Google qidiruvi faqat Gemini bilan ishlaydi. */
 export function canSearchWeb(): boolean {
@@ -319,14 +345,39 @@ function toOpenAiMessages(contents: GeminiContent[], system?: string): OaMessage
 /*  OpenAI-mos oqim                                                    */
 /* ------------------------------------------------------------------ */
 
-function humanHttpError(status: number, body: string, label: string): string {
-  let detail = body.slice(0, 300);
+/**
+ * Xato tafsilotini ajratadi.
+ *
+ * OpenRouter oʻzining «Provider returned error» degan umumiy xabarini
+ * beradi, HAQIQIY sabab esa `error.metadata.raw` ichida boʻladi. Shuni
+ * chiqarmasak foydalanuvchi nima boʻlganini bilmaydi.
+ */
+function errorDetail(body: string): { text: string; raw: string } {
   try {
     const parsed = JSON.parse(body);
-    detail = parsed?.error?.message ?? parsed?.message ?? detail;
+    const err = parsed?.error ?? parsed;
+    const meta = err?.metadata ?? {};
+    let raw = typeof meta.raw === 'string' ? meta.raw : '';
+    if (!raw && meta.raw) raw = JSON.stringify(meta.raw);
+    const provider = typeof meta.provider_name === 'string' ? meta.provider_name : '';
+    // Upstream matni ham JSON boʻlishi mumkin — undan ham message ni olamiz.
+    try {
+      const inner = JSON.parse(raw);
+      raw = inner?.error?.message ?? inner?.message ?? raw;
+    } catch {
+      /* raw oddiy matn */
+    }
+    const text = [err?.message ?? parsed?.message ?? '', provider && `(${provider})`, raw]
+      .filter(Boolean)
+      .join(' ');
+    return { text: text.trim().slice(0, 400), raw };
   } catch {
-    /* xom matn qoladi */
+    return { text: body.slice(0, 300), raw: '' };
   }
+}
+
+function humanHttpError(status: number, body: string, label: string): string {
+  const detail = errorDetail(body).text || body.slice(0, 300);
   switch (status) {
     case 401:
     case 403:
@@ -363,23 +414,46 @@ const wait = (ms: number, signal?: AbortSignal) =>
   });
 
 /** OpenAI-mos API ga stream soʻrovi. Band boʻlsa oʻzi kutib qayta uradi. */
+/**
+ * Model qabul qilmaydigan parametrlar — bir marta bilib olgach eslab qolamiz.
+ *
+ * Mulohaza yuritadigan modellar (gpt-5.x, o-seriya, ayrim «thinking» modellar)
+ * `temperature` ni rad etadi; baʼzi modellar esa `tools` ni bilmaydi. Bunda
+ * OpenRouter «Provider returned error» deb umumiy xato qaytaradi. Shuning
+ * uchun soʻrovni bosqichma-bosqich soddalashtirib qayta yuboramiz.
+ */
+const noTemperature = new Set<string>();
+const noTools = new Set<string>();
+
+/** Bu model vositalarni (function calling) qoʻllab-quvvatlamasligi aniqlangan. */
+export function knownToolless(ref: string): boolean {
+  return noTools.has(ref);
+}
+
+const PARAM_REJECT =
+  /temperature|unsupported|unrecognized|not supported|invalid.*(parameter|argument)|extra fields/i;
+const TOOL_REJECT = /tool|function.?call/i;
+
 async function streamOpenAi(
   cfg: ProviderConfig,
   opts: StreamOptions,
   model: string,
 ): Promise<StreamResult> {
   const url = `${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`;
-  const body: Record<string, unknown> = {
-    model,
-    messages: toOpenAiMessages(opts.contents, opts.systemInstruction),
-    temperature: opts.temperature ?? 0.8,
-    stream: true,
-  };
+  const ref = makeRef(cfg.id, model);
+  const messages = toOpenAiMessages(opts.contents, opts.systemInstruction);
   const tools = toOpenAiTools(opts.tools);
-  if (tools) {
-    body.tools = tools;
-    body.tool_choice = 'auto';
-  }
+
+  /** Soʻrov tanasini joriy bilimlarga qarab yigʻadi. */
+  const buildBody = (dropTemp: boolean, dropTools: boolean): Record<string, unknown> => {
+    const body: Record<string, unknown> = { model, messages, stream: true };
+    if (!dropTemp && !noTemperature.has(ref)) body.temperature = opts.temperature ?? 0.8;
+    if (tools && !dropTools && !noTools.has(ref)) {
+      body.tools = tools;
+      body.tool_choice = 'auto';
+    }
+    return body;
+  };
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -393,12 +467,15 @@ async function streamOpenAi(
 
   let res: Response | null = null;
   let lastError: unknown;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  let dropTemp = false;
+  let dropTools = false;
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
     try {
       const r = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify(buildBody(dropTemp, dropTools)),
         signal: opts.signal,
       });
       if (r.ok) {
@@ -406,8 +483,34 @@ async function streamOpenAi(
         break;
       }
       const text = await r.text().catch(() => '');
+      const detail = errorDetail(text);
       const err = new GeminiError(humanHttpError(r.status, text, cfg.label), r.status);
-      if (!RETRYABLE.has(r.status) || attempt === 4) throw err;
+
+      // Parametr yoqmadimi? Soddalashtirib QAYTA yuboramiz — bu xato
+      // kutishdan oʻtmaydi, shuning uchun darhol urinamiz.
+      const complaint = `${detail.text} ${detail.raw}`;
+      if (!dropTemp && PARAM_REJECT.test(complaint) && !TOOL_REJECT.test(complaint)) {
+        dropTemp = true;
+        noTemperature.add(ref);
+        opts.onStep?.('model «temperature» ni qabul qilmadi — bepul yuboraman');
+        continue;
+      }
+      if (tools && !dropTools && TOOL_REJECT.test(complaint)) {
+        dropTools = true;
+        noTools.add(ref);
+        opts.onStep?.('model vositalarni qoʻllab-quvvatlamaydi — vositasiz davom etaman');
+        continue;
+      }
+      // «Provider returned error» — sababi aytilmagan. Avval eng ehtimolli
+      // ikkitasini sinab koʻramiz, keyingina taslim boʻlamiz.
+      if (!dropTemp && r.status >= 400 && r.status < 500) {
+        dropTemp = true;
+        noTemperature.add(ref);
+        opts.onStep?.('soʻrovni soddalashtirib qayta yuboraman');
+        continue;
+      }
+
+      if (!RETRYABLE.has(r.status) || attempt === 5) throw err;
       lastError = err;
       opts.onRetry?.(attempt + 1, Math.round(Math.min(30000, 2000 * 2 ** attempt) / 1000));
       await wait(Math.min(30000, 2000 * 2 ** attempt), opts.signal);
@@ -415,7 +518,7 @@ async function streamOpenAi(
       if ((err as Error)?.name === 'AbortError') throw err;
       if (err instanceof GeminiError && !RETRYABLE.has(err.status)) throw err;
       lastError = err;
-      if (attempt === 4) throw err;
+      if (attempt === 5) throw err;
       await wait(Math.min(30000, 2000 * 2 ** attempt), opts.signal);
     }
   }
@@ -724,11 +827,30 @@ export async function imageAny(
 /*  Provayder modellari roʻyxati                                       */
 /* ------------------------------------------------------------------ */
 
-const LIST_CACHE_KEY = 'daho.provmodels.v1';
+const LIST_CACHE_KEY = 'daho.provmodels.v2';
 const LIST_TTL = 12 * 60 * 60 * 1000;
 
+/**
+ * Provayderdan olingan model va uning imkoniyatlari.
+ *
+ * `vision` juda muhim: rasmni koʻrmaydigan modelga skrinshot yuborilsa
+ * OpenRouter «No endpoints found that support image input» deb xato beradi
+ * va agentning ishi uziladi. Shuning uchun imkoniyatni oldindan bilamiz.
+ */
+export interface ProviderModel {
+  id: string;
+  /** Rasmni kirish sifatida qabul qiladimi */
+  vision: boolean;
+  /** Vositalarni (function calling) qoʻllab-quvvatlaydimi */
+  tools: boolean;
+  /** Rasm chiqara oladimi */
+  draws: boolean;
+  /** Kontekst oynasi (token) — bilingan boʻlsa */
+  context?: number;
+}
+
 interface ListCache {
-  [providerId: string]: { at: number; models: string[] };
+  [providerId: string]: { at: number; models: ProviderModel[] };
 }
 
 function readListCache(): ListCache {
@@ -747,11 +869,44 @@ function writeListCache(cache: ListCache): void {
   }
 }
 
+const VISION_NAME = /vision|-vl|gpt-4o|gpt-4\.1|gpt-5|o[34]\b|claude|gemini|kimi|llava|pixtral|qwen.*vl/i;
+const DRAW_NAME = /image|imagen|flux|dall-e|sdxl|stable-diffusion/i;
+
+/** API javobidagi bitta modelni imkoniyatlari bilan oʻqiydi. */
+function readProviderModel(m: any): ProviderModel | null {
+  const id = String(m?.id ?? m?.name ?? '');
+  if (!id) return null;
+
+  // OpenRouter aniq aytadi; boshqalar aytmasa nomidan taxmin qilamiz.
+  const modalities: string[] = m?.architecture?.input_modalities ?? [];
+  const outputs: string[] = m?.architecture?.output_modalities ?? [];
+  const params: string[] = m?.supported_parameters ?? [];
+
+  const known = modalities.length > 0 || params.length > 0;
+  return {
+    id,
+    vision: known ? modalities.includes('image') : VISION_NAME.test(id),
+    tools: known ? params.includes('tools') : true,
+    draws: outputs.length ? outputs.includes('image') : DRAW_NAME.test(id),
+    context: typeof m?.context_length === 'number' ? m.context_length : undefined,
+  };
+}
+
+/** Nomidan taxmin qilingan model (roʻyxat olinmaganda). */
+function guessProviderModel(id: string): ProviderModel {
+  return {
+    id,
+    vision: VISION_NAME.test(id),
+    tools: true,
+    draws: DRAW_NAME.test(id),
+  };
+}
+
 /** Provayderdan model roʻyxatini oladi (keshlanadi). */
 export async function listProviderModels(
   cfg: ProviderConfig,
   force = false,
-): Promise<string[]> {
+): Promise<ProviderModel[]> {
   const cache = readListCache();
   const hit = cache[cfg.id];
   if (!force && hit && Date.now() - hit.at < LIST_TTL) return hit.models;
@@ -762,25 +917,45 @@ export async function listProviderModels(
     });
     if (!res.ok) throw new Error(String(res.status));
     const data = await res.json();
-    const ids: string[] = (data?.data ?? data?.models ?? [])
-      .map((m: any) => String(m?.id ?? m?.name ?? ''))
-      .filter(Boolean);
-    if (ids.length) {
-      cache[cfg.id] = { at: Date.now(), models: ids };
+    const models = ((data?.data ?? data?.models ?? []) as any[])
+      .map(readProviderModel)
+      .filter((m): m is ProviderModel => Boolean(m));
+    if (models.length) {
+      cache[cfg.id] = { at: Date.now(), models };
       writeListCache(cache);
-      return ids;
+      return models;
     }
   } catch {
     /* roʻyxat olinmadi — qoʻlda kiritilgan yoki tavsiya qilingan modellar qoladi */
   }
 
   if (hit?.models.length) return hit.models;
-  return presetById(cfg.id)?.suggested ?? [];
+  return (presetById(cfg.id)?.suggested ?? []).map(guessProviderModel);
 }
 
 /** Keshdan (soʻrovsiz) — UI darhol koʻrsatishi uchun. */
-export function cachedProviderModels(providerId: string): string[] {
+export function cachedProviderModels(providerId: string): ProviderModel[] {
   return readListCache()[providerId]?.models ?? [];
+}
+
+/** Bitta modelning imkoniyatlari. */
+export function modelCaps(ref: string): ProviderModel | null {
+  const { provider, model } = parseRef(ref);
+  // Gemini modellari rasmni ham vositalarni ham biladi.
+  if (!provider) return { id: model, vision: true, tools: true, draws: DRAW_NAME.test(model) };
+  const found = cachedProviderModels(provider).find((m) => m.id === model);
+  return found ?? guessProviderModel(model);
+}
+
+/** Bu modelga rasm yuborsa boʻladimi? */
+export function supportsVision(ref: string): boolean {
+  return modelCaps(ref)?.vision ?? false;
+}
+
+/** Bu model vositalarni chaqira oladimi? */
+export function supportsTools(ref: string): boolean {
+  if (knownToolless(ref)) return false;
+  return modelCaps(ref)?.tools ?? true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -812,17 +987,54 @@ function guessRole(id: string): ModelRole {
   return 'chat';
 }
 
-function providerModelInfo(cfg: ProviderConfig, id: string): ModelInfo {
+function providerModelInfo(cfg: ProviderConfig, m: ProviderModel): ModelInfo {
   return {
-    id: makeRef(cfg.id, id),
-    label: id,
-    role: guessRole(id),
-    score: guessScore(id),
-    preview: /preview|exp|beta/.test(id.toLowerCase()),
+    id: makeRef(cfg.id, m.id),
+    label: m.id,
+    // Rasm chiqaradigan model «image» roliga tushadi, qolgani nomidan aniqlanadi.
+    role: m.draws ? 'image' : guessRole(m.id),
+    score: guessScore(m.id),
+    preview: /preview|exp|beta/.test(m.id.toLowerCase()),
     description: cfg.label,
     provider: cfg.id,
     providerLabel: cfg.label,
+    vision: m.vision,
+    tools: m.tools,
+    context: m.context,
   };
+}
+
+/**
+ * Foydalanuvchi eng koʻp ishlatadigan model «oilalari».
+ *
+ * OpenRouter’da 300+ model bor, lekin amalda kerak boʻladigani sanoqli:
+ * yangi Qwen, Kimi, Claude, GPT va Gemini. Shu oilalar roʻyxat boshida
+ * turadi va chegara tufayli tushib qolmaydi. Qolganlari roʻyxatda
+ * koʻrinmaydi, lekin QIDIRUVDA topiladi.
+ */
+const PRIORITY: Array<{ test: RegExp; rank: number }> = [
+  // Qwen — 3.6 dan yuqorisi va max
+  { test: /qwen.*(3\.[6-9]|3\.\d\d|[4-9]\.|max)/i, rank: 100 },
+  { test: /qwen.*(3-coder|3\.5|coder)/i, rank: 80 },
+  // Kimi — K2.7 / K3 va kod nusxalari
+  { test: /kimi.*(k3|2\.[7-9]|k2\.[7-9]|[3-9]\.)/i, rank: 100 },
+  { test: /kimi/i, rank: 78 },
+  // Claude, GPT, Gemini
+  { test: /claude.*(opus|sonnet)/i, rank: 95 },
+  { test: /claude/i, rank: 82 },
+  { test: /\bgpt-[5-9]/i, rank: 92 },
+  { test: /\bgpt-4/i, rank: 80 },
+  { test: /\bo[34]\b/i, rank: 85 },
+  { test: /gemini.*(3|2\.5-pro)/i, rank: 90 },
+  { test: /gemini/i, rank: 78 },
+  // Rasm modellari — muqova uchun kerak
+  { test: /image|flux/i, rank: 70 },
+];
+
+/** 0 — oddiy model; katta son — foydalanuvchiga kerakli oila. */
+export function priorityRank(id: string): number {
+  for (const { test, rank } of PRIORITY) if (test.test(id)) return rank;
+  return 0;
 }
 
 /**
@@ -841,8 +1053,8 @@ export async function allModels(force = false): Promise<ModelInfo[]> {
 
   const extra: ModelInfo[] = [];
   for (const cfg of activeProviders()) {
-    const ids = await listProviderModels(cfg, force).catch(() => []);
-    extra.push(...trimProvider(cfg, ids));
+    const list = await listProviderModels(cfg, force).catch((): ProviderModel[] => []);
+    extra.push(...trimProvider(cfg, list));
   }
 
   return dedupe([...gemini, ...extra]);
@@ -852,17 +1064,30 @@ export async function allModels(force = false): Promise<ModelInfo[]> {
  * Provayder modellarini saralab, cheklab qaytaradi.
  * Qoʻlda kiritilganlar HAR DOIM qoladi — foydalanuvchi aynan oʻshani tanlagan.
  */
-function trimProvider(cfg: ProviderConfig, ids: string[]): ModelInfo[] {
-  const manual = (cfg.manual ?? []).map((id) => providerModelInfo(cfg, id));
-  const pool = ids
-    .filter((id) => !(cfg.manual ?? []).includes(id))
-    .map((id) => providerModelInfo(cfg, id))
+function trimProvider(cfg: ProviderConfig, list: ProviderModel[]): ModelInfo[] {
+  const manual = (cfg.manual ?? []).map((id) =>
+    providerModelInfo(cfg, list.find((m) => m.id === id) ?? guessProviderModel(id)),
+  );
+  const pool = list
+    .filter((m) => !(cfg.manual ?? []).includes(m.id))
+    .map((m) => providerModelInfo(cfg, m))
     .filter((m) => m.role !== 'embed')
-    .sort((a, b) => b.score - a.score);
+    // Avval kerakli oilalar, keyin kuch bahosi boʻyicha.
+    .sort(
+      (a, b) => priorityRank(b.label) - priorityRank(a.label) || b.score - a.score,
+    );
 
-  // Rasm/ovoz modellari kam boʻladi — ularni chegara yeb ketmasin.
-  const chat = pool.filter((m) => m.role === 'chat').slice(0, PER_PROVIDER_LIMIT);
-  const other = pool.filter((m) => m.role !== 'chat').slice(0, 12);
+  // Kerakli oilalar chegaradan qatʼi nazar qoladi.
+  const wanted = pool.filter((m) => priorityRank(m.label) > 0);
+  const rest = pool.filter((m) => priorityRank(m.label) === 0);
+  const chat = [
+    ...wanted.filter((m) => m.role === 'chat'),
+    ...rest.filter((m) => m.role === 'chat').slice(0, PER_PROVIDER_LIMIT),
+  ];
+  const other = [
+    ...wanted.filter((m) => m.role !== 'chat'),
+    ...rest.filter((m) => m.role !== 'chat').slice(0, 12),
+  ];
   return [...manual, ...chat, ...other];
 }
 
@@ -871,8 +1096,10 @@ export function allCachedModels(): ModelInfo[] {
   const extra: ModelInfo[] = [];
   for (const cfg of activeProviders()) {
     const cached = cachedProviderModels(cfg.id);
-    const ids = cached.length ? cached : (presetById(cfg.id)?.suggested ?? []);
-    extra.push(...trimProvider(cfg, ids));
+    const list = cached.length
+      ? cached
+      : (presetById(cfg.id)?.suggested ?? []).map(guessProviderModel);
+    extra.push(...trimProvider(cfg, list));
   }
   return dedupe([...cachedModels(), ...extra]);
 }
@@ -881,6 +1108,28 @@ function dedupe(list: ModelInfo[]): ModelInfo[] {
   const seen = new Map<string, ModelInfo>();
   for (const m of list) if (!seen.has(m.id)) seen.set(m.id, m);
   return [...seen.values()].sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+}
+
+/**
+ * BARCHA keshdagi modellar boʻyicha qidiradi — chegara qoʻllanmaydi.
+ *
+ * Roʻyxatda faqat kerakli oilalar koʻrinadi, lekin foydalanuvchi biror
+ * modelni izlasa (masalan «llama» yoki «mixtral») u shu yerdan topiladi.
+ */
+export function searchModels(query: string): ModelInfo[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const out: ModelInfo[] = [];
+
+  for (const m of cachedModels()) {
+    if (m.id.toLowerCase().includes(q) || m.label.toLowerCase().includes(q)) out.push(m);
+  }
+  for (const cfg of activeProviders()) {
+    for (const pm of cachedProviderModels(cfg.id)) {
+      if (pm.id.toLowerCase().includes(q)) out.push(providerModelInfo(cfg, pm));
+    }
+  }
+  return dedupe(out).slice(0, 200);
 }
 
 /** Foydalanuvchi oʻchirmagan modellar — tanlash roʻyxatlari uchun. */
@@ -901,4 +1150,90 @@ export function modelLabel(ref: string): string {
   if (found) return found.providerLabel ? `${found.label} · ${found.providerLabel}` : found.label;
   const { provider, model } = parseRef(ref);
   return provider ? `${model} · ${provider}` : model;
+}
+
+/* ------------------------------------------------------------------ */
+/*  AVTO rejim — vazifaga qarab modelni oʻzi tanlaydi                  */
+/* ------------------------------------------------------------------ */
+
+/** Qanday ish bajarilyapti — shunga qarab model tanlanadi. */
+export type JobKind =
+  | 'reja' // rejalashtirish, boshqarish, savol berish
+  | 'kod' // kod yozish va tuzatish
+  | 'dizayn' // koʻrinish, CSS, joylashuv
+  | 'tekshir' // xato qidirish
+  | 'matn' // kitob, hujjat, tarjima
+  | 'koʻrish' // rasmni koʻrish kerak
+  | 'tez'; // mayda ish: sarlavha, xulosa
+
+/** Rol → sozlamadagi maydon. */
+const JOB_SLOT: Partial<Record<JobKind, keyof RoleModels>> = {
+  reja: 'bosh',
+  kod: 'kod',
+  dizayn: 'dizayn',
+  tekshir: 'tekshir',
+  matn: 'matn',
+};
+
+/** Ish turi uchun modelni qanchalik yoqtirishimiz. */
+function jobScore(m: ModelInfo, job: JobKind): number {
+  const id = m.label.toLowerCase();
+  let score = priorityRank(m.label) + m.score / 10;
+
+  if (job === 'kod') {
+    if (/coder|code/.test(id)) score += 60;
+    if (/qwen|deepseek|claude|gpt-[5-9]|kimi/.test(id)) score += 25;
+  }
+  if (job === 'dizayn' || job === 'koʻrish') {
+    // Dizayn uchun rasmni koʻrish shart.
+    if (!m.vision) return -1;
+    if (/claude|gpt-[45-9]|gemini/.test(id)) score += 40;
+  }
+  if (job === 'tekshir') {
+    if (/thinking|reasoner|\bo[34]\b|opus|max|pro/.test(id)) score += 45;
+  }
+  if (job === 'matn') {
+    if (/claude|kimi|gemini|gpt/.test(id)) score += 35;
+    if (/coder/.test(id)) score -= 30;
+  }
+  if (job === 'tez') {
+    if (/mini|flash|lite|haiku|small|turbo/.test(id)) score += 50;
+    if (/opus|max|thinking|reasoner/.test(id)) score -= 40;
+  }
+  // Vositalar kerak boʻladigan ishlarda vositasiz model yaramaydi.
+  if (job !== 'koʻrish' && job !== 'matn' && m.tools === false) score -= 200;
+  return score;
+}
+
+/**
+ * Ish turiga eng mos modelni qaytaradi.
+ *
+ * Tartib: 1) foydalanuvchi rolga model biriktirgan boʻlsa — oʻsha;
+ * 2) avto rejim yoqilgan boʻlsa — ruxsat berilgan modellar ichidan eng mosi;
+ * 3) aks holda asosiy model.
+ */
+export function pickForJob(job: JobKind, fallback?: string): string {
+  const { settings } = getState();
+  const base = fallback || settings.model;
+
+  // 1. Foydalanuvchi aniq belgilagan rol modeli — har doim ustun.
+  const slot = JOB_SLOT[job];
+  const assigned = slot ? settings.roleModels?.[slot] : '';
+  if (assigned) return assigned;
+
+  if (!settings.autoPickModel) {
+    // Avto oʻchiq: faqat «koʻrish» uchun majburan koʻradigan modelga oʻtamiz.
+    if (job === 'koʻrish' && !supportsVision(base)) return visionCapableRef() ?? base;
+    return base;
+  }
+
+  // 2. Avto: ruxsat berilgan hovuzdan tanlaymiz.
+  const allowed = new Set(settings.autoPool ?? []);
+  const pool = usableChatModels().filter((m) => !allowed.size || allowed.has(m.id));
+  const ranked = pool
+    .map((m) => ({ m, score: jobScore(m, job) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return ranked[0]?.m.id ?? base;
 }

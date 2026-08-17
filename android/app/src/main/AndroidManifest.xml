@@ -42,6 +42,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Ovozli kiritish uchun -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!--
+      MUHIM: WebView mikrofon soʻrovida Capacitor RECORD_AUDIO bilan birga
+      MODIFY_AUDIO_SETTINGS ni ham soʻraydi va IKKALASI ham berilmasa
+      getUserMedia ni rad etadi. Bu ruxsat manifestda boʻlmasa tizim uni
+      darhol «denied» qaytaradi — natijada foydalanuvchi mikrofonga ruxsat
+      bergan boʻlsa ham ovoz yozish ishlamaydi.
+    -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Avtomatlashtirilgan topshiriq natijasini bildirish uchun -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
