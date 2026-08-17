@@ -621,7 +621,11 @@ export async function rewriteChapter(bookId: string, chapterId: string): Promise
 
 /** Butun kitobni markdown matnga yigʻadi — Word/PDF ga chiqarish uchun. */
 export function bookToMarkdown(book: Book): string {
-  const parts: string[] = [`# ${book.title}`];
+  const parts: string[] = [];
+  // Muqova eng boshida — PDF uni toʻliq sahifa qilib chizadi, slaydda esa
+  // birinchi slayd boʻladi.
+  if (book.coverArtifactId) parts.push(`![${book.title}](daho:${book.coverArtifactId})`);
+  parts.push(`# ${book.title}`);
   if (book.subtitle) parts.push(`_${book.subtitle}_`);
   if (book.bible.premise) parts.push(`\n> ${book.bible.premise}`);
 
@@ -631,6 +635,10 @@ export function bookToMarkdown(book: Book): string {
   for (const c of book.chapters) {
     if (!c.text) continue;
     parts.push('\n---\n');
+    // Bob rasmi bob matnidan oldin turadi.
+    if (c.imageArtifactId) {
+      parts.push(`![${c.number}. ${c.title}](daho:${c.imageArtifactId})`);
+    }
     parts.push(c.text);
   }
   return parts.join('\n');

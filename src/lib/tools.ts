@@ -1,6 +1,7 @@
 import { askUser } from './ask';
 import { b64ToBytes } from './audio';
 import { createBook, writeBook } from './book';
+import { fetchImageData, searchImages } from './imagesearch';
 import { geminiModel } from './models';
 import { canSearchWeb, imageAny } from './providers';
 import { DOC_LABEL, exportDocument, saveBytes, saveZip, type DocFormat } from './exporter';
@@ -210,6 +211,35 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ['title', 'field', 'topics'],
+    },
+  },
+  {
+    name: 'search_images',
+    description:
+      'INTERNETDAN haqiqiy rasm qidiradi va manbasi bilan qaytaradi ' +
+      '(Openverse va Wikimedia — bepul, litsenziyali rasmlar).\n' +
+      'Qachon ishlatiladi: foydalanuvchi «rasmini koʻrsat», «qanday koʻrinadi», ' +
+      '«namuna/misol rasm», «ilhom uchun rasmlar» desa; yoki haqiqiy joy, ' +
+      'odam, hayvon, tarixiy voqea, mahsulot haqida gapirilsa.\n' +
+      'Rasm YASASH kerak boʻlsa (chizma, logotip, muqova) — `generate_image` ishlat. ' +
+      'Bu vosita esa mavjud, haqiqiy rasmlarni topadi.\n' +
+      'Qidiruv soʻzini INGLIZ tilida yoz — natija ancha koʻp boʻladi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: {
+          type: 'STRING',
+          description: 'Qidiruv soʻzi, ingliz tilida (masalan "korean skincare routine")',
+        },
+        count: { type: 'NUMBER', description: 'Nechta rasm kerak (standart 8, koʻpi 20)' },
+        save: {
+          type: 'STRING',
+          description:
+            '"true" — rasmlarni ilovaga saqlash (hujjatga qoʻyish yoki koʻrish uchun). ' +
+            'Standart: faqat havola va manba qaytariladi.',
+        },
+      },
+      required: ['query'],
     },
   },
   {
@@ -665,6 +695,60 @@ export async function executeTool(
           payload: { error: String((err as Error)?.message ?? err) },
         };
       }
+    }
+
+    case 'search_images': {
+      const query = str(args.query);
+      if (!query) {
+        return { ok: false, summary: 'Qidiruv soʻzi yoʻq', payload: { error: 'boʻsh' } };
+      }
+      const count = Math.max(1, Math.min(20, num(args.count, 8)));
+      const found = await searchImages(query, count, ctx.signal);
+      if (!found.length) {
+        return {
+          ok: false,
+          summary: `Rasm topilmadi: ${query}`,
+          payload: { error: 'topilmadi', maslahat: 'Qidiruv soʻzini ingliz tilida va soddaroq yozing.' },
+        };
+      }
+
+      // Soʻralsa rasmlarni ilovaga koʻchirib olamiz — shunda ular chatda
+      // koʻrinadi va hujjatga qoʻyish mumkin boʻladi.
+      const made: Artifact[] = [];
+      if (str(args.save) === 'true') {
+        for (const img of found.slice(0, 8)) {
+          const data = await fetchImageData(img.thumb, ctx.signal);
+          if (!data) continue;
+          made.push({
+            id: uid('a_'),
+            kind: 'image',
+            title: img.title,
+            content: data.data,
+            mimeType: data.mimeType,
+            chatId: ctx.chatId,
+            createdAt: Date.now(),
+          });
+        }
+      }
+
+      return {
+        ok: true,
+        summary: `${found.length} ta rasm topildi: ${query.slice(0, 32)}`,
+        payload: {
+          rasmlar: found.map((img) => ({
+            nomi: img.title,
+            manba: img.source,
+            muallif: img.author,
+            litsenziya: img.license,
+            havola: img.url,
+          })),
+          saqlandi: made.length,
+          eslatma:
+            'Foydalanuvchiga rasmlarni MANBA havolasi bilan koʻrsat (nomi + havola). ' +
+            'Rasmlarni matn bilan qayta tasvirlab oʻtirma.',
+        },
+        artifacts: made.length ? made : undefined,
+      };
     }
 
     case 'write_book': {

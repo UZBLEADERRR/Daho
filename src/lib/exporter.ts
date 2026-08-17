@@ -189,9 +189,9 @@ export async function exportDocument(
   }
   const bytes =
     format === 'docx'
-      ? buildDocx(markdown)
+      ? await buildDocx(markdown)
       : format === 'pptx'
-        ? buildPptx(markdown)
-        : buildPdf(markdown);
+        ? await buildPptx(markdown)
+        : await buildPdf(markdown);
   return saveBytes(name, bytes, DOC_MIME[format]);
 }

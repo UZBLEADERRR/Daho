@@ -26,6 +26,7 @@ const STEP_LABEL: Record<string, string> = {
   create_project: 'loyiha rejasi tuzilmoqda',
   create_course: 'kurs mavzulari tuzilmoqda',
   write_book: 'kitob yozish boshlanmoqda',
+  search_images: 'internetdan rasm qidirilmoqda',
   generate_image: 'rasm chizilmoqda',
   get_location: 'joylashuvingiz aniqlanmoqda',
   find_place: 'xaritadan qidirilmoqda',
@@ -140,7 +141,11 @@ Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jim
 - Hujjatga (Word yoki PDF biriktirilgan boʻlsa) rasm qoʻshish soʻralsa —
   \`illustrate_document\`. Nechta rasm kerakligini foydalanuvchi aytmasa 5 ta qil.
   Natija yangi .docx boʻlib telefonga saqlanadi.
-- Rasm, surat, illyustratsiya, logotip yoki chizma soʻrasa — \`generate_image\`.
+- HAQIQIY rasm kerak boʻlsa (joy, odam, hayvon, mahsulot, tarixiy voqea,
+  «qanday koʻrinadi», «namuna koʻrsat», «ilhom uchun rasmlar») —
+  \`search_images\` bilan internetdan top. Qidiruvni ingliz tilida yoz.
+  Natijani manba havolasi bilan koʻrsat — bu muallif huquqi uchun muhim.
+- Rasm YASASH soʻralsa (chizma, logotip, muqova, tasavvurdagi tasvir) — \`generate_image\`.
   Mavjud rasmni oʻzgartirishni soʻrasa — \`edit_last: "true"\` bilan chaqir.
   Rasm chatda oʻzi koʻrinadi; uni matn bilan qayta tasvirlab berma.
 Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.
