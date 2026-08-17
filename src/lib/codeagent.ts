@@ -1235,8 +1235,11 @@ async function runSubAgent(
   const project = getCodeProject(projectId);
   if (!project) return { ok: false, summary: 'Loyiha topilmadi', touched: [], model: '' };
 
+  // Model oʻzidan model nomi oʻylab topishi mumkin — roʻyxatda boʻlmasa
+  // eʼtiborsiz qoldiramiz, aks holda yordamchi «kalit yoʻq» xatosiga uriladi.
+  const known = usableChatModels().some((m) => m.id === modelOverride);
   const model =
-    modelOverride ||
+    (known ? modelOverride : '') ||
     settings.roleModels[role.slot] ||
     project.model ||
     settings.model;

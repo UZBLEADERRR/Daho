@@ -20,7 +20,7 @@ import {
   type StreamOptions,
   type StreamResult,
 } from './gemini';
-import { cachedModels, getModels, type ModelInfo } from './models';
+import { cachedModels, getModels, type ModelInfo, type ModelRole } from './models';
 import { getState } from './store';
 import type { Attachment, ProviderConfig } from './types';
 
@@ -799,11 +799,21 @@ function guessScore(id: string): number {
   return score;
 }
 
+/** Model nomidan uning vazifasini taxmin qiladi. */
+function guessRole(id: string): ModelRole {
+  const low = id.toLowerCase();
+  if (/embed|rerank|moderation/.test(low)) return 'embed';
+  if (/\btts\b|-tts|whisper|speech/.test(low)) return 'tts';
+  if (/\bveo\b|video|sora/.test(low)) return 'video';
+  if (/image|imagen|flux|dall-e|sdxl|stable-diffusion/.test(low)) return 'image';
+  return 'chat';
+}
+
 function providerModelInfo(cfg: ProviderConfig, id: string): ModelInfo {
   return {
     id: makeRef(cfg.id, id),
-    label: `${id}`,
-    role: 'chat',
+    label: id,
+    role: guessRole(id),
     score: guessScore(id),
     preview: /preview|exp|beta/.test(id.toLowerCase()),
     description: cfg.label,
@@ -811,6 +821,15 @@ function providerModelInfo(cfg: ProviderConfig, id: string): ModelInfo {
     providerLabel: cfg.label,
   };
 }
+
+/**
+ * Bitta provayderdan koʻrsatiladigan modellar chegarasi.
+ *
+ * OpenRouter 300+ model qaytaradi — hammasini roʻyxatga qoʻysak telefonda
+ * tanlash oynasi sekinlashadi. Eng kuchli/yangilarini qoldiramiz, qolganini
+ * foydalanuvchi qoʻlda «manual» ga yozib qoʻyishi mumkin.
+ */
+const PER_PROVIDER_LIMIT = 80;
 
 /** Modellar roʻyxati: Gemini + barcha yoqilgan provayderlar. */
 export async function allModels(force = false): Promise<ModelInfo[]> {
@@ -820,20 +839,37 @@ export async function allModels(force = false): Promise<ModelInfo[]> {
   const extra: ModelInfo[] = [];
   for (const cfg of activeProviders()) {
     const ids = await listProviderModels(cfg, force).catch(() => []);
-    const merged = [...new Set([...(cfg.manual ?? []), ...ids])];
-    for (const id of merged) extra.push(providerModelInfo(cfg, id));
+    extra.push(...trimProvider(cfg, ids));
   }
 
   return dedupe([...gemini, ...extra]);
+}
+
+/**
+ * Provayder modellarini saralab, cheklab qaytaradi.
+ * Qoʻlda kiritilganlar HAR DOIM qoladi — foydalanuvchi aynan oʻshani tanlagan.
+ */
+function trimProvider(cfg: ProviderConfig, ids: string[]): ModelInfo[] {
+  const manual = (cfg.manual ?? []).map((id) => providerModelInfo(cfg, id));
+  const pool = ids
+    .filter((id) => !(cfg.manual ?? []).includes(id))
+    .map((id) => providerModelInfo(cfg, id))
+    .filter((m) => m.role !== 'embed')
+    .sort((a, b) => b.score - a.score);
+
+  // Rasm/ovoz modellari kam boʻladi — ularni chegara yeb ketmasin.
+  const chat = pool.filter((m) => m.role === 'chat').slice(0, PER_PROVIDER_LIMIT);
+  const other = pool.filter((m) => m.role !== 'chat').slice(0, 12);
+  return [...manual, ...chat, ...other];
 }
 
 /** Soʻrovsiz — keshdagi hamma model. */
 export function allCachedModels(): ModelInfo[] {
   const extra: ModelInfo[] = [];
   for (const cfg of activeProviders()) {
-    const ids = [...new Set([...(cfg.manual ?? []), ...cachedProviderModels(cfg.id)])];
-    const list = ids.length ? ids : (presetById(cfg.id)?.suggested ?? []);
-    for (const id of list) extra.push(providerModelInfo(cfg, id));
+    const cached = cachedProviderModels(cfg.id);
+    const ids = cached.length ? cached : (presetById(cfg.id)?.suggested ?? []);
+    extra.push(...trimProvider(cfg, ids));
   }
   return dedupe([...cachedModels(), ...extra]);
 }
