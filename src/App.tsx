@@ -15,7 +15,7 @@ import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
 import { startScheduler } from './lib/automation';
 import { getModels, pickModel } from './lib/models';
-import { allModels } from './lib/providers';
+import { allModels, cachedProviderModels } from './lib/providers';
 import { installSandboxStore } from './lib/sandbox';
 import { getState, updateSettings, updateView, useStore } from './lib/store';
 import type { Artifact } from './lib/types';
@@ -28,8 +28,18 @@ export default function App() {
   const fontScale = useStore((s) => s.settings.fontScale);
   // Ishlash uchun Gemini SHART emas — OpenRouter ham yetarli.
   const geminiKey = useStore((s) => Boolean(s.settings.apiKey));
-  const providerCount = useStore((s) => (s.settings.providers ?? []).filter((p) => p.enabled && p.apiKey).length);
-  const ready = geminiKey || providerCount > 0;
+  /**
+   * Yoqilgan provayderlarning «imzosi»: id va kalit uzunligi. Kalit yozilib
+   * yoki qoʻyib boʻlingach bu qiymat oʻzgaradi — shunda model roʻyxatini
+   * oʻzi olib kelamiz. Kalitning oʻzi bogʻliqlikka tushmaydi.
+   */
+  const providerSig = useStore((s) =>
+    (s.settings.providers ?? [])
+      .filter((p) => p.enabled && p.apiKey.trim())
+      .map((p) => `${p.id}:${p.apiKey.trim().length}`)
+      .join('|'),
+  );
+  const ready = geminiKey || Boolean(providerSig);
 
   // Qaysi ekran ochiqligi store da turadi: boʻlim almashsangiz ham,
   // ilovani yopib qayta ochsangiz ham hech narsa qaytadan boshlanmaydi.
@@ -91,33 +101,49 @@ export default function App() {
   }, [geminiKey]);
 
   /**
-   * Gemini kaliti yoʻq, lekin provayder (masalan OpenRouter) ulangan boʻlsa —
-   * modellarni oʻsha provayderdan olib, asosiy modelni almashtiramiz.
-   * Aks holda standart Gemini modeli qolib, «kalit yoʻq» xatosi chiqadi.
+   * Provayder kaliti kiritilgach model roʻyxatini OʻZI olib keladi —
+   * foydalanuvchi model nomlarini qoʻlda yozishi shart emas.
+   *
+   * Kalit yozilayotganda har harfda soʻrov yubormaslik uchun 1.2 s kutamiz.
+   * Gemini kaliti yoʻq boʻlsa, roʻyxat kelgach asosiy modelni ham oʻsha
+   * provayderning modeliga almashtiramiz (aks holda standart Gemini modeli
+   * qolib, birinchi savolda «kalit yoʻq» xatosi chiqadi).
    */
   useEffect(() => {
-    if (geminiKey || !providerCount) return;
+    if (!providerSig) return;
     let cancelled = false;
-    void (async () => {
-      try {
-        const list = await allModels(true);
-        if (cancelled) return;
-        const { settings } = getState();
-        const hidden = new Set(settings.hiddenModels ?? []);
-        const usable = list.filter((m) => m.role === 'chat' && m.provider && !hidden.has(m.id));
-        if (!usable.length) return;
-        // Joriy model Gemini niki boʻlsa (yaʼni ishlamaydi) — almashtiramiz.
-        if (!settings.model.includes('::')) {
-          updateSettings({ model: usable[0].id });
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const list = await allModels(true);
+          if (cancelled || !list.length) return;
+
+          const { settings } = getState();
+          if (settings.apiKey.trim()) return; // Gemini bor — model almashtirmaymiz
+          if (settings.model.includes('::')) return; // allaqachon provayder modeli
+
+          const hidden = new Set(settings.hiddenModels ?? []);
+          // Faqat haqiqiy roʻyxat kelgan provayderdan tanlaymiz.
+          const usable = list.filter(
+            (m) =>
+              m.role === 'chat' &&
+              m.provider &&
+              !hidden.has(m.id) &&
+              cachedProviderModels(m.provider).length > 0,
+          );
+          if (usable.length) updateSettings({ model: usable[0].id });
+        } catch {
+          /* roʻyxat olinmasa tavsiya modellar qoladi, foydalanuvchi oʻzi tanlaydi */
         }
-      } catch {
-        /* roʻyxat olinmasa foydalanuvchi oʻzi tanlaydi */
-      }
-    })();
+      })();
+    }, 1200);
+
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [geminiKey, providerCount]);
+  }, [providerSig]);
 
   // Androidning "orqaga" tugmasi: avval ochiq oynalarni yopadi.
   useEffect(() => {

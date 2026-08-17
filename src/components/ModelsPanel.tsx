@@ -3,6 +3,7 @@ import {
   PROVIDER_PRESETS,
   allCachedModels,
   allModels,
+  cachedProviderModels,
   listProviderModels,
   parseRef,
   presetById,
@@ -38,13 +39,22 @@ export function ModelsPanel() {
 
   /**
    * Google kaliti yoʻq boʻlsa asosiy model Gemini niki boʻlib qolmasligi kerak —
-   * aks holda birinchi savolda «kalit yoʻq» xatosi chiqadi. Provayder modeli
-   * paydo boʻlishi bilan oʻshanga oʻtamiz.
+   * aks holda birinchi savolda «kalit yoʻq» xatosi chiqadi.
+   *
+   * Faqat provayderdan HAQIQIY roʻyxat kelgandan keyin tanlaymiz. Tavsiya
+   * modellaridan tanlash notoʻgʻri boʻlar edi: ular shunchaki mashhur nomlar,
+   * foydalanuvchining hisobida boʻlmasligi ham mumkin.
    */
   useEffect(() => {
     if (settings.apiKey.trim()) return;
     if (settings.model.includes('::')) return;
-    const first = models.find((m) => m.role === 'chat' && m.provider && !hidden.has(m.id));
+    const first = models.find(
+      (m) =>
+        m.role === 'chat' &&
+        m.provider &&
+        !hidden.has(m.id) &&
+        cachedProviderModels(m.provider).length > 0,
+    );
     if (!first) return;
     updateSettings({ model: first.id });
     toast(`Asosiy model: ${first.label}`);
@@ -97,7 +107,9 @@ export function ModelsPanel() {
       </div>
 
       {providers.map((p) => {
-        const count = allCachedModels().filter((m) => m.provider === p.id).length;
+        const count = models.filter((m) => m.provider === p.id).length;
+        // Roʻyxat hali kelmagan boʻlsa tavsiya modellar ishlatiladi.
+        const fetched = cachedProviderModels(p.id).length;
         return (
           <button className="prov-row" key={p.id} onClick={() => setEditing(p)}>
             <span className="prov-dot" data-on={p.enabled && Boolean(p.apiKey)} />
@@ -108,7 +120,9 @@ export function ModelsPanel() {
                   ? 'kalit kiritilmagan'
                   : !p.enabled
                     ? 'oʻchirilgan'
-                    : `${count || '—'} ta model`}
+                    : fetched
+                      ? `✓ ${count} ta model tayyor`
+                      : `${count} ta tavsiya model · roʻyxat olinmoqda…`}
               </div>
             </span>
           </button>
