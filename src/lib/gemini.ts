@@ -138,6 +138,11 @@ export interface StreamResult {
    * qaytarish uchun (fikrlash imzolari saqlanadi).
    */
   parts: GeminiPart[];
+  /**
+   * Nega toʻxtadi: 'STOP' — normal tugadi, 'MAX_TOKENS' — javob kesilib
+   * qoldi (davom ettirish kerak), '' — nomaʼlum.
+   */
+  finishReason: string;
 }
 
 /**
@@ -202,6 +207,7 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
   const functionCalls: StreamResult['functionCalls'] = [];
   const images: Attachment[] = [];
   const modelParts: GeminiPart[] = [];
+  let finishReason = '';
 
   /** Qismni saqlaydi; ketma-ket oddiy matnlarni bittaga qoʻshadi. */
   const keepPart = (part: GeminiPart) => {
@@ -224,6 +230,9 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
     }
     if (parsed?.error) {
       throw new GeminiError(parsed.error.message ?? 'Nomaʼlum xato', parsed.error.code ?? 0);
+    }
+    if (parsed?.candidates?.[0]?.finishReason) {
+      finishReason = String(parsed.candidates[0].finishReason);
     }
     const parts: GeminiPart[] = parsed?.candidates?.[0]?.content?.parts ?? [];
     for (const part of parts) {
@@ -259,7 +268,7 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
   const tail = buffer.trim();
   if (tail.startsWith('data:')) handlePayload(tail.slice(5).trim());
 
-  return { text, functionCalls, images, parts: modelParts };
+  return { text, functionCalls, images, parts: modelParts, finishReason };
 }
 
 /** Streamsiz oddiy chaqiruv — sarlavha yasash, tarjima kabi kichik ishlar uchun. */

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fileIcon, prepareFile } from '../lib/attach';
 import { startListening, type ListenHandle } from '../lib/speech';
 import type { Attachment } from '../lib/types';
-import { Close, Mic, Plus, Send, Stop } from './Icons';
+import { Close, Mic, Plus, Send, Stop, Wave } from './Icons';
 import { Sheet, toast } from './ui';
 
 export type ComposerMode = 'chat' | 'rasm' | 'video' | 'ilova' | 'kurs' | 'hujjat';
@@ -63,6 +63,8 @@ interface Props {
   onStop: () => void;
   /** «Joylashuvim» tanlanganda */
   onLocation?: () => void;
+  /** «Jonli suhbat» tanlanganda */
+  onLive?: () => void;
 }
 
 export function Composer({
@@ -73,6 +75,7 @@ export function Composer({
   onSend,
   onStop,
   onLocation,
+  onLive,
 }: Props) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -261,14 +264,26 @@ export function Composer({
             <Send size={19} />
           </button>
         ) : (
-          <button
-            className={mic === 'oʻchiq' ? 'round-btn' : 'round-btn rec'}
-            onClick={toggleMic}
-            disabled={mic === 'tahlil'}
-            aria-label="Ovozli kiritish"
-          >
-            <Mic size={20} />
-          </button>
+          <>
+            <button
+              className={mic === 'oʻchiq' ? 'round-btn' : 'round-btn rec'}
+              onClick={toggleMic}
+              disabled={mic === 'tahlil'}
+              aria-label="Ovozli kiritish"
+            >
+              <Mic size={20} />
+            </button>
+            {onLive && mic === 'oʻchiq' && (
+              <button
+                className="round-btn live"
+                onClick={onLive}
+                aria-label="Jonli suhbat"
+                title="Jonli suhbat — gapirib turing"
+              >
+                <Wave size={20} />
+              </button>
+            )}
+          </>
         )}
       </div>
 

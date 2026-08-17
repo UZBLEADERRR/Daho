@@ -175,3 +175,29 @@ export const Back = ({ size = 20, className }: IconProps) => (
     <path d="M15 5l-7 7 7 7" />
   </svg>
 );
+
+export const Wave = ({ size = 20, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M3 12v0M7 8v8M11 4.5v15M15 8v8M19 11v2" />
+  </svg>
+);
+
+export const Book = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M4 4.5A1.5 1.5 0 015.5 3H19v16H5.5A1.5 1.5 0 004 20.5z" />
+    <path d="M4 17.5A1.5 1.5 0 015.5 16H19" />
+  </svg>
+);
+
+export const Bolt = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M13 2L4.5 13.5H11l-1 8.5 8.5-11.5H12z" />
+  </svg>
+);
+
+export const Cpu = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <rect x="6.5" y="6.5" width="11" height="11" rx="2" />
+    <path d="M10 3v3.5M14 3v3.5M10 17.5V21M14 17.5V21M3 10h3.5M3 14h3.5M17.5 10H21M17.5 14H21" />
+  </svg>
+);

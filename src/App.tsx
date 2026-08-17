@@ -10,12 +10,13 @@ import { Menu, Settings as SettingsIcon } from './components/Icons';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { VideoStudio } from './components/VideoStudio';
-import type { AgentSection } from './components/agent/sections';
+import { isSection, type AgentSection } from './components/agent/sections';
 import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
+import { startScheduler } from './lib/automation';
 import { getModels, pickModel } from './lib/models';
 import { installSandboxStore } from './lib/sandbox';
-import { getState, updateSettings, useStore } from './lib/store';
+import { getState, updateSettings, updateView, useStore } from './lib/store';
 import type { Artifact } from './lib/types';
 
 type Tab = 'chat' | 'agent' | 'kod';
@@ -25,8 +26,15 @@ export default function App() {
   const accent = useStore((s) => s.settings.accent);
   const fontScale = useStore((s) => s.settings.fontScale);
   const hasKey = useStore((s) => Boolean(s.settings.apiKey));
-  const [tab, setTab] = useState<Tab>('chat');
-  const [section, setSection] = useState<AgentSection>('bugun');
+
+  // Qaysi ekran ochiqligi store da turadi: boʻlim almashsangiz ham,
+  // ilovani yopib qayta ochsangiz ham hech narsa qaytadan boshlanmaydi.
+  const tab = useStore((s) => s.view.tab) as Tab;
+  const rawSection = useStore((s) => s.view.section);
+  const section: AgentSection = isSection(rawSection) ? rawSection : 'bugun';
+  const setTab = (next: Tab) => updateView({ tab: next });
+  const setSection = (next: AgentSection) => updateView({ section: next });
+
   const [sidebar, setSidebar] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(!hasKey);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
@@ -39,6 +47,9 @@ export default function App() {
 
   // Qumboxdagi ilovalar saqlagan maʼlumotni qabul qilamiz.
   useEffect(() => installSandboxStore(), []);
+
+  // Avtomatlashtirilgan topshiriqlar soati.
+  useEffect(() => startScheduler(), []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -79,10 +90,15 @@ export default function App() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const handle = CapApp.addListener('backButton', ({ canGoBack }) => {
+      const view = getState().view;
       if (artifact) setArtifact(null);
       else if (videoId) setVideoId(null);
       else if (settingsOpen) setSettingsOpen(false);
       else if (sidebar) setSidebar(false);
+      // Ochiq kitob/kurs/loyiha — avval oʻshani yopamiz.
+      else if (tab === 'agent' && view.bookId) updateView({ bookId: null });
+      else if (tab === 'agent' && view.courseId) updateView({ courseId: null });
+      else if (tab === 'kod' && view.codeId) updateView({ codeId: null });
       else if (tab === 'agent' && section !== 'bugun') setSection('bugun');
       else if (tab !== 'chat') setTab('chat');
       else if (canGoBack) window.history.back();

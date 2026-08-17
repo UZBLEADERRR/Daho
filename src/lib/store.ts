@@ -28,6 +28,13 @@ export const DEFAULT_SETTINGS: Settings = {
   userName: '',
   university: '',
   customInstructions: '',
+  providers: [],
+  hiddenModels: [],
+  favoriteModels: [],
+  roleModels: { bosh: '', dizayn: '', kod: '', tekshir: '', matn: '' },
+  autoContinue: true,
+  maxContinues: 6,
+  agentRounds: 60,
 };
 
 const EMPTY_STATE: AppState = {
@@ -46,23 +53,43 @@ const EMPTY_STATE: AppState = {
   videos: [],
   code: [],
   routes: [],
+  books: [],
+  automations: [],
+  view: { tab: 'chat', section: 'bugun', courseId: null, bookId: null, codeId: null },
 };
 
 /** Eski saqlangan holatdagi ishlamay qolgan model nomlarini tozalaydi. */
 const RETIRED_MODELS = /^(gemini-1\.|gemini-2\.0|gemini-2\.5-(flash|pro)$)/;
 
+/** Saqlangan holatni bugungi sxemaga keltiradi (eski nusxalar uchun). */
+function migrate(parsed: Partial<AppState>): AppState {
+  const saved: Partial<Settings> = parsed.settings ?? {};
+  const settings: Settings = {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    // Ichma-ich obyektlar: yangi maydonlar qoʻshilganda yoʻqolib qolmasin.
+    roleModels: { ...DEFAULT_SETTINGS.roleModels, ...(saved.roleModels ?? {}) },
+    providers: Array.isArray(saved.providers) ? saved.providers : [],
+    hiddenModels: Array.isArray(saved.hiddenModels) ? saved.hiddenModels : [],
+    favoriteModels: Array.isArray(saved.favoriteModels) ? saved.favoriteModels : [],
+  };
+  if (RETIRED_MODELS.test(settings.model)) settings.model = DEFAULT_SETTINGS.model;
+
+  return {
+    ...structuredClone(EMPTY_STATE),
+    ...parsed,
+    settings,
+    books: Array.isArray(parsed.books) ? parsed.books : [],
+    automations: Array.isArray(parsed.automations) ? parsed.automations : [],
+    view: { ...EMPTY_STATE.view, ...(parsed.view ?? {}) },
+  };
+}
+
 function load(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return structuredClone(EMPTY_STATE);
-    const parsed = JSON.parse(raw) as Partial<AppState>;
-    const settings = { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) };
-    if (RETIRED_MODELS.test(settings.model)) settings.model = DEFAULT_SETTINGS.model;
-    return {
-      ...structuredClone(EMPTY_STATE),
-      ...parsed,
-      settings,
-    };
+    return migrate(JSON.parse(raw) as Partial<AppState>);
   } catch {
     return structuredClone(EMPTY_STATE);
   }
@@ -125,6 +152,11 @@ export function updateSettings(patch: Partial<Settings>): void {
   setState((prev) => ({ settings: { ...prev.settings, ...patch } }));
 }
 
+/** Koʻrinish holati — qaysi bo'lim ochiq (sahifa almashganda yoʻqolmaydi). */
+export function updateView(patch: Partial<AppState['view']>): void {
+  setState((prev) => ({ view: { ...prev.view, ...patch } }));
+}
+
 /** Barcha ma'lumotni JSON sifatida qaytaradi (zaxira nusxa uchun). */
 export function exportState(): string {
   return JSON.stringify(state, null, 2);
@@ -135,11 +167,7 @@ export function importState(json: string): boolean {
   try {
     const parsed = JSON.parse(json) as Partial<AppState>;
     if (!parsed || typeof parsed !== 'object') return false;
-    state = {
-      ...structuredClone(EMPTY_STATE),
-      ...parsed,
-      settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
-    };
+    state = migrate(parsed);
     persist();
     listeners.forEach((l) => l());
     return true;

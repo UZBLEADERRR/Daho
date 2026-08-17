@@ -3,6 +3,7 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { blobToWavBytes, bytesToB64, playWavBase64, stopPlayback, ttsToWavBase64 } from './audio';
 import { generateSpeech, transcribeAudio } from './gemini';
+import { cachedModels } from './models';
 import { getState } from './store';
 
 const isNative = () => Capacitor.isNativePlatform();
@@ -207,6 +208,27 @@ export interface ListenCallbacks {
   onState?: (state: 'yozilmoqda' | 'tahlil') => void;
   onFinal: (text: string) => void;
   onError: (message: string) => void;
+  /** Mikrofon darajasi 0..1 — jonli rejimda toʻlqin chizish uchun */
+  onLevel?: (level: number) => void;
+  /**
+   * Jim qolinganda oʻzi toʻxtasin (jonli suhbat uchun). Necha millisekund
+   * sukunatdan keyin toʻxtash kerakligi. 0 — oʻchiq.
+   */
+  autoStopAfterSilence?: number;
+}
+
+/**
+ * Ovozni matnga oʻgirish uchun Gemini modeli.
+ *
+ * Asosiy model tashqi provayderniki (OpenRouter, Kimi…) boʻlishi mumkin —
+ * ular audio qabul qilmaydi. Shuning uchun bu yerda har doim Gemini
+ * modelini tanlaymiz.
+ */
+function sttModel(): string {
+  const { settings } = getState();
+  if (settings.model && !settings.model.includes('::')) return settings.model;
+  const gemini = cachedModels().find((m) => m.role === 'chat' && !m.provider);
+  return gemini?.id ?? 'gemini-flash-latest';
 }
 
 /** Mikrofon ruxsatini so'raydi. */
@@ -273,39 +295,115 @@ async function listenViaGemini(cb: ListenCallbacks): Promise<ListenHandle | null
     if (e.data.size > 0) chunks.push(e.data);
   };
 
+  /* ---- Daraja oʻlchagich: koʻrsatkich va sukunatni aniqlash ---- */
+  let meter: (() => void) | null = null;
+  /** Umuman ovoz eshitildimi — «ovoz aniqlanmadi» xabarini aniq qilish uchun */
+  let heardVoice = false;
+
+  try {
+    const AudioCtor: typeof AudioContext =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AudioCtor();
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+    const buffer = new Uint8Array(analyser.frequencyBinCount);
+
+    let lastLoudAt = Date.now();
+    let raf = 0;
+    const silenceMs = cb.autoStopAfterSilence ?? 0;
+    /** Ovoz boshlanmasdan turib toʻxtatmaslik uchun */
+    const startedAt = Date.now();
+
+    const step = () => {
+      analyser.getByteTimeDomainData(buffer);
+      let peak = 0;
+      for (let i = 0; i < buffer.length; i += 1) {
+        peak = Math.max(peak, Math.abs(buffer[i] - 128) / 128);
+      }
+      cb.onLevel?.(peak);
+      if (peak > 0.06) {
+        lastLoudAt = Date.now();
+        heardVoice = true;
+      }
+      // Jonli rejim: gap tugagach oʻzi toʻxtaydi.
+      if (
+        silenceMs > 0 &&
+        heardVoice &&
+        Date.now() - lastLoudAt > silenceMs &&
+        Date.now() - startedAt > 1200 &&
+        recorder.state === 'recording'
+      ) {
+        recorder.stop();
+        return;
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+
+    meter = () => {
+      cancelAnimationFrame(raf);
+      void ctx.close().catch(() => undefined);
+    };
+  } catch {
+    /* daraja oʻlchagichsiz ham yozib olamiz */
+  }
+
   const finished = new Promise<void>((resolve) => {
     recorder.onstop = async () => {
+      meter?.();
       stream.getTracks().forEach((t) => t.stop());
       if (cancelled) {
         resolve();
         return;
       }
       const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-      if (blob.size < 1200) {
-        cb.onError('Ovoz juda qisqa — qaytadan urinib koʻring.');
+      if (blob.size < 1200 || !heardVoice) {
+        cb.onError('Ovoz eshitilmadi — mikrofonga yaqinroq va balandroq gapiring.');
         resolve();
         return;
       }
       cb.onState?.('tahlil');
       try {
         // Gemini webm ni qabul qilmaydi — WAV ga oʻgiramiz.
-        let mimeType = blob.type.split(';')[0] || 'audio/webm';
+        let sendMime = blob.type.split(';')[0] || 'audio/webm';
         let base64: string;
         try {
           base64 = bytesToB64(await blobToWavBytes(blob));
-          mimeType = 'audio/wav';
+          sendMime = 'audio/wav';
         } catch {
           base64 = await blobToBase64(blob);
         }
-        const text = await transcribeAudio(
-          settings.apiKey,
-          settings.model,
-          { mimeType, data: base64 },
-          undefined,
-          settings.sttLang,
-        );
+
+        const audio = { mimeType: sendMime, data: base64 };
+        let text = '';
+        try {
+          text = await transcribeAudio(
+            settings.apiKey,
+            sttModel(),
+            audio,
+            undefined,
+            settings.sttLang,
+          );
+        } catch (first) {
+          // Bitta model band yoki audioni qabul qilmadi — ikkinchisini sinaymiz.
+          const spare = cachedModels().find(
+            (m) => m.role === 'chat' && !m.provider && m.id !== sttModel(),
+          );
+          if (!spare) throw first;
+          text = await transcribeAudio(
+            settings.apiKey,
+            spare.id,
+            audio,
+            undefined,
+            settings.sttLang,
+          );
+        }
+
         if (text.trim()) cb.onFinal(text.trim());
-        else cb.onError('Ovoz aniqlanmadi — balandroq va yaqinroq gapiring.');
+        else cb.onError('Nutq tanilmadi — sekinroq va tiniqroq gapirib koʻring.');
       } catch (err) {
         // Model audioni qabul qilmadi — keyingi safar qurilma xizmatiga oʻtamiz.
         geminiSttBroken = true;
@@ -328,6 +426,7 @@ async function listenViaGemini(cb: ListenCallbacks): Promise<ListenHandle | null
     },
     cancel: () => {
       cancelled = true;
+      meter?.();
       if (recorder.state !== 'inactive') recorder.stop();
       stream.getTracks().forEach((t) => t.stop());
     },

@@ -2127,3 +2127,292 @@ textarea {
   gap: 8px;
   padding: 10px 12px;
 }
+
+/* ================================================================== */
+/*  Jonli suhbat                                                       */
+/* ================================================================== */
+
+.live-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  display: flex;
+}
+
+.live {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: calc(10px + var(--safe-top)) 16px calc(22px + var(--safe-bottom));
+}
+
+.live-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.live-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 20px 4px;
+}
+
+.live-hint {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.live-heard {
+  font-size: 15px;
+  color: var(--muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.live-reply {
+  font-size: 18px;
+  line-height: 1.65;
+  text-align: center;
+}
+
+.live-controls {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.live-status {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.live-status.bad {
+  color: var(--danger);
+}
+
+.live-mic {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  border: none;
+  flex: 0 0 auto;
+}
+
+.live-mic .live-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  opacity: 0;
+  transition: transform 90ms linear;
+  pointer-events: none;
+}
+
+.live-mic.on .live-ring {
+  opacity: 1;
+}
+
+.live-mic.on {
+  background: var(--danger);
+}
+
+.live-mic.think {
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.round-btn.live {
+  color: var(--accent);
+}
+
+/* ================================================================== */
+/*  Kitoblar                                                           */
+/* ================================================================== */
+
+.book-cover {
+  flex: 0 0 auto;
+  width: 54px;
+  height: 78px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  border: 1px solid var(--line);
+}
+
+.book-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.book-hero {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  margin: 0 auto 16px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: none;
+  padding: 0;
+}
+
+.book-hero img,
+.book-illus img {
+  width: 100%;
+  display: block;
+}
+
+.book-illus {
+  display: block;
+  width: 100%;
+  margin: 0 0 16px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: none;
+  padding: 0;
+}
+
+.ch-num {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.ch-num.done {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+.reader p {
+  font-size: 16px;
+  line-height: 1.75;
+  margin: 0 0 12px;
+}
+
+.reader h3,
+.reader h4 {
+  margin: 20px 0 8px;
+  font-size: 16.5px;
+}
+
+/* ================================================================== */
+/*  Modellar va provayderlar                                           */
+/* ================================================================== */
+
+.prov-row,
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  margin-bottom: 7px;
+  text-align: left;
+}
+
+.prov-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.prov-dot[data-on='true'] {
+  background: #2fbf71;
+}
+
+.model-row {
+  opacity: 0.5;
+}
+
+.model-row.on {
+  opacity: 1;
+  border-color: var(--accent);
+}
+
+.model-mark {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 15px;
+}
+
+.model-row:not(.on) .model-mark {
+  color: var(--muted);
+}
+
+/* Yangi komponentlarda label o'rniga span ishlatiladi */
+.field > span {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+.field > span i {
+  font-style: normal;
+  opacity: 0.75;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chips .chip {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
+.chip.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.chip:disabled {
+  opacity: 0.4;
+}

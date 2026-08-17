@@ -1,4 +1,4 @@
-import { streamGenerate } from './gemini';
+import { streamResilient } from './resilient';
 import { blocksEmbedding, normalizeUrl } from './openlink';
 import { getState, setState } from './store';
 import type { Artifact, Course, CourseTopic, MiniApp } from './types';
@@ -170,7 +170,9 @@ export async function generateLesson(
   const { settings } = getState();
   let text = '';
 
-  await streamGenerate({
+  // Chidamli oqim: server band boʻlsa kutadi, model javobni kesib qoʻysa
+  // oʻzi davom ettiradi — dars yarim qolmaydi.
+  await streamResilient({
     apiKey: settings.apiKey,
     model: settings.model,
     contents: [{ role: 'user', parts: [{ text: lessonPrompt(course, topic) }] }],
@@ -180,6 +182,11 @@ export async function generateLesson(
       text += chunk;
       onProgress?.(text.length);
     },
+    rollback: (chars) => {
+      text = text.slice(0, Math.max(0, text.length - chars));
+      onProgress?.(text.length);
+    },
+    allowModelSwap: true,
   });
 
   const match = text.match(/```html\s*\n([\s\S]*?)```/i) ?? text.match(/```\s*\n([\s\S]*?)```/);

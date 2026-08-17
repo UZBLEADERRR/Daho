@@ -16,7 +16,7 @@ import { byRole, cachedModels } from '../lib/models';
 import { TEMPLATES } from '../lib/templates';
 import { renderMarkdown } from '../lib/markdown';
 import { sandboxDocument } from '../lib/sandbox';
-import { getState, useStore, updateSettings } from '../lib/store';
+import { getState, useStore, updateSettings, updateView } from '../lib/store';
 import type { Attachment, CodeProject } from '../lib/types';
 import { relativeTime } from '../lib/utils';
 import { prepareFile, fileIcon } from '../lib/attach';
@@ -35,7 +35,9 @@ import { Empty, Sheet, toast } from './ui';
 
 export function CodeView() {
   const projects = useStore((s) => s.code);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // Ochiq loyiha store da — boshqa bo'limga o'tib qaytsangiz ish joyingiz saqlanadi.
+  const openId = useStore((s) => s.view.codeId);
+  const setOpenId = (id: string | null) => updateView({ codeId: id });
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [template, setTemplate] = useState('statik');

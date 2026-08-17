@@ -11,6 +11,9 @@ export interface ModelInfo {
   score: number;
   preview: boolean;
   description?: string;
+  /** Tashqi provayder id si; boʻsh boʻlsa — Gemini */
+  provider?: string;
+  providerLabel?: string;
 }
 
 const CACHE_KEY = 'daho.models.v1';

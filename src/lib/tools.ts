@@ -1,5 +1,6 @@
 import { askUser } from './ask';
 import { b64ToBytes } from './audio';
+import { createBook, writeBook } from './book';
 import { saveBytes } from './exporter';
 import { generateImage, generateJson, generateText, searchAnswer } from './gemini';
 import {
@@ -207,6 +208,33 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ['title', 'field', 'topics'],
+    },
+  },
+  {
+    name: 'write_book',
+    description:
+      'KITOB yozishni boshlaydi. Foydalanuvchi «kitob yozmoqchiman», «menga kitob yozib ber», ' +
+      '«qissa/roman/qoʻllanma yoz» desa shuni chaqir.\n' +
+      'MUHIM: chaqirishdan OLDIN `ask_user` bilan kamida 3 ta narsani aniqla — ' +
+      'kitob nima haqida va turi (badiiy/oʻquv/biznes), kim uchun, hajmi (necha bob). ' +
+      'Rasm kerakmi, ohangi qanday boʻlsin — buni ham soʻrasang yaxshi.\n' +
+      'Vosita ishga tushgach kitob oʻzi yoziladi: reja va qahramonlar, muqova rasmi, ' +
+      'soʻng bob-bob matn. Foydalanuvchi jarayonni «Agent → Kitoblar» boʻlimida koʻradi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        request: {
+          type: 'STRING',
+          description:
+            'Kitob haqida toʻliq tavsif: mavzu, tur, ohang, kim uchun, foydalanuvchi ' +
+            'aytgan barcha tafsilotlar bir joyda.',
+        },
+        kind: { type: 'STRING', description: 'badiiy | oʻquv qoʻllanma | biznes | bolalar…' },
+        chapters: { type: 'NUMBER', description: 'Boblar soni (standart 12)' },
+        words: { type: 'NUMBER', description: 'Har bobda taxminan necha soʻz (standart 1200)' },
+        images: { type: 'STRING', description: '"false" — rasmsiz kitob' },
+      },
+      required: ['request'],
     },
   },
   {
@@ -527,6 +555,41 @@ export async function executeTool(
         ok: true,
         summary: `Kurs ochildi: ${course.title} — ${topics.length} ta mavzu`,
         payload: { status: 'ochildi', id: course.id, topics: topics.length },
+      };
+    }
+
+    case 'write_book': {
+      const request = str(args.request);
+      if (!request) {
+        return {
+          ok: false,
+          summary: 'Kitob tavsifi berilmadi',
+          payload: { error: 'avval ask_user bilan kitob haqida soʻrang' },
+        };
+      }
+      const chapters = Math.max(3, Math.min(60, num(args.chapters, 12)));
+      const book = createBook({
+        request,
+        kind: str(args.kind, 'aniqlanmagan'),
+        wordsPerChapter: Math.max(400, Math.min(4000, num(args.words, 1200))),
+        withImages: str(args.images) !== 'false',
+        chatId: ctx.chatId,
+      });
+      // Yozish fon vazifasi boʻlib ketadi — suhbat bloklanmaydi va
+      // foydalanuvchi boshqa boʻlimga oʻtsa ham davom etaveradi.
+      void writeBook(book.id, { chapterCount: chapters });
+      return {
+        ok: true,
+        summary: `Kitob boshlandi: ${chapters} bob`,
+        payload: {
+          status: 'yozish boshlandi',
+          id: book.id,
+          boblar: chapters,
+          eslatma:
+            'Kitob fonda yozilmoqda: avval reja va qahramonlar, keyin muqova, ' +
+            'soʻng boblar. Foydalanuvchiga «Agent → Kitoblar» boʻlimidan kuzatishi ' +
+            'mumkinligini ayt. Sen kitob matnini bu yerda yozma.',
+        },
       };
     }
 

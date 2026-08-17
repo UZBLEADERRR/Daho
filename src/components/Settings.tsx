@@ -7,6 +7,7 @@ import { transcribeAudio } from '../lib/gemini';
 import { byRole, cachedModels, getModels, pickModel, type ModelInfo } from '../lib/models';
 import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
 import { exportState, getState, importState, resetState, updateSettings, useStore } from '../lib/store';
+import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
 import { Refresh } from './Icons';
 import { Sheet, Switch, toast } from './ui';
 
@@ -64,7 +65,6 @@ export function Settings({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const chatModels = byRole(models, 'chat');
   const imageModels = byRole(models, 'image');
   const ttsModels = byRole(models, 'tts');
 
@@ -153,10 +153,10 @@ export function Settings({ onClose }: { onClose: () => void }) {
 
       <div className="field">
         <label>Suhbat modeli</label>
-        <select value={settings.model} onChange={(e) => updateSettings({ model: e.target.value })}>
-          {modelOptions(chatModels, settings.model)}
-        </select>
+        <ChatModelSelect value={settings.model} onChange={(id) => updateSettings({ model: id })} />
       </div>
+
+      <ModelsPanel />
 
       <div className="field">
         <label>Rasm modeli</label>

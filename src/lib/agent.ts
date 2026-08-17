@@ -1,7 +1,8 @@
 import { drainInterjections } from './ask';
 import { isModelReadable } from './attach';
 import { extractArtifacts } from './artifacts';
-import { GeminiError, generateText } from './gemini';
+import { GeminiError } from './gemini';
+import { completeAny } from './providers';
 import { streamResilient } from './resilient';
 import type { GeminiContent, GeminiPart } from './gemini';
 import { getState, setState } from './store';
@@ -20,6 +21,7 @@ const STEP_LABEL: Record<string, string> = {
   add_schedule_item: 'jadvalga yozilmoqda',
   create_project: 'loyiha rejasi tuzilmoqda',
   create_course: 'kurs mavzulari tuzilmoqda',
+  write_book: 'kitob yozish boshlanmoqda',
   generate_image: 'rasm chizilmoqda',
   get_location: 'joylashuvingiz aniqlanmoqda',
   find_place: 'xaritadan qidirilmoqda',
@@ -126,6 +128,11 @@ Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jim
 - Bajarilgan ish haqida aytsa — \`log_work\`.
 - Biror sohani oʻrganmoqchi boʻlsa (IELTS, dasturlash, ingliz tili…) — \`create_course\` bilan
   kamida 40 ta mavzudan iborat toʻliq kurs och.
+- KITOB yozish soʻralsa — \`write_book\`. Lekin avval \`ask_user\` bilan soʻra:
+  nima haqida va qaysi turdagi kitob, kim uchun, necha bob, rasm kerakmi.
+  Savollarni bittalab ber (har birida tayyor variantlar bilan), javoblarni
+  toʻplab, keyin \`write_book\` ni bitta toʻliq tavsif bilan chaqir.
+  Kitob matnini oʻzing chatda yozma — vosita fonda yozadi.
 - Hujjatga (Word yoki PDF biriktirilgan boʻlsa) rasm qoʻshish soʻralsa —
   \`illustrate_document\`. Nechta rasm kerakligini foydalanuvchi aytmasa 5 ta qil.
   Natija yangi .docx boʻlib telefonga saqlanadi.
@@ -254,8 +261,8 @@ async function autoTitle(chatId: string, firstUserText: string): Promise<void> {
   const fallback = firstUserText.slice(0, 38).trim() || 'Suhbat';
   patchChat(chatId, (c) => ({ ...c, title: fallback }));
   try {
-    const title = await generateText(
-      settings.apiKey,
+    // `completeAny` — model qaysi provayderniki boʻlsa oʻshanga boradi.
+    const title = await completeAny(
       settings.model,
       `Quyidagi savol uchun 2-4 soʻzdan iborat oʻzbekcha sarlavha yoz. Faqat sarlavhani qaytar, tirnoqsiz:\n\n${firstUserText.slice(0, 400)}`,
     );
