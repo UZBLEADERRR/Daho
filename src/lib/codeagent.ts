@@ -37,6 +37,7 @@ import {
   patchCodeProject,
   writeProjectFile,
 } from './codeproject';
+import { snapshot } from './checkpoint';
 import { describeProbe, probeApp } from './probe';
 import { saveZip } from './exporter';
 import {
@@ -1934,6 +1935,9 @@ export async function runCodeAgent(
   const { settings } = getState();
   const project = getCodeProject(projectId);
   if (!project) return { ok: false, text: '' };
+
+  // Ishdan OLDIN nusxa olamiz — agent buzib qoʻysa qaytish mumkin boʻlsin.
+  snapshot(projectId, instruction.slice(0, 60) || 'topshiriq');
 
   const userMsg: Message = {
     id: uid('m_'),

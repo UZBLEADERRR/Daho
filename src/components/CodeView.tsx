@@ -12,6 +12,7 @@ import {
 import { saveBytes } from '../lib/exporter';
 import { getRepo, listRepos, whoAmI, type GhRepo } from '../lib/github';
 import { saveLinkApp } from '../lib/creations';
+import { describeDiff, deleteSnapshot, restore } from '../lib/checkpoint';
 import { modelLabel, parseRef, pickForProject, usableChatModels } from '../lib/providers';
 import { TEMPLATES } from '../lib/templates';
 import { renderMarkdown } from '../lib/markdown';
@@ -671,7 +672,69 @@ function CodeChat({ project }: { project: CodeProject }) {
 
 /* ---------- Fayllar ---------- */
 
+/** Nusxalar roʻyxati — agent buzib qoʻysa orqaga qaytarish. */
+function HistorySheet({ project, onClose }: { project: CodeProject; onClose: () => void }) {
+  const history = project.history ?? [];
+
+  return (
+    <Sheet title="Oldingi holatlar" onClose={onClose}>
+      {history.length === 0 ? (
+        <p className="tiny">
+          Hali nusxa yoʻq. Agentga topshiriq berganingizda oʻzgarishdan oldingi
+          holat avtomatik saqlanadi.
+        </p>
+      ) : (
+        <>
+          <div className="tiny" style={{ marginBottom: 10, opacity: 0.75 }}>
+            Har topshiriqdan oldin loyiha holati saqlanadi. Qaytarsangiz hozirgi
+            holat ham nusxaga tushadi — yaʼni qaytarishni ham qaytarsa boʻladi.
+          </div>
+          {history.map((snap) => (
+            <div className="card" key={snap.id} style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 14, fontWeight: 560 }}>{snap.label}</div>
+              <div className="tiny" style={{ marginTop: 3 }}>
+                {new Date(snap.at).toLocaleString('uz-UZ', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}{' '}
+                · {snap.files.length} fayl
+              </div>
+              <div className="tiny" style={{ marginTop: 4, color: 'var(--accent)' }}>
+                {describeDiff(project.id, snap.id)}
+              </div>
+              <div className="row" style={{ marginTop: 9, gap: 8 }}>
+                <button
+                  className="btn mini"
+                  onClick={() => {
+                    if (!window.confirm('Loyiha shu holatga qaytarilsinmi?')) return;
+                    if (restore(project.id, snap.id)) {
+                      toast('Qaytarildi');
+                      onClose();
+                    }
+                  }}
+                >
+                  <Refresh size={13} /> Qaytarish
+                </button>
+                <button
+                  className="btn mini ghost"
+                  style={{ color: 'var(--danger)' }}
+                  onClick={() => deleteSnapshot(project.id, snap.id)}
+                >
+                  <Trash size={13} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </Sheet>
+  );
+}
+
 function Files({ project }: { project: CodeProject }) {
+  const [history, setHistory] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [newFile, setNewFile] = useState(false);
@@ -727,16 +790,23 @@ function Files({ project }: { project: CodeProject }) {
   return (
     <div className="scroll">
       <div className="pad">
-        <button
-          className="btn ghost wide"
-          style={{ marginBottom: 12 }}
-          onClick={() => {
-            setNewPath('');
-            setNewFile(true);
-          }}
-        >
-          <Plus size={16} /> Fayl qoʻshish
-        </button>
+        <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+          <button
+            className="btn ghost grow"
+            onClick={() => {
+              setNewPath('');
+              setNewFile(true);
+            }}
+          >
+            <Plus size={16} /> Fayl qoʻshish
+          </button>
+          <button className="btn ghost grow" onClick={() => setHistory(true)}>
+            <Refresh size={15} /> Qaytarish
+            {project.history?.length ? ` (${project.history.length})` : ''}
+          </button>
+        </div>
+
+        {history && <HistorySheet project={project} onClose={() => setHistory(false)} />}
 
         {project.files.map((f) => (
           <div className="file-row" key={f.path}>

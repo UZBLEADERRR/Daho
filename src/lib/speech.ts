@@ -232,12 +232,127 @@ function sttModel(): string {
 async function ensureMicPermission(): Promise<boolean> {
   if (!isNative()) return true;
   try {
+    // Avval tekshiramiz — berilgan boʻlsa qayta soʻrab bezovta qilmaymiz.
+    const current = await SpeechRecognition.checkPermissions();
+    if (current.speechRecognition === 'granted') return true;
     const perm = await SpeechRecognition.requestPermissions();
     return perm.speechRecognition === 'granted';
   } catch {
     // Plagin ruxsat so'ray olmasa, getUserMedia o'zi so'raydi.
     return true;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mikrofon diagnostikasi                                             */
+/* ------------------------------------------------------------------ */
+
+export interface MicCheck {
+  step: string;
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * Mikrofonning har bir bosqichini alohida tekshiradi.
+ *
+ * Telefonda mikrofon ishlamaganda sabab koʻp boʻlishi mumkin: ruxsat
+ * berilmagan, WebView `getUserMedia` ni bermayapti, `MediaRecorder` yoʻq,
+ * yoki qurilmada oʻzbek tili uchun nutq xizmati yoʻq. Bu funksiya
+ * qaysi bosqichda toʻxtaganini aniq aytadi.
+ */
+export async function checkMicrophone(): Promise<MicCheck[]> {
+  const out: MicCheck[] = [];
+  const { settings } = getState();
+
+  out.push({
+    step: 'Muhit',
+    ok: true,
+    detail: isNative() ? 'Android ilova (WebView)' : 'Brauzer',
+  });
+
+  // 1. Ruxsat
+  if (isNative()) {
+    try {
+      const perm = await SpeechRecognition.checkPermissions();
+      const granted = perm.speechRecognition === 'granted';
+      if (!granted) {
+        const asked = await SpeechRecognition.requestPermissions();
+        out.push({
+          step: 'Mikrofon ruxsati',
+          ok: asked.speechRecognition === 'granted',
+          detail: `holat: ${asked.speechRecognition}`,
+        });
+      } else {
+        out.push({ step: 'Mikrofon ruxsati', ok: true, detail: 'berilgan' });
+      }
+    } catch (err) {
+      out.push({
+        step: 'Mikrofon ruxsati',
+        ok: false,
+        detail: `plagin javob bermadi: ${String((err as Error)?.message ?? err)}`,
+      });
+    }
+  } else {
+    out.push({ step: 'Mikrofon ruxsati', ok: true, detail: 'brauzer oʻzi soʻraydi' });
+  }
+
+  // 2. getUserMedia — ovoz yozib olish yoʻli
+  if (!navigator.mediaDevices?.getUserMedia) {
+    out.push({ step: 'Ovoz oqimi', ok: false, detail: 'getUserMedia yoʻq' });
+  } else {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const track = stream.getAudioTracks()[0];
+      out.push({
+        step: 'Ovoz oqimi',
+        ok: true,
+        detail: track ? `ochildi: ${track.label || 'mikrofon'}` : 'ochildi',
+      });
+      stream.getTracks().forEach((t) => t.stop());
+    } catch (err) {
+      out.push({
+        step: 'Ovoz oqimi',
+        ok: false,
+        detail: `${(err as Error)?.name ?? 'xato'}: ${(err as Error)?.message ?? ''}`,
+      });
+    }
+  }
+
+  // 3. Yozib oluvchi
+  const mime = typeof MediaRecorder === 'undefined' ? '' : pickRecorderMime();
+  out.push({
+    step: 'Yozib oluvchi',
+    ok: typeof MediaRecorder !== 'undefined',
+    detail: typeof MediaRecorder === 'undefined' ? 'MediaRecorder yoʻq' : mime || 'standart format',
+  });
+
+  // 4. Matnga oʻgirish yoʻli
+  if (settings.apiKey.trim()) {
+    out.push({ step: 'Matnga oʻgirish', ok: true, detail: `Gemini: ${sttModel()}` });
+  } else {
+    out.push({
+      step: 'Matnga oʻgirish',
+      ok: false,
+      detail: 'Google kaliti yoʻq — telefon xizmati ishlatiladi',
+    });
+  }
+
+  // 5. Qurilmaning oʻz nutq xizmati (zaxira yoʻl)
+  if (isNative()) {
+    try {
+      const { available } = await SpeechRecognition.available();
+      out.push({
+        step: 'Telefon nutq xizmati',
+        ok: available,
+        detail: available ? `bor (${settings.sttLang})` : 'yoʻq — Google ilovasini yangilang',
+      });
+    } catch {
+      out.push({ step: 'Telefon nutq xizmati', ok: false, detail: 'tekshirib boʻlmadi' });
+    }
+  }
+
+  return out;
 }
 
 function pickRecorderMime(): string {

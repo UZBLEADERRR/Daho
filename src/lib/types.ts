@@ -334,6 +334,16 @@ export interface CodeFile {
   content: string;
 }
 
+/** Loyihaning saqlangan holati — orqaga qaytarish uchun. */
+export interface CodeSnapshot {
+  id: string;
+  at: number;
+  /** Nima qilinishidan oldin olingani */
+  label: string;
+  files: CodeFile[];
+  plan?: ProjectStep[];
+}
+
 export interface CodeProject {
   id: string;
   name: string;
@@ -344,6 +354,8 @@ export interface CodeProject {
   plan?: ProjectStep[];
   /** Loyiha talablari — savol-javobdan chiqqan xulosa */
   spec?: string;
+  /** Oxirgi nusxalar — agent buzib qoʻysa qaytish uchun */
+  history?: CodeSnapshot[];
   /** Qaysi shablondan yaratilgan */
   template: string;
   files: CodeFile[];

@@ -1,15 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { blobToWavBytes, bytesToB64, playWavBase64 } from '../lib/audio';
 import { applyAppLook } from '../lib/applook';
-import { saveBackup } from '../lib/exporter';
+import { copyText, saveBackup } from '../lib/exporter';
 import { getRepo, whoAmI } from '../lib/github';
 import { sbPing } from '../lib/supabase';
 import { transcribeAudio } from '../lib/gemini';
 import { byRole, cachedModels, geminiModel, getModels, pickModel, type ModelInfo } from '../lib/models';
-import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
+import {
+  VOICES,
+  checkMicrophone,
+  listDeviceVoices,
+  speak,
+  synthesize,
+  type DeviceVoice,
+  type MicCheck,
+} from '../lib/speech';
 import { exportState, getState, importState, resetState, updateSettings, useStore } from '../lib/store';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
-import { Refresh } from './Icons';
+import { Copy, Refresh } from './Icons';
 import { Sheet, Switch, toast } from './ui';
 
 const ACCENTS = [
@@ -38,6 +46,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [ghChecking, setGhChecking] = useState(false);
+  const [micChecks, setMicChecks] = useState<MicCheck[] | null>(null);
+  const [micBusy, setMicBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -330,6 +340,52 @@ export function Settings({ onClose }: { onClose: () => void }) {
           ))}
         </select>
       </div>
+
+      <button
+        className="btn ghost wide"
+        style={{ marginTop: 4 }}
+        disabled={micBusy}
+        onClick={async () => {
+          setMicBusy(true);
+          setMicChecks(null);
+          try {
+            setMicChecks(await checkMicrophone());
+          } finally {
+            setMicBusy(false);
+          }
+        }}
+      >
+        {micBusy ? 'Tekshirilmoqda…' : '🎤 Mikrofonni tekshirish'}
+      </button>
+
+      {micChecks && (
+        <div className="card" style={{ marginTop: 10 }}>
+          {micChecks.map((c) => (
+            <div key={c.step} className="between" style={{ marginBottom: 6, gap: 10 }}>
+              <span style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13.5 }}>
+                  {c.ok ? '✅' : '❌'} {c.step}
+                </div>
+                <div className="tiny" style={{ wordBreak: 'break-word' }}>
+                  {c.detail}
+                </div>
+              </span>
+            </div>
+          ))}
+          <button
+            className="btn mini ghost"
+            style={{ marginTop: 6 }}
+            onClick={async () => {
+              const text = micChecks
+                .map((c) => `${c.ok ? 'OK' : 'XATO'} — ${c.step}: ${c.detail}`)
+                .join('\n');
+              toast((await copyText(text)) ? 'Nusxalandi — menga yuboring' : 'Nusxalab boʻlmadi');
+            }}
+          >
+            <Copy size={12} /> Natijani nusxalash
+          </button>
+        </div>
+      )}
 
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
         GitHub (Daho Code uchun)
