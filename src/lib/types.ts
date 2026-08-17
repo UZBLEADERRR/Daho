@@ -171,6 +171,10 @@ export interface Settings {
   sttLang: string;
   /** GitHub shaxsiy tokeni — faqat shu qurilmada saqlanadi */
   githubToken: string;
+  /** Supabase loyihasi manzili: https://xxxx.supabase.co */
+  supabaseUrl: string;
+  /** Supabase ochiq (anon) kaliti — brauzerga chiqarish uchun moʻljallangan */
+  supabaseAnonKey: string;
   /** Nashr uchun oʻz domeningiz (ixtiyoriy) */
   publishDomain: string;
   userName: string;

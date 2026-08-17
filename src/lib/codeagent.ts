@@ -38,6 +38,16 @@ import {
   writeProjectFile,
 } from './codeproject';
 import { describeProbe, probeApp } from './probe';
+import { saveZip } from './exporter';
+import {
+  createTableSql,
+  sbDelete,
+  sbInsert,
+  sbSchema,
+  sbSelect,
+  sbUpdate,
+  supabaseLink,
+} from './supabase';
 import { screenshotHtml, shotToAttachment } from './shot';
 import { searchAnswer } from './gemini';
 import {
@@ -89,6 +99,8 @@ const STEP_LABEL: Record<string, string> = {
   github_repo_settings: 'repo sozlanmoqda',
   github_history: 'tarix koʻrilmoqda',
   publish: 'internetga chiqarilmoqda',
+  send_zip: 'arxiv tayyorlanmoqda',
+  supabase: 'bazaga murojaat qilinmoqda',
   plan_write: 'reja yozilmoqda',
   plan_check: 'reja belgilanmoqda',
   screenshot: 'skrinshot olinmoqda',
@@ -509,6 +521,68 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
         model: { type: 'STRING', description: 'Ixtiyoriy: aynan qaysi model ishlatilsin' },
       },
       required: ['role', 'task'],
+    },
+  },
+  {
+    name: 'send_zip',
+    description:
+      'Loyihaning fayllarini ZIP arxiv qilib foydalanuvchining telefoniga yuboradi. ' +
+      'Foydalanuvchi «zip qilib ber», «fayllarni yubor», «yuklab olaman» desa chaqir. ' +
+      'Ulashish oynasi ochiladi — u faylni saqlaydi yoki Telegramga yuboradi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        name: { type: 'STRING', description: 'Arxiv nomi (kengaytmasiz)' },
+        only: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Faqat shu fayllar; boʻsh boʻlsa hammasi',
+        },
+      },
+    },
+  },
+  {
+    name: 'supabase',
+    description:
+      'Supabase maʼlumot bazasi bilan ishlaydi — haqiqiy, telefonlar orasida ' +
+      'umumiy baza. localStorage faqat bitta telefonda qoladi; roʻyxatga olish, ' +
+      'foydalanuvchi hisobi, umumiy roʻyxat kerak boʻlsa Supabase ishlat.\n' +
+      'Amallar:\n' +
+      '- `schema` — qanday jadvallar va ustunlar bor (ISHNI SHUNDAN BOSHLA)\n' +
+      '- `select` — yozuvlarni oʻqish\n' +
+      '- `insert` — yozuv qoʻshish (`rows` — JSON massiv matni)\n' +
+      '- `update` — `filter` boʻyicha yangilash (`patch` — JSON matn)\n' +
+      '- `delete` — `filter` boʻyicha oʻchirish\n' +
+      '- `sql` — jadval yaratish SQL ini TAYYORLAB beradi (bajarmaydi)\n' +
+      'Filtr koʻrinishi: `id=eq.5` yoki `holat=eq.faol&narx=gt.100`.\n' +
+      'MUHIM: anon kalit bilan CREATE TABLE bajarilmaydi. Jadval kerak boʻlsa ' +
+      '`sql` bilan matnini yozib, faylga saqlab, foydalanuvchiga Supabase → ' +
+      'SQL Editor ga bir marta qoʻyishini ayt.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'schema | select | insert | update | delete | sql' },
+        table: { type: 'STRING' },
+        columns: { type: 'STRING', description: 'select uchun: "id,nom,narx"' },
+        filter: { type: 'STRING', description: 'masalan "id=eq.5"' },
+        order: { type: 'STRING', description: 'masalan "created_at.desc"' },
+        limit: { type: 'NUMBER' },
+        rows: { type: 'STRING', description: 'insert uchun JSON massiv matni' },
+        patch: { type: 'STRING', description: 'update uchun JSON obyekt matni' },
+        sql_columns: {
+          type: 'ARRAY',
+          description: 'sql uchun ustunlar',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              name: { type: 'STRING' },
+              type: { type: 'STRING', description: 'text | int8 | numeric | boolean | timestamptz | uuid' },
+              nullable: { type: 'STRING', description: '"true" — boʻsh boʻlishi mumkin' },
+            },
+          },
+        },
+      },
+      required: ['action'],
     },
   },
   {
@@ -1134,6 +1208,152 @@ async function runTool(
       };
     }
 
+    case 'supabase': {
+      const action = str(args.action, 'schema');
+      const table = str(args.table);
+
+      if (action === 'schema') {
+        const tables = await sbSchema();
+        return {
+          ok: true,
+          summary: `${tables.length} ta jadval`,
+          payload: {
+            jadvallar: tables.map(
+              (t) =>
+                `${t.name}(${t.columns
+                  .map((c) => `${c.name}:${c.type}${c.required ? '*' : ''}`)
+                  .join(', ')})`,
+            ),
+            eslatma: tables.length
+              ? '* — majburiy ustun. Yozuv qoʻshishda shu nomlardan foydalan.'
+              : 'Jadval yoʻq. `sql` amali bilan CREATE TABLE matnini yozib ber.',
+          },
+        };
+      }
+
+      if (action === 'sql') {
+        const raw = Array.isArray(args.sql_columns) ? args.sql_columns : [];
+        const columns = raw
+          .map((c) => {
+            const item = (c ?? {}) as Record<string, unknown>;
+            return {
+              name: str(item.name),
+              type: str(item.type, 'text'),
+              nullable: str(item.nullable) === 'true',
+            };
+          })
+          .filter((c) => c.name);
+        if (!table || !columns.length) {
+          return {
+            ok: false,
+            summary: 'Jadval nomi yoki ustunlar berilmadi',
+            payload: { error: 'table va sql_columns kerak' },
+          };
+        }
+        const sql = createTableSql(table, columns);
+        // SQL ni loyihaga fayl qilib qoʻyamiz — foydalanuvchi nusxalab oladi.
+        writeProjectFile(projectId, `supabase/${table}.sql`, sql);
+        return {
+          ok: true,
+          summary: `SQL yozildi: supabase/${table}.sql`,
+          payload: {
+            sql,
+            eslatma:
+              'Bu SQL ni Daho bajara olmaydi (anon kalit DDL ga ruxsat bermaydi). ' +
+              'Foydalanuvchiga ayt: Supabase → SQL Editor ga qoʻyib bir marta ishga ' +
+              'tushirsin, keyin `schema` bilan tekshirasan.',
+          },
+        };
+      }
+
+      if (!table) {
+        return { ok: false, summary: 'Jadval nomi berilmadi', payload: { error: 'table kerak' } };
+      }
+
+      if (action === 'select') {
+        const rows = await sbSelect(table, {
+          columns: str(args.columns),
+          filter: str(args.filter),
+          order: str(args.order),
+          limit: Math.min(200, Number(args.limit) || 50),
+        });
+        return {
+          ok: true,
+          summary: `${rows.length} ta yozuv (${table})`,
+          payload: { soni: rows.length, yozuvlar: rows.slice(0, 50) },
+        };
+      }
+
+      /** JSON matnni xavfsiz oʻqiydi — model buzuq JSON yuborishi mumkin. */
+      const parseJson = (value: string, what: string): unknown => {
+        try {
+          return JSON.parse(value);
+        } catch {
+          throw new Error(`${what} JSON emas: ${value.slice(0, 120)}`);
+        }
+      };
+
+      if (action === 'insert') {
+        const parsed = parseJson(str(args.rows, '[]'), 'rows');
+        const rows = (Array.isArray(parsed) ? parsed : [parsed]) as Array<Record<string, unknown>>;
+        const added = await sbInsert(table, rows);
+        return {
+          ok: true,
+          summary: `${added.length} ta yozuv qoʻshildi (${table})`,
+          payload: { qoʻshildi: added.length, natija: added.slice(0, 10) },
+        };
+      }
+
+      if (action === 'update') {
+        const patch = parseJson(str(args.patch, '{}'), 'patch') as Record<string, unknown>;
+        const changed = await sbUpdate(table, str(args.filter), patch);
+        return {
+          ok: true,
+          summary: `${changed.length} ta yozuv yangilandi`,
+          payload: { yangilandi: changed.length },
+        };
+      }
+
+      if (action === 'delete') {
+        const count = await sbDelete(table, str(args.filter));
+        return {
+          ok: true,
+          summary: `${count} ta yozuv oʻchirildi`,
+          payload: { oʻchirildi: count },
+        };
+      }
+
+      return {
+        ok: false,
+        summary: `Nomaʼlum amal: ${action}`,
+        payload: { error: 'schema | select | insert | update | delete | sql' },
+      };
+    }
+
+    case 'send_zip': {
+      const only = Array.isArray(args.only) ? args.only.map(String) : [];
+      const files = only.length
+        ? project.files.filter((f) => only.includes(f.path))
+        : project.files;
+      if (!files.length) {
+        return {
+          ok: false,
+          summary: 'Arxivga soladigan fayl yoʻq',
+          payload: { error: 'fayl_yoq', mavjud: project.files.map((f) => f.path) },
+        };
+      }
+      const message = await saveZip(str(args.name, project.name), files);
+      return {
+        ok: true,
+        summary: `${files.length} ta fayl ZIP qilib yuborildi`,
+        payload: {
+          status: message,
+          fayllar: files.length,
+          eslatma: 'Foydalanuvchiga ulashish oynasi ochilgani va faylni saqlashi mumkinligini ayt.',
+        },
+      };
+    }
+
     case 'web_search': {
       const query = str(args.query);
       if (!query) return { ok: false, summary: 'Soʻrov boʻsh', payload: { error: 'boʻsh' } };
@@ -1486,6 +1706,7 @@ ${project.description ? `Tavsif: ${project.description}` : ''}
 GitHub: ${project.repo ? `${project.repo.owner}/${project.repo.repo} (${project.repo.branch})` : 'ulanmagan'}
 Jonli havola: ${project.publish?.url ?? 'hali chiqarilmagan'}
 GitHub tokeni: ${settings.githubToken ? 'kiritilgan' : 'YOʻQ — github vositalari ishlamaydi'}
+Supabase: ${supabaseLink() ? 'ulangan — `supabase` vositasi ishlaydi' : 'ulanmagan (Sozlamalar → Supabase)'}
 
 Shablon: ${template.name}
 ${template.brief}
@@ -1571,6 +1792,18 @@ Qoidalar:
 - Foydalanuvchi skrinshot yuborsa — undagi xato matnini diqqat bilan oʻqi,
   tegishli faylni ochib sababini top va tuzat.
 - Bilmasang \`web_search\` bilan qidir. Taxmin qilib yozma.
+- Foydalanuvchi fayllarni soʻrasa («zip qilib ber», «yuklab olaman») —
+  \`send_zip\` bilan arxiv qilib yubor.
+
+## Maʼlumot qayerda saqlanadi 🗄
+- Kichik ilova, bitta telefon uchun — \`localStorage\` yetarli.
+- Roʻyxatga olish, foydalanuvchi hisobi, bir nechta odam koʻradigan umumiy
+  maʼlumot kerak boʻlsa — \`supabase\`. Avval \`supabase\` + \`schema\` bilan
+  qanday jadval borligini KOʻR, keyin ishla. Jadval yoʻq boʻlsa \`sql\` amali
+  bilan CREATE TABLE matnini yozib ber va foydalanuvchiga Supabase → SQL
+  Editor ga qoʻyishini ayt (anon kalit jadval yaratolmaydi).
+- Supabase ulanmagan boʻlsa avval \`ask_user\` bilan soʻra: localStorage
+  bilan davom etaymi yoki Supabase ulaysizmi.
 
 ## Kod qoidalari
 - Telefonda koʻriladigan qism (index.html va h.k.) tashqi CDN, shrift yoki

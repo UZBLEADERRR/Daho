@@ -24,6 +24,8 @@ export const DEFAULT_SETTINGS: Settings = {
   sttEngine: 'gemini',
   sttLang: 'uz-UZ',
   githubToken: '',
+  supabaseUrl: '',
+  supabaseAnonKey: '',
   publishDomain: '',
   userName: '',
   university: '',

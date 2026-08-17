@@ -3,6 +3,7 @@ import { blobToWavBytes, bytesToB64, playWavBase64 } from '../lib/audio';
 import { applyAppLook } from '../lib/applook';
 import { saveBackup } from '../lib/exporter';
 import { getRepo, whoAmI } from '../lib/github';
+import { sbPing } from '../lib/supabase';
 import { transcribeAudio } from '../lib/gemini';
 import { byRole, cachedModels, geminiModel, getModels, pickModel, type ModelInfo } from '../lib/models';
 import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
@@ -389,6 +390,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
         {ghChecking ? 'Tekshirilmoqda…' : 'GitHub ulanishini tekshirish'}
       </button>
 
+      <SupabasePanel />
+
       <MicCheck />
 
       <AppLook />
@@ -749,6 +752,87 @@ function MicCheck() {
       {!!lines.length && (
         <div className="tiny" style={{ marginTop: 8, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
           {lines.join('\n')}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Supabase                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Supabase ulanishi — yasalgan ilovalar uchun haqiqiy maʼlumot bazasi.
+ * Faqat ochiq (anon) kalit kiritiladi; u brauzerga chiqarish uchun
+ * moʻljallangan va Supabase tomonida RLS bilan himoyalanadi.
+ */
+function SupabasePanel() {
+  const settings = useStore((s) => s.settings);
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState('');
+
+  const check = async () => {
+    setChecking(true);
+    setResult('');
+    try {
+      const res = await sbPing();
+      setResult(res.message);
+      toast(res.message);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="section-label" style={{ padding: '14px 0 6px' }}>
+        Supabase (maʼlumot bazasi)
+      </div>
+
+      <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.55 }}>
+        Yasalgan ilovaga <b>haqiqiy baza</b> kerak boʻlsa — roʻyxatga olish,
+        foydalanuvchi hisobi, bir nechta odam koʻradigan roʻyxat — Supabase
+        ulang. Bepul. Daho jadvallarni koʻradi, yozuv qoʻshadi va oʻqiydi.
+      </div>
+
+      <div className="field">
+        <label>Loyiha manzili</label>
+        <input
+          value={settings.supabaseUrl}
+          onChange={(e) => updateSettings({ supabaseUrl: e.target.value.trim() })}
+          placeholder="https://xxxxx.supabase.co"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+      </div>
+
+      <div className="field">
+        <label>Ochiq (anon) kalit</label>
+        <input
+          type="password"
+          value={settings.supabaseAnonKey}
+          onChange={(e) => updateSettings({ supabaseAnonKey: e.target.value.trim() })}
+          placeholder="eyJhbGciOi…"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+        <div className="tiny" style={{ marginTop: 6 }}>
+          Supabase → Project Settings → API. <b>anon public</b> kalitini oling.
+          ⚠️ <b>service_role</b> kalitini kiritmang — u maxfiy va hamma
+          himoyani chetlab oʻtadi.
+        </div>
+      </div>
+
+      <button className="btn ghost wide" disabled={checking} onClick={() => void check()}>
+        {checking ? 'Tekshirilmoqda…' : 'Supabase ulanishini tekshirish'}
+      </button>
+
+      {result && (
+        <div className="tiny" style={{ marginTop: 8, opacity: 0.8 }}>
+          {result}
         </div>
       )}
     </>

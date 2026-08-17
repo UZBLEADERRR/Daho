@@ -3,7 +3,7 @@ import { b64ToBytes } from './audio';
 import { createBook, writeBook } from './book';
 import { geminiModel } from './models';
 import { canSearchWeb, imageAny } from './providers';
-import { saveBytes } from './exporter';
+import { DOC_LABEL, exportDocument, saveBytes, saveZip, type DocFormat } from './exporter';
 import { generateJson, generateText, searchAnswer } from './gemini';
 import {
   DOCX_MIME,
@@ -237,6 +237,43 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         images: { type: 'STRING', description: '"false" — rasmsiz kitob' },
       },
       required: ['request'],
+    },
+  },
+  {
+    name: 'send_file',
+    description:
+      'Foydalanuvchining telefoniga FAYL yuboradi: PDF, Word, matn (.md), slayd ' +
+      'yoki ZIP. Ulashish oynasi ochiladi — u saqlaydi yoki boshqa ilovaga yuboradi.\n' +
+      'Foydalanuvchi «pdf qilib ber», «word qilib yubor», «fayl qilib tashla», ' +
+      '«yuklab olaman» desa chaqir. Uzun matnni chatga koʻchirib yozmasdan shu ' +
+      'vosita bilan fayl qilib ber.\n' +
+      'ZIP uchun `files` massivini toʻldir (bir nechta fayl), qolgan turlar uchun ' +
+      '`content` ga markdown matnni yoz.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        name: { type: 'STRING', description: 'Fayl nomi (kengaytmasiz)' },
+        format: {
+          type: 'STRING',
+          description: 'pdf | docx | md | pptx | zip',
+        },
+        content: {
+          type: 'STRING',
+          description: 'Markdown matn (pdf/docx/md/pptx uchun). Sarlavhalar # bilan.',
+        },
+        files: {
+          type: 'ARRAY',
+          description: 'ZIP uchun fayllar',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              path: { type: 'STRING', description: 'Fayl nomi, masalan "reja.md"' },
+              content: { type: 'STRING' },
+            },
+          },
+        },
+      },
+      required: ['name', 'format'],
     },
   },
   {
@@ -558,6 +595,76 @@ export async function executeTool(
         summary: `Kurs ochildi: ${course.title} — ${topics.length} ta mavzu`,
         payload: { status: 'ochildi', id: course.id, topics: topics.length },
       };
+    }
+
+    case 'send_file': {
+      const name = str(args.name, 'daho-fayl');
+      const format = str(args.format, 'pdf').toLowerCase();
+
+      try {
+        if (format === 'zip') {
+          const raw = Array.isArray(args.files) ? args.files : [];
+          const files = raw
+            .map((f) => {
+              const item = (f ?? {}) as Record<string, unknown>;
+              return { path: str(item.path), content: String(item.content ?? '') };
+            })
+            .filter((f) => f.path);
+          if (!files.length) {
+            return {
+              ok: false,
+              summary: 'ZIP uchun fayl berilmadi',
+              payload: { error: 'files boʻsh — har biriga path va content bering' },
+            };
+          }
+          const status = await saveZip(name, files);
+          return {
+            ok: true,
+            summary: `${files.length} ta fayl ZIP qilib yuborildi`,
+            payload: { status, eslatma: 'Ulashish oynasi ochildi — foydalanuvchiga ayt.' },
+          };
+        }
+
+        const content = str(args.content);
+        if (!content) {
+          return {
+            ok: false,
+            summary: 'Fayl mazmuni berilmadi',
+            payload: { error: 'content boʻsh' },
+          };
+        }
+        const allowed: DocFormat[] = ['pdf', 'docx', 'md', 'pptx'];
+        const kind = (allowed as string[]).includes(format) ? (format as DocFormat) : 'pdf';
+        const status = await exportDocument(content, kind, name);
+
+        // Faylni artifact sifatida ham saqlaymiz — keyin qayta yuklab olsa boʻladi.
+        const artifact: Artifact = {
+          id: uid('a_'),
+          kind: 'markdown',
+          title: name,
+          content,
+          chatId: ctx.chatId,
+          createdAt: Date.now(),
+        };
+        return {
+          ok: true,
+          summary: `${DOC_LABEL[kind]} yuborildi: ${name}`,
+          payload: {
+            status,
+            eslatma:
+              'Ulashish oynasi ochildi. Matnni chatga qayta koʻchirib yozma — ' +
+              'foydalanuvchi faylni oldi.',
+          },
+          artifacts: [artifact],
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Fayl yuborilmadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
     }
 
     case 'write_book': {

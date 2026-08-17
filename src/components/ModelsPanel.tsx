@@ -8,6 +8,7 @@ import {
   parseRef,
   presetById,
   searchModels,
+  usableChatModels,
 } from '../lib/providers';
 import { updateSettings, useStore } from '../lib/store';
 import type { ProviderConfig, RoleModels } from '../lib/types';
@@ -32,6 +33,7 @@ export function ModelsPanel() {
   const [editing, setEditing] = useState<ProviderConfig | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const [rolesOpen, setRolesOpen] = useState(false);
+  const [poolOpen, setPoolOpen] = useState(false);
 
   const providers = settings.providers ?? [];
   const models = allCachedModels();
@@ -145,6 +147,26 @@ export function ModelsPanel() {
 
       <div className="field" style={{ marginTop: 14 }}>
         <Switch
+          on={settings.autoPickModel !== false}
+          onChange={(on) => updateSettings({ autoPickModel: on })}
+          label="AVTO — modelni oʻzi tanlaydi"
+          hint="Har ish uchun mos model: kod, dizayn, tekshirish, matn"
+        />
+      </div>
+
+      {settings.autoPickModel !== false && (
+        <button
+          className="btn ghost wide"
+          style={{ marginBottom: 4 }}
+          onClick={() => setPoolOpen(true)}
+        >
+          🎛 Avto qaysi modellardan tanlasin (
+          {settings.autoPool?.length ? `${settings.autoPool.length} ta` : 'hammasi'})
+        </button>
+      )}
+
+      <div className="field">
+        <Switch
           on={settings.autoContinue !== false}
           onChange={(on) => updateSettings({ autoContinue: on })}
           label="Uzilgan javobni davom ettirish"
@@ -212,6 +234,7 @@ export function ModelsPanel() {
 
       {listOpen && <ModelList onClose={() => setListOpen(false)} />}
       {rolesOpen && <RolePicker onClose={() => setRolesOpen(false)} />}
+      {poolOpen && <AutoPool onClose={() => setPoolOpen(false)} />}
     </>
   );
 }
@@ -531,5 +554,82 @@ export function ChatModelSelect({
         </optgroup>
       ))}
     </select>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Avto rejim hovuzi                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Avto rejim qaysi modellardan tanlashi mumkinligini belgilaydi.
+ * Hech biri tanlanmasa — oʻchirilmagan barcha modellar ichidan tanlaydi.
+ */
+function AutoPool({ onClose }: { onClose: () => void }) {
+  const settings = useStore((s) => s.settings);
+  const [query, setQuery] = useState('');
+
+  const pool = new Set(settings.autoPool ?? []);
+  const list = query.trim()
+    ? searchModels(query).filter((m) => m.role === 'chat')
+    : usableChatModels();
+
+  const toggle = (id: string) => {
+    const next = pool.has(id)
+      ? (settings.autoPool ?? []).filter((x) => x !== id)
+      : [...(settings.autoPool ?? []), id];
+    updateSettings({ autoPool: next });
+  };
+
+  return (
+    <Sheet title="Avto rejim modellari" onClose={onClose}>
+      <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.5 }}>
+        Daho ishga qarab shu modellardan tanlaydi: kod uchun «coder», dizayn
+        uchun rasmni koʻradigan, tekshirish uchun mulohaza yuritadigan, mayda
+        ish uchun tez model. Hech biri belgilanmasa — barcha yoqilgan
+        modellardan tanlaydi.
+      </div>
+
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Qidirish: qwen, kimi, claude…"
+        style={{ marginBottom: 10 }}
+      />
+
+      {!!pool.size && (
+        <button
+          className="btn mini ghost wide"
+          style={{ marginBottom: 10 }}
+          onClick={() => updateSettings({ autoPool: [] })}
+        >
+          Tanlovni tozalash — hammasidan tanlasin
+        </button>
+      )}
+
+      <div style={{ maxHeight: '55vh', overflow: 'auto' }}>
+        {list.map((m) => {
+          const on = pool.has(m.id);
+          return (
+            <button
+              key={m.id}
+              className={on ? 'model-row on' : 'model-row'}
+              onClick={() => toggle(m.id)}
+            >
+              <span className="grow" style={{ minWidth: 0, textAlign: 'left' }}>
+                <b>{m.label}</b>
+                <div className="tiny">
+                  {m.providerLabel ?? 'Gemini'}
+                  {m.vision ? ' · 👁 rasm' : ''}
+                  {m.tools === false ? ' · vositasiz' : ''}
+                </div>
+              </span>
+              <span className="tiny">{on ? '✓' : ''}</span>
+            </button>
+          );
+        })}
+        {!list.length && <div className="tiny">Topilmadi.</div>}
+      </div>
+    </Sheet>
   );
 }
