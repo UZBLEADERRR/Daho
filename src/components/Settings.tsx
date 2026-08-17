@@ -113,7 +113,16 @@ export function Settings({ onClose }: { onClose: () => void }) {
   return (
     <Sheet title="Sozlamalar" onClose={onClose}>
       <div className="section-label" style={{ padding: '0 0 6px' }}>
-        Gemini
+        Gemini (ixtiyoriy)
+      </div>
+
+      <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.55 }}>
+        Ilova <b>faqat OpenRouter</b> (yoki boshqa provayder) bilan ham toʻliq
+        gaplashadi — pastdagi «AI modellar» boʻlimiga qarang. Google kaliti
+        quyidagilar uchun kerak: <b>internet qidiruvi</b>, <b>tabiiy ovoz</b>{' '}
+        (Gemini TTS) va <b>mikrofonni matnga oʻgirish</b>. Kalitsiz ovoz
+        telefonning oʻz xizmati bilan ishlaydi. Rasm yasash uchun OpenRouter’da
+        rasm modeli qoʻshsangiz kifoya.
       </div>
 
       <div className="field">

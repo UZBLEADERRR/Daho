@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   PROVIDER_PRESETS,
   allCachedModels,
@@ -35,6 +35,20 @@ export function ModelsPanel() {
   const models = allCachedModels();
   const hidden = new Set(settings.hiddenModels ?? []);
   const active = models.filter((m) => !hidden.has(m.id) && m.role === 'chat').length;
+
+  /**
+   * Google kaliti yoʻq boʻlsa asosiy model Gemini niki boʻlib qolmasligi kerak —
+   * aks holda birinchi savolda «kalit yoʻq» xatosi chiqadi. Provayder modeli
+   * paydo boʻlishi bilan oʻshanga oʻtamiz.
+   */
+  useEffect(() => {
+    if (settings.apiKey.trim()) return;
+    if (settings.model.includes('::')) return;
+    const first = models.find((m) => m.role === 'chat' && m.provider && !hidden.has(m.id));
+    if (!first) return;
+    updateSettings({ model: first.id });
+    toast(`Asosiy model: ${first.label}`);
+  });
 
   const addProvider = (presetId: string) => {
     const preset = presetById(presetId);

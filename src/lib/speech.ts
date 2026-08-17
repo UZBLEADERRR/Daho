@@ -259,10 +259,9 @@ function pickRecorderMime(): string {
  */
 async function listenViaGemini(cb: ListenCallbacks): Promise<ListenHandle | null> {
   const { settings } = getState();
-  if (!settings.apiKey) {
-    cb.onError('Avval Sozlamalarda API kalitni kiriting.');
-    return null;
-  }
+  // Google kaliti yoʻq (masalan faqat OpenRouter ulangan) — bu yoʻl
+  // ishlamaydi. Xato koʻrsatmaymiz: qurilmaning oʻz xizmatiga oʻtamiz.
+  if (!settings.apiKey) return null;
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
     return null;
   }

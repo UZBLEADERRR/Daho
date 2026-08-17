@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { sendMessage } from '../lib/agent';
 import { startListening, speak, stopSpeaking, type ListenHandle } from '../lib/speech';
-import { getState } from '../lib/store';
+import { canChat } from '../lib/providers';
 import { Close, Mic } from './Icons';
 import { toast } from './ui';
 
@@ -150,10 +150,10 @@ export function LiveVoice({ chatId, onClose }: Props) {
     void cycle();
   };
 
-  // Ovozli rejim uchun kalit shart.
+  // Suhbat uchun kamida bitta model ulangan boʻlishi kerak.
   useEffect(() => {
-    if (!getState().settings.apiKey) {
-      toast('Avval Sozlamalarda API kalitni kiriting.');
+    if (!canChat()) {
+      toast('Avval Sozlamalarda API kalit kiriting (Gemini yoki OpenRouter).');
       onClose();
     }
   }, [onClose]);

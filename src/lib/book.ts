@@ -19,10 +19,8 @@
  * boshqa boʻlimga oʻtsa ham yozish davom etaveradi.
  */
 
-import { generateImage, generateJson } from './gemini';
-import { geminiModel } from './models';
 import { streamResilient } from './resilient';
-import { completeAny } from './providers';
+import { canMakeImages, completeAny, imageAny, jsonAny } from './providers';
 import { getState, setState } from './store';
 import { noteTask, startTask } from './tasks';
 import type { Artifact, Book, BookBible, BookChapter } from './types';
@@ -140,7 +138,6 @@ export async function askBookQuestions(
   request: string,
   signal?: AbortSignal,
 ): Promise<BookQuestion[]> {
-  const { settings } = getState();
   const prompt = `Foydalanuvchi kitob yozdirmoqchi. Uning soʻrovi:
 «${request}»
 
@@ -153,9 +150,9 @@ Qoidalar:
   bosh qahramon yoki asosiy gʻoya, rasm kerakmi.
 - Falsafiy yoki noaniq savol berma — javobi kitobning mazmunini oʻzgartiradigan savol ber.`;
 
-  const res = await generateJson<{
+  const res = await jsonAny<{
     savollar: Array<{ savol: string; variantlar: string[]; koʻp?: boolean }>;
-  }>(settings.apiKey, geminiModel(getState().settings.model), prompt, QUESTION_SCHEMA, signal);
+  }>(prompt, QUESTION_SCHEMA, signal);
 
   return (res.savollar ?? []).slice(0, 6).map((q) => ({
     question: q.savol,
@@ -237,7 +234,6 @@ async function buildPlan(
   chapterCount: number,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { settings } = getState();
   const prompt = `Sen tajribali muharrir va yozuvchisan. Oʻzbek tilida (lotin yozuvi) kitob rejasini tuzasan.
 
 ## Foydalanuvchi soʻrovi
@@ -268,13 +264,7 @@ Shu kitob uchun toʻliq reja tuz:
 
 Javob faqat JSON.`;
 
-  const plan = await generateJson<PlanResponse>(
-    settings.apiKey,
-    geminiModel(getState().settings.model),
-    prompt,
-    PLAN_SCHEMA,
-    signal,
-  );
+  const plan = await jsonAny<PlanResponse>(prompt, PLAN_SCHEMA, signal);
 
   const chapters: BookChapter[] = (plan.boblar ?? []).map((c, i) => ({
     id: uid('ch_'),
@@ -466,7 +456,6 @@ function saveImageArtifact(title: string, data: string, mimeType: string): Artif
 
 /** Kitob muqovasi — nomi va uslubiga mos. */
 export async function makeCover(bookId: string, signal?: AbortSignal): Promise<Artifact | null> {
-  const { settings } = getState();
   const book = getBook(bookId);
   if (!book) return null;
 
@@ -479,8 +468,8 @@ Rasm professional kitob muqovasidek kuchli va yodda qoladigan boʻlsin: aniq mar
 chuqur ranglar, kayfiyat ${book.bible.tone || 'jiddiy va jozibali'}.
 Rasm ustiga HECH QANDAY matn, harf yoki yozuv chizma — faqat tasvir.`;
 
-  const res = await generateImage(settings.apiKey, settings.imageModel, prompt, [], signal);
-  const image = res.images[0];
+  const images = await imageAny(prompt, [], signal);
+  const image = images[0];
   if (!image) return null;
 
   const artifact = saveImageArtifact(`${book.title} — muqova`, image.data, image.mimeType);
@@ -494,7 +483,6 @@ async function makeChapterImage(
   chapter: BookChapter,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { settings } = getState();
   const book = getBook(bookId);
   if (!book) return;
 
@@ -507,8 +495,8 @@ ${book.bible.cast.length ? `Qahramonlar koʻrinishi: ${book.bible.cast.map((c) =
 Gorizontal, kayfiyati bobga mos. Rasmda matn yoki harf boʻlmasin.`;
 
   try {
-    const res = await generateImage(settings.apiKey, settings.imageModel, prompt, [], signal);
-    const image = res.images[0];
+    const images = await imageAny(prompt, [], signal);
+    const image = images[0];
     if (!image) return;
     const artifact = saveImageArtifact(`${chapter.number}. ${chapter.title}`, image.data, image.mimeType);
     patchChapter(bookId, chapter.id, { imageArtifactId: artifact.id });
@@ -554,9 +542,17 @@ export async function writeBook(bookId: string, opts: WriteOptions = {}): Promis
           await buildPlan(fresh, opts.answers ?? '', opts.chapterCount ?? 12, signal);
         }
 
+        // Rasm modeli yoʻq boʻlsa (masalan faqat matn modeli ulangan) —
+        // kitobni rasmsiz yozamiz, ish toʻxtab qolmasin.
+        const images = canMakeImages();
+        if (!images && getBook(bookId)?.withImages) {
+          patchBook(bookId, { withImages: false });
+          step('rasm modeli yoʻq — kitob rasmsiz yoziladi');
+        }
+
         // 2. Muqova.
         const withCover = getBook(bookId);
-        if (withCover && !withCover.coverArtifactId) {
+        if (images && withCover && !withCover.coverArtifactId) {
           patchBook(bookId, { stage: 'muqova' });
           step('muqova chizilmoqda');
           await makeCover(bookId, signal).catch(() => null);

@@ -9,7 +9,7 @@ import {
   saveApp,
 } from '../lib/creations';
 import { probeApp } from '../lib/probe';
-import { generateImage } from '../lib/gemini';
+import { canChat, imageAny } from '../lib/providers';
 import { speak } from '../lib/speech';
 import { getState, setState, useStore } from '../lib/store';
 import type { Artifact, Attachment, Message } from '../lib/types';
@@ -123,14 +123,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
       { kind: 'chat', targetId: chatId, title: 'Rasm chizilmoqda', note: prompt.slice(0, 40) },
       async (signal) => {
     try {
-      const result = await generateImage(
-        settings.apiKey,
-        settings.imageModel,
-        prompt,
-        refs,
-        signal,
-      );
-      const artifacts: Artifact[] = result.images.map((img, i) => ({
+      const images = await imageAny(prompt, refs, signal);
+      const artifacts: Artifact[] = images.map((img, i) => ({
         id: uid('a_'),
         kind: 'image',
         title: prompt.slice(0, 40) || `Rasm ${i + 1}`,
@@ -140,7 +134,7 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         createdAt: Date.now(),
       }));
       setState((s) => ({ artifacts: [...artifacts, ...s.artifacts] }));
-      patch({ text: result.text || 'Rasm tayyor.', artifactIds: artifacts.map((a) => a.id) });
+      patch({ text: 'Rasm tayyor.', artifactIds: artifacts.map((a) => a.id) });
     } catch (err) {
       const aborted = (err as Error)?.name === 'AbortError';
       patch({
@@ -181,8 +175,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
   };
 
   const onSend = async (text: string, attachments: Attachment[]) => {
-    if (!settings.apiKey) {
-      toast('Avval Sozlamalarda Gemini API kalitini kiriting');
+    if (!canChat()) {
+      toast('Avval Sozlamalarda API kalit kiriting (Gemini yoki OpenRouter)');
       return;
     }
     // Ish ketayotgan boʻlsa — yangi soʻrov emas, qoʻshimcha koʻrsatma.

@@ -14,6 +14,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { createChat, sendMessage } from './agent';
 import { runCodeAgent } from './codeagent';
+import { canChat } from './providers';
 import { getState, setState } from './store';
 import { noteTask, startTask } from './tasks';
 import type { Automation } from './types';
@@ -241,8 +242,8 @@ export async function runAutomation(id: string): Promise<void> {
 let timer: ReturnType<typeof setInterval> | null = null;
 
 async function tick(): Promise<void> {
-  const { automations, settings } = getState();
-  if (!automations.length || !settings.apiKey) return;
+  const { automations } = getState();
+  if (!automations.length || !canChat()) return;
 
   const now = new Date();
   for (const item of automations) {

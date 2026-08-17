@@ -154,6 +154,52 @@ export function activeProviders(): ProviderConfig[] {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Nima ishlashga tayyor                                              */
+/* ------------------------------------------------------------------ */
+
+/** Gemini kaliti kiritilganmi. */
+export function hasGemini(): boolean {
+  return Boolean(getState().settings.apiKey.trim());
+}
+
+/**
+ * Suhbat qilish mumkinmi. Gemini kaliti SHART EMAS — faqat OpenRouter
+ * (yoki boshqa provayder) ulangan boʻlsa ham ilova toʻliq gaplashadi.
+ */
+export function canChat(): boolean {
+  return hasGemini() || activeProviders().length > 0;
+}
+
+/**
+ * Rasm yasash mumkinmi. Gemini kaliti bilan — toʻgʻridan-toʻgʻri;
+ * kalitsiz — provayder orqali rasm chiqaradigan model boʻlsa.
+ */
+export function canMakeImages(): boolean {
+  return hasGemini() || Boolean(imageCapableRef());
+}
+
+/**
+ * Provayderlar ichidan rasm chiqara oladigan model topadi.
+ * OpenRouter’da Gemini ning rasm modellari bor — shuning uchun Google
+ * kalitisiz ham muqova va illyustratsiya yasash mumkin.
+ */
+export function imageCapableRef(): string | null {
+  const IMAGE = /image|imagen|flux|dall-e|sdxl|stable-diffusion/i;
+  const hidden = new Set(getState().settings.hiddenModels ?? []);
+  for (const cfg of activeProviders()) {
+    const ids = [...new Set([...(cfg.manual ?? []), ...cachedProviderModels(cfg.id)])];
+    const hit = ids.find((id) => IMAGE.test(id) && !hidden.has(makeRef(cfg.id, id)));
+    if (hit) return makeRef(cfg.id, hit);
+  }
+  return null;
+}
+
+/** Google qidiruvi faqat Gemini bilan ishlaydi. */
+export function canSearchWeb(): boolean {
+  return hasGemini();
+}
+
+/* ------------------------------------------------------------------ */
 /*  Gemini ↔ OpenAI tarjimasi                                          */
 /* ------------------------------------------------------------------ */
 
@@ -499,6 +545,176 @@ export async function completeAny(
     },
   });
   return (res.text || out).trim();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sxema boʻyicha JSON — provayderdan qatʼi nazar                     */
+/* ------------------------------------------------------------------ */
+
+/** Matn ichidan JSON obyektini ajratib oladi (kod bloki, izoh boʻlsa ham). */
+function extractJson<T>(raw: string): T {
+  const text = raw.trim();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    /* pastdagi urinishlarga oʻtamiz */
+  }
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) {
+    try {
+      return JSON.parse(fenced[1]) as T;
+    } catch {
+      /* davom etamiz */
+    }
+  }
+  // Eng tashqi { … } ni topamiz — model oldiga izoh yozib qoʻygan boʻlishi mumkin.
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    return JSON.parse(text.slice(start, end + 1)) as T;
+  }
+  throw new GeminiError('Model tushunarli JSON qaytarmadi. Qaytadan urining.', 0);
+}
+
+/**
+ * Sxema boʻyicha JSON oladi.
+ *
+ * Gemini kaliti boʻlsa — `responseSchema` bilan (ishonchli). Boʻlmasa
+ * (masalan faqat OpenRouter ulangan) — sxemani soʻrov matniga qoʻshib
+ * beramiz va javobdan JSON ni ajratib olamiz. Shu tufayli kitob rejasi va
+ * savollar Google kalitisiz ham ishlaydi.
+ */
+export async function jsonAny<T>(
+  prompt: string,
+  schema: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  const { settings } = getState();
+
+  if (hasGemini()) {
+    const { generateJson } = await import('./gemini');
+    const { geminiModel } = await import('./models');
+    return generateJson<T>(
+      settings.apiKey,
+      geminiModel(settings.model),
+      prompt,
+      schema,
+      signal,
+    );
+  }
+
+  const text = await completeAny(
+    settings.model,
+    `${prompt}\n\n---\nJavobni AYNAN quyidagi JSON sxemasiga mos qaytar. ` +
+      `Faqat JSON yoz — izoh, sarlavha yoki kod bloki belgilarisiz.\n` +
+      `Sxema:\n${JSON.stringify(schema)}`,
+    { temperature: 0.6, signal },
+  );
+  return extractJson<T>(text);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Rasm yasash — provayderdan qatʼi nazar                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * OpenAI-mos provayderdan rasm oladi.
+ *
+ * OpenRouter rasm chiqaradigan modellar uchun `modalities: ["image","text"]`
+ * ni qabul qiladi va rasmni `message.images[].image_url.url` da (data: URI)
+ * qaytaradi. Baʼzi provayderlar esa `content` massivida beradi — ikkalasini
+ * ham tekshiramiz.
+ */
+async function imageViaProvider(
+  ref: string,
+  prompt: string,
+  signal?: AbortSignal,
+): Promise<Attachment[]> {
+  const { provider, model } = parseRef(ref);
+  const cfg = providerConfig(provider);
+  if (!cfg?.apiKey.trim()) throw new GeminiError('Rasm uchun provayder kaliti yoʻq.', 0);
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${cfg.apiKey.trim()}`,
+  };
+  if (cfg.baseUrl.includes('openrouter')) {
+    headers['HTTP-Referer'] = 'https://daho.app';
+    headers['X-Title'] = 'Daho';
+  }
+
+  const res = await fetch(`${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      modalities: ['image', 'text'],
+    }),
+    signal,
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new GeminiError(humanHttpError(res.status, body, cfg.label), res.status);
+  }
+
+  const data = await res.json();
+  const message = data?.choices?.[0]?.message ?? {};
+  const urls: string[] = [];
+
+  for (const item of message.images ?? []) {
+    const url = item?.image_url?.url ?? item?.url;
+    if (typeof url === 'string') urls.push(url);
+  }
+  if (Array.isArray(message.content)) {
+    for (const part of message.content) {
+      const url = part?.image_url?.url ?? (part?.type === 'image_url' ? part?.url : null);
+      if (typeof url === 'string') urls.push(url);
+    }
+  }
+
+  const images: Attachment[] = [];
+  for (const url of urls) {
+    const match = url.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) images.push({ mimeType: match[1], data: match[2] });
+  }
+  if (!images.length) {
+    throw new GeminiError(
+      `${cfg.label}: «${model}» rasm qaytarmadi. Rasm chiqaradigan model tanlang ` +
+        '(masalan google/gemini-2.5-flash-image).',
+      0,
+    );
+  }
+  return images;
+}
+
+/**
+ * Rasm yasaydi: Gemini kaliti boʻlsa oʻsha bilan, boʻlmasa ulangan
+ * provayderning rasm modeli bilan.
+ */
+export async function imageAny(
+  prompt: string,
+  refs: Attachment[] = [],
+  signal?: AbortSignal,
+): Promise<Attachment[]> {
+  const { settings } = getState();
+
+  if (hasGemini()) {
+    const { generateImage } = await import('./gemini');
+    const res = await generateImage(settings.apiKey, settings.imageModel, prompt, refs, signal);
+    return res.images;
+  }
+
+  const ref = imageCapableRef();
+  if (!ref) {
+    throw new GeminiError(
+      'Rasm yasash uchun rasm modeli yoʻq. Sozlamalar → AI modellar boʻlimida ' +
+        'rasm chiqaradigan model qoʻshing (masalan OpenRouter’da ' +
+        '«google/gemini-2.5-flash-image») yoki Google kalitini kiriting.',
+      0,
+    );
+  }
+  return imageViaProvider(ref, prompt, signal);
 }
 
 /* ------------------------------------------------------------------ */

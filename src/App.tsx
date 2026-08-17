@@ -15,6 +15,7 @@ import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
 import { startScheduler } from './lib/automation';
 import { getModels, pickModel } from './lib/models';
+import { allModels } from './lib/providers';
 import { installSandboxStore } from './lib/sandbox';
 import { getState, updateSettings, updateView, useStore } from './lib/store';
 import type { Artifact } from './lib/types';
@@ -25,7 +26,10 @@ export default function App() {
   const theme = useStore((s) => s.settings.theme);
   const accent = useStore((s) => s.settings.accent);
   const fontScale = useStore((s) => s.settings.fontScale);
-  const hasKey = useStore((s) => Boolean(s.settings.apiKey));
+  // Ishlash uchun Gemini SHART emas — OpenRouter ham yetarli.
+  const geminiKey = useStore((s) => Boolean(s.settings.apiKey));
+  const providerCount = useStore((s) => (s.settings.providers ?? []).filter((p) => p.enabled && p.apiKey).length);
+  const ready = geminiKey || providerCount > 0;
 
   // Qaysi ekran ochiqligi store da turadi: boʻlim almashsangiz ham,
   // ilovani yopib qayta ochsangiz ham hech narsa qaytadan boshlanmaydi.
@@ -36,7 +40,7 @@ export default function App() {
   const setSection = (next: AgentSection) => updateView({ section: next });
 
   const [sidebar, setSidebar] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(!hasKey);
+  const [settingsOpen, setSettingsOpen] = useState(!ready);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
 
@@ -65,7 +69,7 @@ export default function App() {
 
   // Kalit bor bo'lsa — modellar ro'yxatini yangilab, eng yangisiga o'tamiz.
   useEffect(() => {
-    if (!hasKey) return;
+    if (!geminiKey) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -84,7 +88,36 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [hasKey]);
+  }, [geminiKey]);
+
+  /**
+   * Gemini kaliti yoʻq, lekin provayder (masalan OpenRouter) ulangan boʻlsa —
+   * modellarni oʻsha provayderdan olib, asosiy modelni almashtiramiz.
+   * Aks holda standart Gemini modeli qolib, «kalit yoʻq» xatosi chiqadi.
+   */
+  useEffect(() => {
+    if (geminiKey || !providerCount) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await allModels(true);
+        if (cancelled) return;
+        const { settings } = getState();
+        const hidden = new Set(settings.hiddenModels ?? []);
+        const usable = list.filter((m) => m.role === 'chat' && m.provider && !hidden.has(m.id));
+        if (!usable.length) return;
+        // Joriy model Gemini niki boʻlsa (yaʼni ishlamaydi) — almashtiramiz.
+        if (!settings.model.includes('::')) {
+          updateSettings({ model: usable[0].id });
+        }
+      } catch {
+        /* roʻyxat olinmasa foydalanuvchi oʻzi tanlaydi */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [geminiKey, providerCount]);
 
   // Androidning "orqaga" tugmasi: avval ochiq oynalarni yopadi.
   useEffect(() => {

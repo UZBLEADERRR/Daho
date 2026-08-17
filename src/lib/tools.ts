@@ -2,8 +2,9 @@ import { askUser } from './ask';
 import { b64ToBytes } from './audio';
 import { createBook, writeBook } from './book';
 import { geminiModel } from './models';
+import { canSearchWeb, imageAny } from './providers';
 import { saveBytes } from './exporter';
-import { generateImage, generateJson, generateText, searchAnswer } from './gemini';
+import { generateJson, generateText, searchAnswer } from './gemini';
 import {
   DOCX_MIME,
   buildDocxWithImages,
@@ -599,21 +600,17 @@ export async function executeTool(
       if (!prompt) {
         return { ok: false, summary: 'Rasm tavsifi berilmadi', payload: { error: 'prompt_yoq' } };
       }
-      const { settings, artifacts: saved } = getState();
+      const { artifacts: saved } = getState();
       const refs: Attachment[] = [];
       if (str(args.edit_last) === 'true') {
         const last = saved.find((a) => a.kind === 'image' && a.chatId === ctx.chatId);
         if (last) refs.push({ mimeType: last.mimeType ?? 'image/png', data: last.content });
       }
       try {
-        const result = await generateImage(
-          settings.apiKey,
-          settings.imageModel,
-          prompt,
-          refs,
-          ctx.signal,
-        );
-        const made: Artifact[] = result.images.map((img, i) => ({
+        // Gemini kaliti boʻlsa oʻsha bilan, boʻlmasa ulangan provayderning
+        // rasm modeli bilan (masalan OpenRouter’dagi Gemini image).
+        const images = await imageAny(prompt, refs, ctx.signal);
+        const made: Artifact[] = images.map((img, i) => ({
           id: uid('a_'),
           kind: 'image',
           title: prompt.slice(0, 40) || `Rasm ${i + 1}`,
@@ -691,6 +688,19 @@ export async function executeTool(
     }
 
     case 'search_web': {
+      if (!canSearchWeb()) {
+        return {
+          ok: false,
+          summary: 'Internet qidiruvi mavjud emas',
+          payload: {
+            error:
+              'Google qidiruvi faqat Gemini kaliti bilan ishlaydi. Hozir u yoʻq. ' +
+              'Foydalanuvchiga ochiq ayt: jonli maʼlumotni tekshira olmayapsan, ' +
+              'shuning uchun taxminiy javob berasan yoki Sozlamalarda Gemini ' +
+              'kalitini kiritishini soʻra. Maʼlumotni oʻzingdan oʻylab TOPMA.',
+          },
+        };
+      }
       const query = str(args.query);
       if (!query) return { ok: false, summary: 'Savol berilmadi', payload: { error: 'query_yoq' } };
       const { settings } = getState();
@@ -860,14 +870,12 @@ export async function executeTool(
       const drawn: string[] = [];
       for (const item of wanted) {
         try {
-          const result = await generateImage(
-            settings.apiKey,
-            settings.imageModel,
+          const drawnImages = await imageAny(
             `${item.prompt}. Style: ${style}.${note ? ` ${note}.` : ''} No text or letters in the image.`,
             [],
             ctx.signal,
           );
-          const first = result.images[0];
+          const first = drawnImages[0];
           if (!first) continue;
           const size = await imageSize(first.data, first.mimeType);
           images.push({
