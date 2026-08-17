@@ -1212,6 +1212,20 @@ function jobScore(m: ModelInfo, job: JobKind): number {
  * 2) avto rejim yoqilgan boʻlsa — ruxsat berilgan modellar ichidan eng mosi;
  * 3) aks holda asosiy model.
  */
+/**
+ * Loyiha uchun model.
+ *
+ * AVTO yoqilgan boʻlsa — u USTUN: foydalanuvchi «avtoni yoqsam oʻzi eng
+ * yaxshi modelni tanlasin» deydi, shuning uchun loyihaga qadab qoʻyilgan
+ * eski model Avtoni bloklamasligi kerak. Qoʻlda tanlash uchun Sozlamalarda
+ * Avtoni oʻchirish kifoya.
+ */
+export function pickForProject(job: JobKind, pinned?: string): string {
+  const { settings } = getState();
+  if (settings.autoPickModel !== false) return pickForJob(job);
+  return pinned || settings.model;
+}
+
 export function pickForJob(job: JobKind, fallback?: string): string {
   const { settings } = getState();
   const base = fallback || settings.model;

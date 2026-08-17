@@ -12,12 +12,12 @@ import {
 import { saveBytes } from '../lib/exporter';
 import { getRepo, listRepos, whoAmI, type GhRepo } from '../lib/github';
 import { saveLinkApp } from '../lib/creations';
-import { modelLabel, parseRef, usableChatModels } from '../lib/providers';
+import { modelLabel, parseRef, pickForProject, usableChatModels } from '../lib/providers';
 import { TEMPLATES } from '../lib/templates';
 import { renderMarkdown } from '../lib/markdown';
 import { sandboxDocument } from '../lib/sandbox';
 import { getState, useStore, updateSettings, updateView } from '../lib/store';
-import type { Attachment, CodeProject } from '../lib/types';
+import type { Artifact, Attachment, CodeProject } from '../lib/types';
 import { relativeTime } from '../lib/utils';
 import { prepareFile, fileIcon } from '../lib/attach';
 import { startListening, type ListenHandle } from '../lib/speech';
@@ -219,7 +219,11 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
   const settings = useStore((s) => s.settings);
   // Barcha ulangan provayderlarning modellari — Gemini, Kimi, Qwen, GPT…
   const chatModels = usableChatModels();
-  const activeModel = project.model || settings.model;
+  // AVTO yoqilgan boʻlsa Avto ustun — yorliqda ham aynan shu koʻrinsin,
+  // aks holda foydalanuvchi «avtoni yoqdim, lekin eski model turibdi» deb
+  // oʻylaydi.
+  const auto = settings.autoPickModel !== false;
+  const activeModel = auto ? pickForProject('reja', project.model) : project.model || settings.model;
 
   return (
     <>
@@ -235,12 +239,22 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
           </div>
         </div>
         <button className="model-chip" onClick={() => setModelPicker(true)}>
+          {auto && '⚡ '}
           {parseRef(activeModel).model.replace(/^gemini-/, '')}
         </button>
       </div>
 
       {modelPicker && (
         <Sheet title="Model tanlang" onClose={() => setModelPicker(false)}>
+          {auto && (
+            <div className="notice" style={{ marginBottom: 12 }}>
+              <b>⚡ Avto rejim yoqilgan.</b> Har bir ish uchun model oʻzi tanlanadi
+              (reja, kod, dizayn, tekshirish alohida). Hozir:{' '}
+              <b>{modelLabel(activeModel)}</b>.
+              <br />
+              Qoʻlda tanlash uchun Sozlamalar → AI modellar → «Avto» ni oʻchiring.
+            </div>
+          )}
           <button
             className={!project.model ? 'action-row on' : 'action-row'}
             onClick={() => {
@@ -317,6 +331,9 @@ const CODE_STARTERS = [
 ];
 
 function CodeChat({ project }: { project: CodeProject }) {
+  const artifacts = useStore((s) => s.artifacts);
+  /** Kattalashtirib koʻrilayotgan skrinshot */
+  const [viewShot, setViewShot] = useState<Artifact | null>(null);
   const [text, setText] = useState('');
   const [shots, setShots] = useState<Attachment[]>([]);
   const [extraText, setExtraText] = useState<string[]>([]);
@@ -464,6 +481,28 @@ function CodeChat({ project }: { project: CodeProject }) {
                       ))}
                     </div>
                   ))}
+                  {/* Agent olgan skrinshotlar — foydalanuvchi ham koʻrsin */}
+                  {!!m.artifactIds?.length && (
+                    <div className="shot-strip">
+                      {m.artifactIds.map((id) => {
+                        const shot = artifacts.find((a) => a.id === id);
+                        if (!shot || shot.kind !== 'image') return null;
+                        return (
+                          <button
+                            key={id}
+                            className="shot-thumb"
+                            onClick={() => setViewShot(shot)}
+                            aria-label="Skrinshotni ochish"
+                          >
+                            <img
+                              src={`data:${shot.mimeType ?? 'image/png'};base64,${shot.content}`}
+                              alt=""
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   {m.error && <div className="err">{m.error}</div>}
                   {m.text.trim() && (
                     <div className="msg-actions">
@@ -481,6 +520,16 @@ function CodeChat({ project }: { project: CodeProject }) {
             )}
             {question && <QuestionCard question={question} />}
             {busy && !question && <span className="typing" />}
+          </div>
+        )}
+
+        {viewShot && (
+          <div className="shot-full" onClick={() => setViewShot(null)}>
+            <img
+              src={`data:${viewShot.mimeType ?? 'image/png'};base64,${viewShot.content}`}
+              alt=""
+            />
+            <div className="tiny">Yopish uchun bosing</div>
           </div>
         )}
       </div>

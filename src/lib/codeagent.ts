@@ -54,6 +54,7 @@ import {
   allCachedModels,
   modelLabel,
   pickForJob,
+  pickForProject,
   supportsVision,
   usableChatModels,
   visionCapableRef,
@@ -62,7 +63,14 @@ import { askUser, drainInterjections } from './ask';
 import { isModelReadable } from './attach';
 import { getState, setState } from './store';
 import { templateById } from './templates';
-import type { Attachment, CodeProject, Message, ProjectStep, ToolCallRecord } from './types';
+import type {
+  Artifact,
+  Attachment,
+  CodeProject,
+  Message,
+  ProjectStep,
+  ToolCallRecord,
+} from './types';
 import { uid } from './utils';
 
 /** Bitta topshiriq uchun koʻpi bilan shuncha qadam (sozlamadan olinadi). */
@@ -1168,7 +1176,7 @@ async function runTool(
       // Joriy model rasmni koʻra oladimi? Koʻrmasa rasmni YUBORMAYMIZ —
       // aks holda provayder «rasm kiritishni qoʻllab-quvvatlamaydi» deb xato
       // beradi va agentning ishi oʻrtada uzilib qoladi.
-      const active = getCodeProject(projectId)?.model || pickForJob('reja');
+      const active = pickForProject('reja', getCodeProject(projectId)?.model);
       if (supportsVision(active)) {
         return {
           ok: true,
@@ -1908,6 +1916,8 @@ export async function runCodeAgent(
 
   const contents = toContents([...project.messages, userMsg]);
   const toolCalls: ToolCallRecord[] = [];
+  /** Foydalanuvchiga koʻrsatiladigan skrinshot artifactlari */
+  const shotIds: string[] = [];
   let accumulated = '';
   let flush: ReturnType<typeof setTimeout> | null = null;
 
@@ -1924,7 +1934,10 @@ export async function runCodeAgent(
   const maxRounds = Math.max(10, Math.min(200, settings.agentRounds || DEFAULT_ROUNDS));
 
   /** Agent oʻrtada toʻxtab qolsa nechta marta turtki berish mumkin */
-  const MAX_NUDGES = 4;
+  // Kuchsiz modellar bitta vosita chaqirgach turnini tugatib qoʻyadi.
+  // Foydalanuvchi «Continue» deb yozib oʻtirmasligi uchun koʻp marta
+  // turtki beramiz — haqiqiy agent ishni oʻzi oxirigacha olib boradi.
+  const MAX_NUDGES = 14;
   let nudges = 0;
 
   try {
@@ -1940,8 +1953,8 @@ export async function runCodeAgent(
 
       const result = await streamResilient({
         apiKey: settings.apiKey,
-        // Loyihaga model tanlangan boʻlsa oʻsha, aks holda avto tanlov.
-        model: current.model || pickForJob('reja'),
+        // AVTO yoqilgan boʻlsa u ustun; oʻchiq boʻlsa loyihaning modeli.
+        model: pickForProject('reja', current.model),
         contents,
         systemInstruction: systemPrompt(current),
         tools: CODE_TOOLS,
@@ -2019,7 +2032,22 @@ export async function runCodeAgent(
           summary: outcome.summary,
           at: accumulated.length,
         });
-        if (outcome.image) shots.push(outcome.image);
+        if (outcome.image) {
+          shots.push(outcome.image);
+          // Skrinshotni FOYDALANUVCHI ham koʻrishi kerak — agent nimani
+          // koʻrgani unga ham koʻrinsin, faqat modelga emas.
+          const shotArtifact: Artifact = {
+            id: uid('a_'),
+            kind: 'image',
+            title: `Skrinshot — ${project.name}`,
+            content: outcome.image.data,
+            mimeType: outcome.image.mimeType,
+            createdAt: Date.now(),
+          };
+          setState((s) => ({ artifacts: [shotArtifact, ...s.artifacts] }));
+          shotIds.push(shotArtifact.id);
+          patchMessage(projectId, modelMsg.id, { artifactIds: [...shotIds] });
+        }
         responses.push({ functionResponse: { name: call.name, response: outcome.payload } });
       }
       contents.push({ role: 'user', parts: responses });
@@ -2063,6 +2091,7 @@ export async function runCodeAgent(
     patchMessage(projectId, modelMsg.id, {
       text: accumulated,
       toolCalls: toolCalls.length ? toolCalls : undefined,
+      artifactIds: shotIds.length ? [...shotIds] : undefined,
     });
     return { ok: true, text: accumulated };
   } catch (err) {
@@ -2071,6 +2100,7 @@ export async function runCodeAgent(
     patchMessage(projectId, modelMsg.id, {
       text: accumulated,
       toolCalls: toolCalls.length ? toolCalls : undefined,
+      artifactIds: shotIds.length ? [...shotIds] : undefined,
       error: aborted ? 'Toʻxtatildi.' : String((err as Error)?.message ?? err),
     });
     return { ok: false, text: accumulated };
