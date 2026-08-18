@@ -279,7 +279,8 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
               </div>
             </span>
           </button>
-          {chatModels.map((m) => (
+          <div style={{ maxHeight: '46vh', overflow: 'auto' }}>
+            {chatModels.map((m) => (
             <button
               key={m.id}
               className={project.model === m.id ? 'action-row on' : 'action-row'}
@@ -298,6 +299,7 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
               </span>
             </button>
           ))}
+          </div>
           {chatModels.length === 0 && (
             <div className="tiny">
               Roʻyxat boʻsh. Sozlamalar → «Modellarni yangilash» tugmasini bosing.

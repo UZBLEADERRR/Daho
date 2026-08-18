@@ -5,7 +5,7 @@ import {
   allModels,
   cachedProviderModels,
   listProviderModels,
-  parseRef,
+  modelIsFree,
   presetById,
   priceLabel,
   searchModels,
@@ -13,6 +13,7 @@ import {
 } from '../lib/providers';
 import { updateSettings, useStore } from '../lib/store';
 import type { ProviderConfig, RoleModels } from '../lib/types';
+import { ModelPickButton } from './ModelPicker';
 import { Close, Cpu, Refresh, Trash } from './Icons';
 import { Sheet, Switch, toast } from './ui';
 
@@ -147,6 +148,15 @@ export function ModelsPanel() {
       </div>
 
       <div className="field" style={{ marginTop: 14 }}>
+        <Switch
+          on={settings.freeOnly === true}
+          onChange={(on) => updateSettings({ freeOnly: on })}
+          label="🆓 Faqat bepul modellar"
+          hint="Avto tanlov va zaxira model faqat bepullardan olinadi — pul sarflanmaydi"
+        />
+      </div>
+
+      <div className="field">
         <Switch
           on={settings.autoPickModel !== false}
           onChange={(on) => updateSettings({ autoPickModel: on })}
@@ -409,7 +419,7 @@ function ModelList({ onClose }: { onClose: () => void }) {
   const base = query.trim() ? searchModels(query) : allCachedModels();
   const visible = base.filter((m) => {
     if (filter === 'sevimli') return favorites.has(m.id);
-    if (filter === 'bepul') return m.free;
+    if (filter === 'bepul') return modelIsFree(m);
     if (filter === 'vosita') return m.tools !== false;
     return true;
   });
@@ -464,7 +474,7 @@ function ModelList({ onClose }: { onClose: () => void }) {
         {([
           ['hammasi', `Hammasi (${base.length})`],
           ['sevimli', `⭐ Sevimli (${base.filter((m) => favorites.has(m.id)).length})`],
-          ['bepul', `🆓 Bepul (${base.filter((m) => m.free).length})`],
+          ['bepul', `🆓 Bepul (${base.filter(modelIsFree).length})`],
           ['vosita', '🔧 Vositali'],
         ] as const).map(([id, label]) => (
           <button
@@ -497,7 +507,7 @@ function ModelList({ onClose }: { onClose: () => void }) {
                 <b>{m.label}</b>
                 <div className="tiny">
                   {m.providerLabel ?? 'Gemini'}
-                  {m.free ? ' · 🆓 bepul' : priceLabel(m) ? ` · ${priceLabel(m)}` : ''}
+                  {modelIsFree(m) ? ' · 🆓 bepul' : priceLabel(m) ? ` · ${priceLabel(m)}` : ''}
                   {m.tools === false ? ' · vositasiz' : ''}
                   {m.vision ? ' · 👁' : ''}
                 </div>
@@ -572,33 +582,9 @@ export function ChatModelSelect({
   value: string;
   onChange: (id: string) => void;
 }) {
-  const hidden = useStore((s) => s.settings.hiddenModels ?? []);
-  const skip = new Set(hidden);
-  const list = allCachedModels().filter((m) => m.role === 'chat' && !skip.has(m.id));
-  const known = list.some((m) => m.id === value);
-
-  // Provayder boʻyicha guruhlaymiz — roʻyxat uzun boʻlganda tushunarli boʻlsin.
-  const groups = new Map<string, typeof list>();
-  for (const m of list) {
-    const key = m.providerLabel ?? 'Gemini';
-    groups.set(key, [...(groups.get(key) ?? []), m]);
-  }
-
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      {!known && value && <option value={value}>{parseRef(value).model} (roʻyxatda yoʻq)</option>}
-      {[...groups.entries()].map(([label, items]) => (
-        <optgroup key={label} label={label}>
-          {items.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-              {m.preview ? ' · sinov' : ''}
-            </option>
-          ))}
-        </optgroup>
-      ))}
-    </select>
-  );
+  // 250+ model orasidan oddiy dropdown bilan tanlab boʻlmaydi —
+  // qidiruv va filtrlari bor tanlagich ochiladi.
+  return <ModelPickButton value={value} onChange={onChange} title="Suhbat modeli" />;
 }
 
 /* ------------------------------------------------------------------ */

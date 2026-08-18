@@ -7,7 +7,7 @@ import {
   patchAutomation,
   runAutomation,
 } from '../../lib/automation';
-import { modelLabel, usableChatModels } from '../../lib/providers';
+import { ModelPickButton } from '../ModelPicker';
 import { useStore } from '../../lib/store';
 import { stopFor, useTasks } from '../../lib/tasks';
 import type { Automation } from '../../lib/types';
@@ -185,8 +185,6 @@ function AutomationEditor({ item, onClose }: { item: Automation | null; onClose:
   const [fresh, setFresh] = useState(item?.freshChat ?? true);
   const [model, setModel] = useState(item?.model ?? '');
 
-  const models = usableChatModels();
-
   const toggleDay = (d: number) =>
     setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
 
@@ -304,18 +302,16 @@ function AutomationEditor({ item, onClose }: { item: Automation | null; onClose:
         </label>
       )}
 
-      <label className="field">
+      <div className="field">
         <span>Model</span>
-        <select value={model} onChange={(e) => setModel(e.target.value)}>
-          <option value="">Asosiy model ({modelLabel('')})</option>
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-              {m.providerLabel ? ` · ${m.providerLabel}` : ''}
-            </option>
-          ))}
-        </select>
-      </label>
+        <ModelPickButton
+          value={model}
+          onChange={setModel}
+          title="Topshiriq modeli"
+          allowEmpty
+          emptyLabel="Asosiy model"
+        />
+      </div>
 
       {target === 'chat' && (
         <Switch

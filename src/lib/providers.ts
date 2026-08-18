@@ -927,6 +927,22 @@ function readProviderModel(m: any): ProviderModel | null {
   };
 }
 
+/**
+ * ModelInfo bepulmi. Bayroqqa emas, maʼlumotning oʻziga qaraydi —
+ * shunda model qaysi yoʻldan kelganidan qatʼi nazar toʻgʻri aniqlanadi
+ * (roʻyxatdan, qoʻlda kiritilgandan yoki tavsiyadan).
+ */
+export function modelIsFree(m: {
+  id: string;
+  label?: string;
+  free?: boolean;
+  inPrice?: number;
+  outPrice?: number;
+}): boolean {
+  if (m.free) return true;
+  return isFreeModel({ id: m.label ?? m.id, inPrice: m.inPrice, outPrice: m.outPrice });
+}
+
 /** Model bepulmi — narxi nol yoki nomida «:free» boʻlsa. */
 export function isFreeModel(m: { id: string; inPrice?: number; outPrice?: number }): boolean {
   if (/:free\b|-free\b/i.test(m.id)) return true;
@@ -1190,9 +1206,19 @@ export function visibleModels(list: ModelInfo[]): ModelInfo[] {
   return list.filter((m) => !hidden.has(m.id));
 }
 
-/** Chat uchun ishlatsa boʻladigan modellar (oʻchirilganlar chiqarib tashlanadi). */
+/**
+ * Chat uchun ishlatsa boʻladigan modellar.
+ *
+ * «Faqat bepul» rejimi yoqilgan boʻlsa — faqat bepullari qoladi. Bu Avto
+ * tanlovga ham, zaxira modelga ham taʼsir qiladi, yaʼni tasodifan pulli
+ * model ishlatilib qolmaydi. Bepul model umuman topilmasa cheklovni
+ * qoʻllamaymiz — aks holda ilova umuman javob bera olmay qoladi.
+ */
 export function usableChatModels(): ModelInfo[] {
-  return visibleModels(allCachedModels()).filter((m) => m.role === 'chat');
+  const all = visibleModels(allCachedModels()).filter((m) => m.role === 'chat');
+  if (!getState().settings.freeOnly) return all;
+  const free = all.filter(modelIsFree);
+  return free.length ? free : all;
 }
 
 /** Model nomining koʻrinadigan yorligʻi. */

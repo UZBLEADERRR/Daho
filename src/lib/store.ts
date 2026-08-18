@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoPickModel: true,
   autoPool: [],
   memoryEnabled: true,
+  freeOnly: false,
 };
 
 const EMPTY_STATE: AppState = {

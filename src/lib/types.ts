@@ -207,6 +207,11 @@ export interface Settings {
   autoPool: string[];
   /** Suhbatlardan foydalanuvchi haqidagi faktlarni oʻzi eslab qolsinmi */
   memoryEnabled: boolean;
+  /**
+   * FAQAT BEPUL rejim: Avto tanlov, zaxira model va tanlash roʻyxatlari
+   * faqat bepul modellar bilan cheklanadi. Pul sarflanmasligiga kafolat.
+   */
+  freeOnly: boolean;
 }
 
 /* ---------- Mini ilovalar ---------- */

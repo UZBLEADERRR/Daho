@@ -2621,3 +2621,18 @@ textarea {
   font-weight: 640;
   color: var(--accent);
 }
+
+/* ---------- Qidiruvli model tanlagich ---------- */
+
+.model-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+  text-align: left;
+  font-size: 14.5px;
+}
