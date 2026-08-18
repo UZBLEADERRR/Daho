@@ -2,6 +2,7 @@ import { drainInterjections } from './ask';
 import { isModelReadable } from './attach';
 import { extractArtifacts } from './artifacts';
 import { GeminiError } from './gemini';
+import { learnFromChat, memoryBlock } from './memory';
 import { completeAny } from './providers';
 import { streamResilient } from './resilient';
 import type { GeminiContent, GeminiPart } from './gemini';
@@ -180,6 +181,8 @@ qarorlarni oʻzing qabul qil va nima tanlaganingni aytib qoʻy.
 Har bir vositani chaqirishdan OLDIN bir qisqa jumlada nima qilayotganingni yoz
 («Jadvalingizni tekshiraman», «Konspekt yozib qoʻyaman»). Foydalanuvchi nima
 sodir boʻlayotganini koʻrib tursin.
+
+${memoryBlock()}
 
 ## Kontekst
 ${buildContextSummary()}
@@ -452,6 +455,8 @@ export async function sendMessage(
     });
 
     void autoTitle(chatId, text);
+    // Suhbatdan doimiy faktlarni jimgina eslab qolamiz (xato boʻlsa eʼtiborsiz).
+    void learnFromChat(chatId);
     return { ok: true, text: accumulated };
   } catch (err) {
     if (flushTimer) clearTimeout(flushTimer);

@@ -205,6 +205,8 @@ export interface Settings {
    * barcha modellar ichidan.
    */
   autoPool: string[];
+  /** Suhbatlardan foydalanuvchi haqidagi faktlarni oʻzi eslab qolsinmi */
+  memoryEnabled: boolean;
 }
 
 /* ---------- Mini ilovalar ---------- */
@@ -467,6 +469,15 @@ export interface Automation {
   createdAt: number;
 }
 
+/** Daho foydalanuvchi haqida eslab qolgan doimiy fakt. */
+export interface Memory {
+  id: string;
+  text: string;
+  /** Qayerdan olingani: suhbatdan avtomatik yoki qoʻlda kiritilgan */
+  source: 'suhbat' | 'qoʻlda';
+  createdAt: number;
+}
+
 export interface AppState {
   version: number;
   settings: Settings;
@@ -485,6 +496,8 @@ export interface AppState {
   routes: RoutePlan[];
   books: Book[];
   automations: Automation[];
+  /** Daho foydalanuvchi haqida eslab qolganlari */
+  memories: Memory[];
   /** Oxirgi koʻrilgan ekran — ilova qayta ochilganda oʻsha joydan davom etadi */
   view: ViewState;
 }

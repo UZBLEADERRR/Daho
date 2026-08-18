@@ -7,6 +7,7 @@ import {
   listProviderModels,
   parseRef,
   presetById,
+  priceLabel,
   searchModels,
   usableChatModels,
 } from '../lib/providers';
@@ -398,10 +399,27 @@ function ModelList({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [, force] = useState(0);
 
+  const [filter, setFilter] = useState<'hammasi' | 'sevimli' | 'bepul' | 'vosita'>('hammasi');
+
   const hidden = new Set(settings.hiddenModels ?? []);
+  const favorites = new Set(settings.favoriteModels ?? []);
+
   // Qidiruv BARCHA modellar boʻyicha ketadi (roʻyxat chegarasi qoʻllanmaydi),
   // qidiruvsiz esa faqat kerakli oilalar koʻrinadi.
-  const visible = query.trim() ? searchModels(query) : allCachedModels();
+  const base = query.trim() ? searchModels(query) : allCachedModels();
+  const visible = base.filter((m) => {
+    if (filter === 'sevimli') return favorites.has(m.id);
+    if (filter === 'bepul') return m.free;
+    if (filter === 'vosita') return m.tools !== false;
+    return true;
+  });
+
+  const star = (id: string) => {
+    const list = settings.favoriteModels ?? [];
+    updateSettings({
+      favoriteModels: list.includes(id) ? list.filter((x) => x !== id) : [id, ...list],
+    });
+  };
 
   const toggle = (id: string) => {
     const next = hidden.has(id)
@@ -442,24 +460,50 @@ function ModelList({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
+      <div className="chips" style={{ marginBottom: 10 }}>
+        {([
+          ['hammasi', `Hammasi (${base.length})`],
+          ['sevimli', `⭐ Sevimli (${base.filter((m) => favorites.has(m.id)).length})`],
+          ['bepul', `🆓 Bepul (${base.filter((m) => m.free).length})`],
+          ['vosita', '🔧 Vositali'],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            className={filter === id ? 'chip on' : 'chip'}
+            onClick={() => setFilter(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div style={{ maxHeight: '55vh', overflow: 'auto' }}>
         {visible.map((m) => {
           const on = !hidden.has(m.id);
           return (
-            <button
-              key={m.id}
-              className={on ? 'model-row on' : 'model-row'}
-              onClick={() => toggle(m.id)}
-            >
-              <span className="grow" style={{ minWidth: 0, textAlign: 'left' }}>
+            <div key={m.id} className={on ? 'model-row on' : 'model-row'}>
+              <button
+                className="star-btn"
+                onClick={() => star(m.id)}
+                aria-label={favorites.has(m.id) ? 'Sevimlilardan olish' : 'Sevimlilarga qoʻshish'}
+              >
+                {favorites.has(m.id) ? '⭐' : '☆'}
+              </button>
+              <button
+                className="grow"
+                style={{ minWidth: 0, textAlign: 'left' }}
+                onClick={() => toggle(m.id)}
+              >
                 <b>{m.label}</b>
                 <div className="tiny">
-                  {m.providerLabel ?? 'Gemini'} · {m.role}
-                  {m.preview ? ' · sinov' : ''}
+                  {m.providerLabel ?? 'Gemini'}
+                  {m.free ? ' · 🆓 bepul' : priceLabel(m) ? ` · ${priceLabel(m)}` : ''}
+                  {m.tools === false ? ' · vositasiz' : ''}
+                  {m.vision ? ' · 👁' : ''}
                 </div>
-              </span>
+              </button>
               <span className="model-mark">{on ? '✓' : <Close size={14} />}</span>
-            </button>
+            </div>
           );
         })}
         {!visible.length && <div className="tiny">Hech narsa topilmadi.</div>}

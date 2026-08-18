@@ -128,6 +128,8 @@ export interface StreamOptions {
   onRetry?: (attempt: number, seconds: number) => void;
   /** Holat haqida qisqa xabar (soʻrov soddalashtirildi, model almashtirildi…) */
   onStep?: (step: string) => void;
+  /** Xarajat hisobida qaysi ish deb yozilsin: 'chat', 'kod', 'kitob'… */
+  usageKind?: string;
 }
 
 export interface StreamResult {

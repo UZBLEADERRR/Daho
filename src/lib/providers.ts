@@ -22,6 +22,7 @@ import {
 } from './gemini';
 import { cachedModels, geminiModel, getModels, type ModelInfo, type ModelRole } from './models';
 import { getState } from './store';
+import { recordUsage } from './usage';
 import type { Attachment, ProviderConfig, RoleModels } from './types';
 
 export const REF_SEPARATOR = '::';
@@ -446,7 +447,14 @@ async function streamOpenAi(
 
   /** Soʻrov tanasini joriy bilimlarga qarab yigʻadi. */
   const buildBody = (dropTemp: boolean, dropTools: boolean): Record<string, unknown> => {
-    const body: Record<string, unknown> = { model, messages, stream: true };
+    const body: Record<string, unknown> = {
+      model,
+      messages,
+      stream: true,
+      // Oxirgi boʻlakda nechta token sarflanganini soʻraymiz — xarajat
+      // hisoblagichi shu raqamga tayanadi.
+      stream_options: { include_usage: true },
+    };
     if (!dropTemp && !noTemperature.has(ref)) body.temperature = opts.temperature ?? 0.8;
     if (tools && !dropTools && !noTools.has(ref)) {
       body.tools = tools;
@@ -530,6 +538,8 @@ async function streamOpenAi(
   let buffer = '';
   let text = '';
   let finishReason = '';
+  let inTokens = 0;
+  let outTokens = 0;
   const images: Attachment[] = [];
   /** index → yigʻilayotgan chaqiruv */
   const calls = new Map<number, { name: string; args: string }>();
@@ -548,6 +558,12 @@ async function streamOpenAi(
         Number(parsed.error.code) || 0,
       );
     }
+    // Sarf maʼlumoti odatda eng oxirgi, `choices` boʻsh boʻlakda keladi.
+    if (parsed?.usage) {
+      inTokens = Number(parsed.usage.prompt_tokens ?? parsed.usage.input_tokens ?? 0) || 0;
+      outTokens = Number(parsed.usage.completion_tokens ?? parsed.usage.output_tokens ?? 0) || 0;
+    }
+
     const choice = parsed?.choices?.[0];
     if (!choice) return;
     if (choice.finish_reason) finishReason = String(choice.finish_reason);
@@ -598,6 +614,9 @@ async function streamOpenAi(
   const parts: GeminiPart[] = [];
   if (text) parts.push({ text });
   for (const call of functionCalls) parts.push({ functionCall: call });
+
+  // Sarfni yozib qoʻyamiz — xarajat hisoblagichi shundan oʻqiydi.
+  if (inTokens || outTokens) recordUsage(ref, inTokens, outTokens, opts.usageKind ?? 'chat');
 
   return {
     text,
@@ -847,6 +866,10 @@ export interface ProviderModel {
   draws: boolean;
   /** Kontekst oynasi (token) — bilingan boʻlsa */
   context?: number;
+  /** 1 mln kirish tokeni narxi (USD). 0 — bepul, undefined — nomaʼlum */
+  inPrice?: number;
+  /** 1 mln chiqish tokeni narxi (USD) */
+  outPrice?: number;
 }
 
 interface ListCache {
@@ -883,13 +906,39 @@ function readProviderModel(m: any): ProviderModel | null {
   const params: string[] = m?.supported_parameters ?? [];
 
   const known = modalities.length > 0 || params.length > 0;
+
+  // OpenRouter narxni bitta token uchun satr koʻrinishida beradi
+  // ("0.0000006"). Biz 1 mln token uchun dollarga oʻgiramiz — shu
+  // koʻrinishda odam oʻqiy oladi va taqqoslay oladi.
+  const perMillion = (value: unknown): number | undefined => {
+    const n = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(n) || n < 0) return undefined;
+    return n * 1_000_000;
+  };
+
   return {
     id,
     vision: known ? modalities.includes('image') : VISION_NAME.test(id),
     tools: known ? params.includes('tools') : true,
     draws: outputs.length ? outputs.includes('image') : DRAW_NAME.test(id),
     context: typeof m?.context_length === 'number' ? m.context_length : undefined,
+    inPrice: perMillion(m?.pricing?.prompt),
+    outPrice: perMillion(m?.pricing?.completion),
   };
+}
+
+/** Model bepulmi — narxi nol yoki nomida «:free» boʻlsa. */
+export function isFreeModel(m: { id: string; inPrice?: number; outPrice?: number }): boolean {
+  if (/:free\b|-free\b/i.test(m.id)) return true;
+  return m.inPrice === 0 && m.outPrice === 0;
+}
+
+/** Narxni odam oʻqiydigan koʻrinishda: "$0.15 / 1M" yoki "bepul". */
+export function priceLabel(m: { id: string; inPrice?: number; outPrice?: number }): string {
+  if (isFreeModel(m)) return 'bepul';
+  if (m.inPrice === undefined && m.outPrice === undefined) return '';
+  const fmt = (v?: number) => (v === undefined ? '?' : v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(3)}`);
+  return `${fmt(m.inPrice)} / ${fmt(m.outPrice)} · 1M`;
 }
 
 /** Nomidan taxmin qilingan model (roʻyxat olinmaganda). */
@@ -1001,6 +1050,9 @@ function providerModelInfo(cfg: ProviderConfig, m: ProviderModel): ModelInfo {
     vision: m.vision,
     tools: m.tools,
     context: m.context,
+    inPrice: m.inPrice,
+    outPrice: m.outPrice,
+    free: isFreeModel(m),
   };
 }
 

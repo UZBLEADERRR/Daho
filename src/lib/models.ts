@@ -20,6 +20,12 @@ export interface ModelInfo {
   tools?: boolean;
   /** Kontekst oynasi (token) */
   context?: number;
+  /** 1 mln kirish tokeni narxi (USD) */
+  inPrice?: number;
+  /** 1 mln chiqish tokeni narxi (USD) */
+  outPrice?: number;
+  /** Bepul modelmi */
+  free?: boolean;
 }
 
 const CACHE_KEY = 'daho.models.v1';

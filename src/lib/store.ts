@@ -39,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   agentRounds: 60,
   autoPickModel: true,
   autoPool: [],
+  memoryEnabled: true,
 };
 
 const EMPTY_STATE: AppState = {
@@ -59,6 +60,7 @@ const EMPTY_STATE: AppState = {
   routes: [],
   books: [],
   automations: [],
+  memories: [],
   view: { tab: 'chat', section: 'bugun', courseId: null, bookId: null, codeId: null },
 };
 
@@ -85,6 +87,7 @@ function migrate(parsed: Partial<AppState>): AppState {
     ...parsed,
     settings,
     books: Array.isArray(parsed.books) ? parsed.books : [],
+    memories: Array.isArray(parsed.memories) ? parsed.memories : [],
     automations: Array.isArray(parsed.automations) ? parsed.automations : [],
     view: { ...EMPTY_STATE.view, ...(parsed.view ?? {}) },
   };

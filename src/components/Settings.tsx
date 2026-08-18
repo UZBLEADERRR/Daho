@@ -17,6 +17,7 @@ import {
 } from '../lib/speech';
 import { exportState, getState, importState, resetState, updateSettings, useStore } from '../lib/store';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
+import { UsagePanel } from './UsagePanel';
 import { Copy, Refresh } from './Icons';
 import { Sheet, Switch, toast } from './ui';
 
@@ -177,6 +178,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
       </div>
 
       <ModelsPanel />
+
+      <UsagePanel />
 
       <div className="field">
         <label>Rasm modeli</label>
