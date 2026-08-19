@@ -29,12 +29,6 @@ jobs:
       - name: Kodni olish
         uses: actions/checkout@v4
 
-      - name: Pages ni yoqish va sozlash
-        # enablement: repozitoriyda Pages hali yoqilmagan boʻlsa oʻzi yoqadi.
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
       - name: Node.js sozlash
         uses: actions/setup-node@v4
         with:
