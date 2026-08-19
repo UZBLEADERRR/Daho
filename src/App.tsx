@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
@@ -13,15 +13,17 @@ import { VideoStudio } from './components/VideoStudio';
 import { Browser } from './components/Browser';
 import { AccountSheet } from './components/cloud/AccountSheet';
 import { AdminPanel } from './components/cloud/AdminPanel';
-import { SECTION_LABEL, type AgentSection } from './components/agent/sections';
+import { SECTION_LABEL, isSection, type AgentSection } from './components/agent/sections';
 import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
+import { startScheduler } from './lib/automation';
 import { onOpenSite } from './lib/browserbus';
 import { cloudEnabled, initCloud, useCloud } from './lib/cloud';
-import { getModels, pickModel } from './lib/models';
 import { installDeviceBridge } from './lib/devicebridge';
+import { getModels, pickModel } from './lib/models';
+import { allModels, cachedProviderModels } from './lib/providers';
 import { installSandboxStore } from './lib/sandbox';
-import { getState, updateSettings, useStore } from './lib/store';
+import { getState, updateSettings, updateView, useStore } from './lib/store';
 import type { Artifact } from './lib/types';
 
 type Tab = 'chat' | 'agent' | 'kod';
@@ -44,22 +46,40 @@ export default function App() {
   const theme = useStore((s) => s.settings.theme);
   const accent = useStore((s) => s.settings.accent);
   const fontScale = useStore((s) => s.settings.fontScale);
-  const hasKey = useStore((s) => Boolean(s.settings.apiKey));
-  const chats = useStore((s) => s.chats);
-  const activeChatId = useStore((s) => s.activeChatId);
+  // Ishlash uchun Gemini SHART emas — OpenRouter ham yetarli.
+  const geminiKey = useStore((s) => Boolean(s.settings.apiKey));
+  /**
+   * Yoqilgan provayderlarning «imzosi»: id va kalit uzunligi. Kalit yozilib
+   * yoki qoʻyib boʻlingach bu qiymat oʻzgaradi — shunda model roʻyxatini
+   * oʻzi olib kelamiz. Kalitning oʻzi bogʻliqlikka tushmaydi.
+   */
+  const providerSig = useStore((s) =>
+    (s.settings.providers ?? [])
+      .filter((p) => p.enabled && p.apiKey.trim())
+      .map((p) => `${p.id}:${p.apiKey.trim().length}`)
+      .join('|'),
+  );
   const cloud = useCloud();
   const wide = useWideScreen();
+  const chats = useStore((st) => st.chats);
+  const activeChatId = useStore((st) => st.activeChatId);
+  const ready = geminiKey || Boolean(providerSig) || cloud.status === 'kirgan';
 
-  const [tab, setTab] = useState<Tab>('chat');
-  const [section, setSection] = useState<AgentSection>('bugun');
+  // Qaysi ekran ochiqligi store da turadi: boʻlim almashsangiz ham,
+  // ilovani yopib qayta ochsangiz ham hech narsa qaytadan boshlanmaydi.
+  const tab = useStore((s) => s.view.tab) as Tab;
+  const rawSection = useStore((s) => s.view.section);
+  const section: AgentSection = isSection(rawSection) ? rawSection : 'bugun';
+  const setTab = (next: Tab) => updateView({ tab: next });
+  const setSection = (next: AgentSection) => updateView({ section: next });
+
   const [sidebar, setSidebar] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
-  const [adminOpen, setAdminOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(!ready);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
-  const greeted = useRef(false);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', accent);
@@ -71,6 +91,9 @@ export default function App() {
   // Qumboxdagi ilovalar saqlagan maʼlumotni qabul qilamiz.
   useEffect(() => installSandboxStore(), []);
 
+  // Avtomatlashtirilgan topshiriqlar soati.
+  useEffect(() => startScheduler(), []);
+
   // Kamera, mikrofon va joylashuvni qumboxdagi ilovalarga uzatamiz.
   useEffect(() => installDeviceBridge(), []);
 
@@ -79,14 +102,6 @@ export default function App() {
 
   // Bulut: sessiya, hisob va sinxronizatsiya.
   useEffect(() => initCloud(), []);
-
-  // Na kalit, na obuna boʻlsa — bir marta sozlamalarni ochamiz.
-  useEffect(() => {
-    if (greeted.current || hasKey) return;
-    if (cloudEnabled && (cloud.status === 'yuklanmoqda' || cloud.status === 'kirgan')) return;
-    greeted.current = true;
-    setSettingsOpen(true);
-  }, [hasKey, cloud.status]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -100,10 +115,9 @@ export default function App() {
     }
   }, [theme]);
 
-  // Kalit yoki obuna bor bo'lsa — modellar ro'yxatini yangilab, eng yangisiga o'tamiz.
-  const canQuery = hasKey || cloud.status === 'kirgan';
+  // Kalit bor bo'lsa — modellar ro'yxatini yangilab, eng yangisiga o'tamiz.
   useEffect(() => {
-    if (!canQuery) return;
+    if (!geminiKey) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -122,12 +136,58 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [canQuery]);
+  }, [geminiKey]);
+
+  /**
+   * Provayder kaliti kiritilgach model roʻyxatini OʻZI olib keladi —
+   * foydalanuvchi model nomlarini qoʻlda yozishi shart emas.
+   *
+   * Kalit yozilayotganda har harfda soʻrov yubormaslik uchun 1.2 s kutamiz.
+   * Gemini kaliti yoʻq boʻlsa, roʻyxat kelgach asosiy modelni ham oʻsha
+   * provayderning modeliga almashtiramiz (aks holda standart Gemini modeli
+   * qolib, birinchi savolda «kalit yoʻq» xatosi chiqadi).
+   */
+  useEffect(() => {
+    if (!providerSig) return;
+    let cancelled = false;
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const list = await allModels(true);
+          if (cancelled || !list.length) return;
+
+          const { settings } = getState();
+          if (settings.apiKey.trim()) return; // Gemini bor — model almashtirmaymiz
+          if (settings.model.includes('::')) return; // allaqachon provayder modeli
+
+          const hidden = new Set(settings.hiddenModels ?? []);
+          // Faqat haqiqiy roʻyxat kelgan provayderdan tanlaymiz.
+          const usable = list.filter(
+            (m) =>
+              m.role === 'chat' &&
+              m.provider &&
+              !hidden.has(m.id) &&
+              cachedProviderModels(m.provider).length > 0,
+          );
+          if (usable.length) updateSettings({ model: usable[0].id });
+        } catch {
+          /* roʻyxat olinmasa tavsiya modellar qoladi, foydalanuvchi oʻzi tanlaydi */
+        }
+      })();
+    }, 1200);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [providerSig]);
 
   // Androidning "orqaga" tugmasi: avval ochiq oynalarni yopadi.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const handle = CapApp.addListener('backButton', ({ canGoBack }) => {
+      const view = getState().view;
       if (artifact) setArtifact(null);
       else if (browserUrl !== null) setBrowserUrl(null);
       else if (videoId) setVideoId(null);
@@ -135,6 +195,10 @@ export default function App() {
       else if (accountOpen) setAccountOpen(false);
       else if (settingsOpen) setSettingsOpen(false);
       else if (sidebar) setSidebar(false);
+      // Ochiq kitob/kurs/loyiha — avval oʻshani yopamiz.
+      else if (tab === 'agent' && view.bookId) updateView({ bookId: null });
+      else if (tab === 'agent' && view.courseId) updateView({ courseId: null });
+      else if (tab === 'kod' && view.codeId) updateView({ codeId: null });
       else if (tab === 'agent' && section !== 'bugun') setSection('bugun');
       else if (tab !== 'chat') setTab('chat');
       else if (canGoBack) window.history.back();
@@ -161,79 +225,79 @@ export default function App() {
           onOpenBrowser={() => setBrowserUrl('')}
           onGoChat={() => setTab('chat')}
           onGoCode={() => setTab('kod')}
-          onGoAgent={(s) => {
+          onGoAgent={(sec) => {
             setTab('agent');
-            setSection(s);
+            setSection(sec);
           }}
         />
       )}
 
       <div className="app">
-        <header className="topbar">
-          {!wide ? (
-            <button className="icon-btn" onClick={() => setSidebar(true)} aria-label="Menyu">
-              <Menu />
-            </button>
-          ) : (
-            <div className="topbar-title">
-              {tab === 'chat'
-                ? (chats.find((c) => c.id === activeChatId)?.title ?? 'Yangi suhbat')
-                : tab === 'agent'
-                  ? SECTION_LABEL[section]
-                  : 'Daho Code'}
-            </div>
-          )}
-
-          <div className="tabs">
-            <button className={tab === 'chat' ? 'tab on' : 'tab'} onClick={() => setTab('chat')}>
-              Chat
-            </button>
-            <button className={tab === 'agent' ? 'tab on' : 'tab'} onClick={() => setTab('agent')}>
-              Agent
-            </button>
-            <button className={tab === 'kod' ? 'tab on' : 'tab'} onClick={() => setTab('kod')}>
-              Code
-            </button>
+      <header className="topbar">
+        {!wide ? (
+          <button className="icon-btn" onClick={() => setSidebar(true)} aria-label="Menyu">
+            <Menu />
+          </button>
+        ) : (
+          <div className="topbar-title">
+            {tab === 'chat'
+              ? (chats.find((c) => c.id === activeChatId)?.title ?? 'Yangi suhbat')
+              : tab === 'agent'
+                ? SECTION_LABEL[section]
+                : 'Daho Code'}
           </div>
+        )}
 
-          <div className="topbar-right">
-            {cloudEnabled && (
-              <button
-                className={cloud.status === 'kirgan' ? 'icon-btn on' : 'icon-btn'}
-                onClick={() => setAccountOpen(true)}
-                aria-label="Daho Cloud"
-                title={cloud.account?.plan?.name ?? 'Daho Cloud'}
-              >
-                <Cloud size={19} />
-              </button>
-            )}
+        <div className="tabs">
+          <button className={tab === 'chat' ? 'tab on' : 'tab'} onClick={() => setTab('chat')}>
+            Chat
+          </button>
+          <button className={tab === 'agent' ? 'tab on' : 'tab'} onClick={() => setTab('agent')}>
+            Agent
+          </button>
+          <button className={tab === 'kod' ? 'tab on' : 'tab'} onClick={() => setTab('kod')}>
+            Code
+          </button>
+        </div>
 
+        <div className="topbar-right">
+          {cloudEnabled && (
             <button
-              className="icon-btn"
-              onClick={() => setSettingsOpen(true)}
-              aria-label="Sozlamalar"
+              className={cloud.status === 'kirgan' ? 'icon-btn on' : 'icon-btn'}
+              onClick={() => setAccountOpen(true)}
+              aria-label="Daho Cloud"
+              title={cloud.account?.plan?.name ?? 'Daho Cloud'}
             >
-              <SettingsIcon size={20} />
+              <Cloud size={19} />
             </button>
-          </div>
-        </header>
-
-        <main className="main">
-          {tab === 'chat' && (
-            <ChatView onOpenArtifact={setArtifact} onOpenVideo={setVideoId} />
           )}
-          {tab === 'agent' && (
-            <AgentView
-              section={section}
-              onSection={setSection}
-              onOpenArtifact={setArtifact}
-              onOpenVideo={setVideoId}
-            />
-          )}
-          {tab === 'kod' && <CodeView />}
-        </main>
 
-        <TaskBar />
+          <button
+            className="icon-btn"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Sozlamalar"
+          >
+            <SettingsIcon size={20} />
+          </button>
+        </div>
+      </header>
+
+      <main className="main">
+        {tab === 'chat' && (
+          <ChatView onOpenArtifact={setArtifact} onOpenVideo={setVideoId} />
+        )}
+        {tab === 'agent' && (
+          <AgentView
+            section={section}
+            onSection={setSection}
+            onOpenArtifact={setArtifact}
+            onOpenVideo={setVideoId}
+          />
+        )}
+        {tab === 'kod' && <CodeView />}
+      </main>
+
+      <TaskBar />
       </div>
 
       {settingsOpen && (

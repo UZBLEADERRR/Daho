@@ -72,9 +72,25 @@ interface SwitchProps {
   onChange: (value: boolean) => void;
   label: string;
   hint?: string;
+  /** Faqat tugmaning oʻzi — yorliqsiz, karta ichida ishlatish uchun */
+  compact?: boolean;
 }
 
-export function Switch({ on, onChange, label, hint }: SwitchProps) {
+export function Switch({ on, onChange, label, hint, compact }: SwitchProps) {
+  // Yorliqsiz (compact) koʻrinish — karta ichida, matn yonida turadi.
+  if (compact) {
+    return (
+      <button
+        className={on ? 'switch on' : 'switch'}
+        onClick={() => onChange(!on)}
+        aria-label={label || 'Yoqish'}
+        aria-pressed={on}
+      >
+        <i />
+      </button>
+    );
+  }
+
   return (
     <button
       className="between"

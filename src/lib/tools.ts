@@ -1,7 +1,11 @@
 import { askUser } from './ask';
 import { b64ToBytes } from './audio';
-import { saveBytes } from './exporter';
-import { generateImage, generateJson, generateText, searchAnswer } from './gemini';
+import { createBook, writeBook } from './book';
+import { fetchImageData, searchImages } from './imagesearch';
+import { geminiModel } from './models';
+import { canSearchWeb, imageAny } from './providers';
+import { DOC_LABEL, exportDocument, saveBytes, saveZip, type DocFormat } from './exporter';
+import { generateJson, generateText, searchAnswer } from './gemini';
 import {
   DOCX_MIME,
   buildDocxWithImages,
@@ -22,7 +26,6 @@ import {
   type Spot,
   type TravelMode,
 } from './place';
-import { createBook, writeWholeBook } from './book';
 import { openSite } from './browserbus';
 import { synthesize } from './speech';
 import { getState, setState } from './store';
@@ -223,6 +226,99 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'search_images',
+    description:
+      'INTERNETDAN haqiqiy rasm qidiradi va manbasi bilan qaytaradi ' +
+      '(Openverse va Wikimedia — bepul, litsenziyali rasmlar).\n' +
+      'Qachon ishlatiladi: foydalanuvchi «rasmini koʻrsat», «qanday koʻrinadi», ' +
+      '«namuna/misol rasm», «ilhom uchun rasmlar» desa; yoki haqiqiy joy, ' +
+      'odam, hayvon, tarixiy voqea, mahsulot haqida gapirilsa.\n' +
+      'Rasm YASASH kerak boʻlsa (chizma, logotip, muqova) — `generate_image` ishlat. ' +
+      'Bu vosita esa mavjud, haqiqiy rasmlarni topadi.\n' +
+      'Qidiruv soʻzini INGLIZ tilida yoz — natija ancha koʻp boʻladi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: {
+          type: 'STRING',
+          description: 'Qidiruv soʻzi, ingliz tilida (masalan "korean skincare routine")',
+        },
+        count: { type: 'NUMBER', description: 'Nechta rasm kerak (standart 8, koʻpi 20)' },
+        save: {
+          type: 'STRING',
+          description:
+            '"true" — rasmlarni ilovaga saqlash (hujjatga qoʻyish yoki koʻrish uchun). ' +
+            'Standart: faqat havola va manba qaytariladi.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'write_book',
+    description:
+      'KITOB yozishni boshlaydi. Foydalanuvchi «kitob yozmoqchiman», «menga kitob yozib ber», ' +
+      '«qissa/roman/qoʻllanma yoz» desa shuni chaqir.\n' +
+      'MUHIM: chaqirishdan OLDIN `ask_user` bilan kamida 3 ta narsani aniqla — ' +
+      'kitob nima haqida va turi (badiiy/oʻquv/biznes), kim uchun, hajmi (necha bob). ' +
+      'Rasm kerakmi, ohangi qanday boʻlsin — buni ham soʻrasang yaxshi.\n' +
+      'Vosita ishga tushgach kitob oʻzi yoziladi: reja va qahramonlar, muqova rasmi, ' +
+      'soʻng bob-bob matn. Foydalanuvchi jarayonni «Agent → Kitoblar» boʻlimida koʻradi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        request: {
+          type: 'STRING',
+          description:
+            'Kitob haqida toʻliq tavsif: mavzu, tur, ohang, kim uchun, foydalanuvchi ' +
+            'aytgan barcha tafsilotlar bir joyda.',
+        },
+        kind: { type: 'STRING', description: 'badiiy | oʻquv qoʻllanma | biznes | bolalar…' },
+        chapters: { type: 'NUMBER', description: 'Boblar soni (standart 12)' },
+        words: { type: 'NUMBER', description: 'Har bobda taxminan necha soʻz (standart 1200)' },
+        images: { type: 'STRING', description: '"false" — rasmsiz kitob' },
+      },
+      required: ['request'],
+    },
+  },
+  {
+    name: 'send_file',
+    description:
+      'Foydalanuvchining telefoniga FAYL yuboradi: PDF, Word, matn (.md), slayd ' +
+      'yoki ZIP. Ulashish oynasi ochiladi — u saqlaydi yoki boshqa ilovaga yuboradi.\n' +
+      'Foydalanuvchi «pdf qilib ber», «word qilib yubor», «fayl qilib tashla», ' +
+      '«yuklab olaman» desa chaqir. Uzun matnni chatga koʻchirib yozmasdan shu ' +
+      'vosita bilan fayl qilib ber.\n' +
+      'ZIP uchun `files` massivini toʻldir (bir nechta fayl), qolgan turlar uchun ' +
+      '`content` ga markdown matnni yoz.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        name: { type: 'STRING', description: 'Fayl nomi (kengaytmasiz)' },
+        format: {
+          type: 'STRING',
+          description: 'pdf | docx | md | pptx | zip',
+        },
+        content: {
+          type: 'STRING',
+          description: 'Markdown matn (pdf/docx/md/pptx uchun). Sarlavhalar # bilan.',
+        },
+        files: {
+          type: 'ARRAY',
+          description: 'ZIP uchun fayllar',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              path: { type: 'STRING', description: 'Fayl nomi, masalan "reja.md"' },
+              content: { type: 'STRING' },
+            },
+          },
+        },
+      },
+      required: ['name', 'format'],
+    },
+  },
+  {
     name: 'ask_user',
     description:
       'Foydalanuvchidan aniqlik soʻraydi va javobini kutadi. Ish yoʻnalishi ' +
@@ -302,30 +398,6 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ['query'],
-    },
-  },
-  {
-    name: 'create_book',
-    description:
-      'KITOB yoki uzun qoʻllanma yozishni boshlaydi: avval boblar rejasini tuzadi, ' +
-      'soʻng boblarni birma-bir yozadi (foydalanuvchi boshqa boʻlimga oʻtsa ham davom etadi). ' +
-      'Foydalanuvchi «kitob yozib ber», «qoʻllanma tuz», «koʻp bobli material» desa SHUNI chaqir — ' +
-      'kitobni chatda oʻzing yozishga urinma, matn uzilib qoladi.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        topic: { type: 'STRING', description: 'Kitob mavzusi' },
-        chapters: { type: 'NUMBER', description: 'Boblar soni (3-40, odatda 10-15)' },
-        words: { type: 'NUMBER', description: 'Bitta bob uchun taxminiy soʻz soni (300-4000)' },
-        audience: { type: 'STRING', description: 'Kim uchun yozilyapti' },
-        style: { type: 'STRING', description: 'Uslub: sodda, ilmiy, hikoyaviy…' },
-        images: {
-          type: 'BOOLEAN',
-          description:
-            'Har bobga rasm chizilsinmi (standart: ha). Foydalanuvchi «rasmsiz» desa false ber.',
-        },
-      },
-      required: ['topic'],
     },
   },
   {
@@ -630,26 +702,181 @@ export async function executeTool(
       };
     }
 
+    case 'send_file': {
+      const name = str(args.name, 'daho-fayl');
+      const format = str(args.format, 'pdf').toLowerCase();
+
+      try {
+        if (format === 'zip') {
+          const raw = Array.isArray(args.files) ? args.files : [];
+          const files = raw
+            .map((f) => {
+              const item = (f ?? {}) as Record<string, unknown>;
+              return { path: str(item.path), content: String(item.content ?? '') };
+            })
+            .filter((f) => f.path);
+          if (!files.length) {
+            return {
+              ok: false,
+              summary: 'ZIP uchun fayl berilmadi',
+              payload: { error: 'files boʻsh — har biriga path va content bering' },
+            };
+          }
+          const status = await saveZip(name, files);
+          return {
+            ok: true,
+            summary: `${files.length} ta fayl ZIP qilib yuborildi`,
+            payload: { status, eslatma: 'Ulashish oynasi ochildi — foydalanuvchiga ayt.' },
+          };
+        }
+
+        const content = str(args.content);
+        if (!content) {
+          return {
+            ok: false,
+            summary: 'Fayl mazmuni berilmadi',
+            payload: { error: 'content boʻsh' },
+          };
+        }
+        const allowed: DocFormat[] = ['pdf', 'docx', 'md', 'pptx'];
+        const kind = (allowed as string[]).includes(format) ? (format as DocFormat) : 'pdf';
+        const status = await exportDocument(content, kind, name);
+
+        // Faylni artifact sifatida ham saqlaymiz — keyin qayta yuklab olsa boʻladi.
+        const artifact: Artifact = {
+          id: uid('a_'),
+          kind: 'markdown',
+          title: name,
+          content,
+          chatId: ctx.chatId,
+          createdAt: Date.now(),
+        };
+        return {
+          ok: true,
+          summary: `${DOC_LABEL[kind]} yuborildi: ${name}`,
+          payload: {
+            status,
+            eslatma:
+              'Ulashish oynasi ochildi. Matnni chatga qayta koʻchirib yozma — ' +
+              'foydalanuvchi faylni oldi.',
+          },
+          artifacts: [artifact],
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Fayl yuborilmadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'search_images': {
+      const query = str(args.query);
+      if (!query) {
+        return { ok: false, summary: 'Qidiruv soʻzi yoʻq', payload: { error: 'boʻsh' } };
+      }
+      const count = Math.max(1, Math.min(20, num(args.count, 8)));
+      const found = await searchImages(query, count, ctx.signal);
+      if (!found.length) {
+        return {
+          ok: false,
+          summary: `Rasm topilmadi: ${query}`,
+          payload: { error: 'topilmadi', maslahat: 'Qidiruv soʻzini ingliz tilida va soddaroq yozing.' },
+        };
+      }
+
+      // Soʻralsa rasmlarni ilovaga koʻchirib olamiz — shunda ular chatda
+      // koʻrinadi va hujjatga qoʻyish mumkin boʻladi.
+      const made: Artifact[] = [];
+      if (str(args.save) === 'true') {
+        for (const img of found.slice(0, 8)) {
+          const data = await fetchImageData(img.thumb, ctx.signal);
+          if (!data) continue;
+          made.push({
+            id: uid('a_'),
+            kind: 'image',
+            title: img.title,
+            content: data.data,
+            mimeType: data.mimeType,
+            chatId: ctx.chatId,
+            createdAt: Date.now(),
+          });
+        }
+      }
+
+      return {
+        ok: true,
+        summary: `${found.length} ta rasm topildi: ${query.slice(0, 32)}`,
+        payload: {
+          rasmlar: found.map((img) => ({
+            nomi: img.title,
+            manba: img.source,
+            muallif: img.author,
+            litsenziya: img.license,
+            havola: img.url,
+          })),
+          saqlandi: made.length,
+          eslatma:
+            'Foydalanuvchiga rasmlarni MANBA havolasi bilan koʻrsat (nomi + havola). ' +
+            'Rasmlarni matn bilan qayta tasvirlab oʻtirma.',
+        },
+        artifacts: made.length ? made : undefined,
+      };
+    }
+
+    case 'write_book': {
+      const request = str(args.request);
+      if (!request) {
+        return {
+          ok: false,
+          summary: 'Kitob tavsifi berilmadi',
+          payload: { error: 'avval ask_user bilan kitob haqida soʻrang' },
+        };
+      }
+      const chapters = Math.max(3, Math.min(60, num(args.chapters, 12)));
+      const book = createBook({
+        request,
+        kind: str(args.kind, 'aniqlanmagan'),
+        wordsPerChapter: Math.max(400, Math.min(4000, num(args.words, 1200))),
+        withImages: str(args.images) !== 'false',
+        chatId: ctx.chatId,
+      });
+      // Yozish fon vazifasi boʻlib ketadi — suhbat bloklanmaydi va
+      // foydalanuvchi boshqa boʻlimga oʻtsa ham davom etaveradi.
+      void writeBook(book.id, { chapterCount: chapters });
+      return {
+        ok: true,
+        summary: `Kitob boshlandi: ${chapters} bob`,
+        payload: {
+          status: 'yozish boshlandi',
+          id: book.id,
+          boblar: chapters,
+          eslatma:
+            'Kitob fonda yozilmoqda: avval reja va qahramonlar, keyin muqova, ' +
+            'soʻng boblar. Foydalanuvchiga «Agent → Kitoblar» boʻlimidan kuzatishi ' +
+            'mumkinligini ayt. Sen kitob matnini bu yerda yozma.',
+        },
+      };
+    }
+
     case 'generate_image': {
       const prompt = str(args.prompt);
       if (!prompt) {
         return { ok: false, summary: 'Rasm tavsifi berilmadi', payload: { error: 'prompt_yoq' } };
       }
-      const { settings, artifacts: saved } = getState();
+      const { artifacts: saved } = getState();
       const refs: Attachment[] = [];
       if (str(args.edit_last) === 'true') {
         const last = saved.find((a) => a.kind === 'image' && a.chatId === ctx.chatId);
         if (last) refs.push({ mimeType: last.mimeType ?? 'image/png', data: last.content });
       }
       try {
-        const result = await generateImage(
-          settings.apiKey,
-          settings.imageModel,
-          prompt,
-          refs,
-          ctx.signal,
-        );
-        const made: Artifact[] = result.images.map((img, i) => ({
+        // Gemini kaliti boʻlsa oʻsha bilan, boʻlmasa ulangan provayderning
+        // rasm modeli bilan (masalan OpenRouter’dagi Gemini image).
+        const images = await imageAny(prompt, refs, ctx.signal);
+        const made: Artifact[] = images.map((img, i) => ({
           id: uid('a_'),
           kind: 'image',
           title: prompt.slice(0, 40) || `Rasm ${i + 1}`,
@@ -726,46 +953,40 @@ export async function executeTool(
       }
     }
 
-    case 'create_book': {
-      const topic = str(args.topic);
-      if (!topic) return { ok: false, summary: 'Mavzu berilmadi', payload: { error: 'topic_yoq' } };
-      try {
-        const book = await createBook(
-          {
-            topic,
-            chapters: num(args.chapters, 10),
-            targetWords: num(args.words, 900),
-            audience: str(args.audience),
-            style: str(args.style),
-            illustrated: args.images !== false,
+    case 'search_web': {
+      if (!canSearchWeb()) {
+        return {
+          ok: false,
+          summary: 'Internet qidiruvi mavjud emas',
+          payload: {
+            error:
+              'Google qidiruvi faqat Gemini kaliti bilan ishlaydi. Hozir u yoʻq. ' +
+              'Foydalanuvchiga ochiq ayt: jonli maʼlumotni tekshira olmayapsan, ' +
+              'shuning uchun taxminiy javob berasan yoki Sozlamalarda Gemini ' +
+              'kalitini kiritishini soʻra. Maʼlumotni oʻzingdan oʻylab TOPMA.',
           },
-          ctx.signal,
-        );
-        // Boblar fonda yozila boshlaydi — foydalanuvchi kutib turmaydi.
-        void writeWholeBook(book.id);
+        };
+      }
+      const query = str(args.query);
+      if (!query) return { ok: false, summary: 'Savol berilmadi', payload: { error: 'query_yoq' } };
+      const { settings } = getState();
+      try {
+        const answer = await searchAnswer(settings.apiKey, geminiModel(settings.model), query, ctx.signal);
         return {
           ok: true,
-          summary: `«${book.title}» — ${book.chapters.length} bob`,
-          payload: {
-            sarlavha: book.title,
-            boblar: book.chapters.map((c) => `${c.no}. ${c.title}`),
-            rasmlar: args.images !== false ? 'har bobga rasm chiziladi' : 'rasmsiz',
-            koʻrsatma:
-              'Reja tayyor va boblar YOZILA BOSHLADI (pastdagi qatorda koʻrinadi). ' +
-              'Foydalanuvchiga ayt: «Agent → Kitoblar» boʻlimida jarayonni kuzatadi, ' +
-              'istalgan bobni oʻqiydi, tuzattiradi va tayyor kitobni Word/PDF qilib yuklab oladi. ' +
-              'Boblar roʻyxatini qisqacha sanab oʻt.',
-          },
+          summary: `Qidirildi: ${query.slice(0, 40)}`,
+          payload: { natija: answer.text, manbalar: answer.sources },
         };
       } catch (err) {
         if ((err as Error)?.name === 'AbortError') throw err;
         return {
           ok: false,
-          summary: `Kitob rejasi tuzilmadi: ${(err as Error).message}`,
+          summary: `Qidiruv ishlamadi: ${(err as Error).message}`,
           payload: { error: String((err as Error)?.message ?? err) },
         };
       }
     }
+
 
     case 'open_site': {
       const url = str(args.url);
@@ -1082,7 +1303,7 @@ export async function executeTool(
       } else {
         text = await generateText(
           settings.apiKey,
-          settings.model,
+          geminiModel(settings.model),
           'Ushbu PDF hujjatning BARCHA matnini oʻzgartirmasdan, tartibi bilan yozib ber. ' +
             'Izoh qoʻshma, faqat matnning oʻzi.',
           [source],
@@ -1140,14 +1361,12 @@ export async function executeTool(
       const drawn: string[] = [];
       for (const item of wanted) {
         try {
-          const result = await generateImage(
-            settings.apiKey,
-            settings.imageModel,
+          const drawnImages = await imageAny(
             `${item.prompt}. Style: ${style}.${note ? ` ${note}.` : ''} No text or letters in the image.`,
             [],
             ctx.signal,
           );
-          const first = result.images[0];
+          const first = drawnImages[0];
           if (!first) continue;
           const size = await imageSize(first.data, first.mimeType);
           images.push({

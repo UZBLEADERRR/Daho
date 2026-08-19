@@ -10,11 +10,12 @@ export type Block =
   | { type: 'p'; runs: Run[] }
   | { type: 'ul' | 'ol'; items: Run[][] }
   | { type: 'code'; text: string }
-  | { type: 'img'; id: string; caption: string }
-  | { type: 'hr' };
-
-/** `![izoh](daho-img:ID)` — hujjatga qoʻyiladigan rasm belgisi. */
-export const IMAGE_MARK = /^!\[([^\]]*)\]\(daho-img:([^)]+)\)$/;
+  | { type: 'hr' }
+  /**
+   * Rasm. Markdown’dagi `![izoh](daho:ARTIFACT_ID)` yoki `![izoh](data:…)`
+   * shundan chiqadi — Word, PDF va slaydlar uni bir xil tushunadi.
+   */
+  | { type: 'img'; src: string; caption: string };
 
 /** `**qalin**`, `*qiya*`, `` `kod` `` — bo'laklarga ajratadi. */
 export function parseInline(text: string): Run[] {
@@ -57,14 +58,15 @@ export function parseDocument(markdown: string): Block[] {
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
-    const trimmed = line.trim();
 
-    const picture = trimmed.match(IMAGE_MARK);
-    if (picture) {
+    // Rasm: ![izoh](manba) — alohida qatorda turgan boʻlsa blok boʻladi.
+    const image = line.trim().match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
+    if (image) {
       flushParagraph();
-      blocks.push({ type: 'img', id: picture[2], caption: picture[1] });
+      blocks.push({ type: 'img', src: image[2], caption: image[1] });
       continue;
     }
+    const trimmed = line.trim();
 
     if (trimmed.startsWith('```')) {
       flushParagraph();
@@ -144,6 +146,10 @@ export interface Slide {
   title: string;
   bullets: string[];
   notes?: string;
+  /** Slaydga qoʻyiladigan rasm manbasi (`daho:…` yoki `data:…`) */
+  image?: string;
+  /** Rasm izohi */
+  caption?: string;
 }
 
 /** Markdownni slaydlarga bo'ladi: har bir h1/h2 — yangi slayd. */
@@ -167,6 +173,10 @@ export function parseSlides(markdown: string): Slide[] {
       if (text) current.bullets.push(text);
     } else if (block.type === 'ul' || block.type === 'ol') {
       current.bullets.push(...block.items.map(runsToText));
+    } else if (block.type === 'img' && !current.image) {
+      // Slaydga birinchi rasm tushadi — qolganlari matnni siqib qoʻymasin.
+      current.image = block.src;
+      current.caption = block.caption;
     }
   }
   if (current) slides.push(current);

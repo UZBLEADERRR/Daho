@@ -1,4 +1,6 @@
 import { strToU8, zipSync } from 'fflate';
+import { b64ToBytes } from './audio';
+import { prepareImages } from './docimages';
 import type { Slide } from './docmodel';
 import { parseSlides } from './docmodel';
 
@@ -78,58 +80,146 @@ function textBox(
 <a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
 }
 
-function slideXml(slide: Slide, index: number): string {
-  const title = `<a:p><a:pPr algn="l"/><a:r><a:rPr lang="uz-UZ" sz="3600" b="1" dirty="0">
-<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>
-<a:latin typeface="Calibri Light"/></a:rPr><a:t>${esc(slide.title)}</a:t></a:r></a:p>`;
+interface SlideMedia {
+  /** ppt/media/ ichidagi fayl nomi */
+  file: string;
+  width: number;
+  height: number;
+}
 
-  const bullets = slide.bullets
-    .slice(0, 8)
-    .map(
-      (text) =>
-        `<a:p><a:pPr marL="285750" indent="-285750"><a:buChar char="•"/></a:pPr>` +
-        `<a:r><a:rPr lang="uz-UZ" sz="1800" dirty="0">` +
-        `<a:solidFill><a:srgbClr val="D6D6DE"/></a:solidFill></a:rPr>` +
-        `<a:t>${esc(text.slice(0, 220))}</a:t></a:r></a:p>`,
-    )
-    .join('');
+/** Rasm shakli (p:pic) — slayddagi rIdN ga bogʻlanadi. */
+function picture(id: number, x: number, y: number, cx: number, cy: number, rel: string): string {
+  return `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="Rasm ${id}"/>
+<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>
+<p:blipFill><a:blip r:embed="${rel}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
+<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 4000"/></a:avLst></a:prstGeom>
+</p:spPr></p:pic>`;
+}
 
-  const accentBar = `<p:sp><p:nvSpPr><p:cNvPr id="10" name="Chiziq"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
-<p:spPr><a:xfrm><a:off x="838200" y="1050000"/><a:ext cx="900000" cy="60000"/></a:xfrm>
+/** Toʻrtburchak — fon yoʻlagi va bezak chiziqlari uchun. */
+function rect(id: number, x: number, y: number, cx: number, cy: number, color: string, alpha?: number): string {
+  const fill = alpha === undefined
+    ? `<a:srgbClr val="${color}"/>`
+    : `<a:srgbClr val="${color}"><a:alpha val="${Math.round(alpha * 100000)}"/></a:srgbClr>`;
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Shakl ${id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
 <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-<a:solidFill><a:srgbClr val="8B7CF6"/></a:solidFill></p:spPr>
+<a:solidFill>${fill}</a:solidFill></p:spPr>
 <p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`;
+}
 
-  const number = textBox(
-    11,
-    'Raqam',
-    W - 1400000,
-    H - 700000,
-    800000,
-    400000,
-    `<a:p><a:pPr algn="r"/><a:r><a:rPr lang="uz-UZ" sz="1200">
-<a:solidFill><a:srgbClr val="6A6A76"/></a:solidFill></a:rPr><a:t>${index + 1}</a:t></a:r></a:p>`,
+function para(text: string, size: number, color: string, opts: { bold?: boolean; bullet?: boolean; align?: string } = {}): string {
+  const pPr = opts.bullet
+    ? '<a:pPr marL="285750" indent="-285750"><a:buClr><a:srgbClr val="8B7CF6"/></a:buClr><a:buChar char="\u25CF"/></a:pPr>'
+    : `<a:pPr algn="${opts.align ?? 'l'}"/>`;
+  return `<a:p>${pPr}<a:r><a:rPr lang="uz-UZ" sz="${size}"${opts.bold ? ' b="1"' : ''} dirty="0">
+<a:solidFill><a:srgbClr val="${color}"/></a:solidFill></a:rPr><a:t>${esc(text)}</a:t></a:r></a:p>`;
+}
+
+const MARGIN_X = 838200;
+
+/**
+ * Slayd chizish. Uch koʻrinish:
+ *  - **muqova** (birinchi slayd, rasm bilan) — rasm butun slaydni qoplaydi;
+ *  - **rasmli** — matn chapda, rasm oʻngda;
+ *  - **oddiy** — sarlavha va punktlar.
+ */
+function slideXml(slide: Slide, index: number, media?: SlideMedia, cover = false): string {
+  const shapes: string[] = [];
+  let id = 10;
+
+  if (cover && media) {
+    // Muqova: rasm toʻliq, ustida qoraytirgich va katta sarlavha.
+    shapes.push(picture((id += 1), 0, 0, W, H, 'rId2'));
+    shapes.push(rect((id += 1), 0, H - 2600000, W, 2600000, '000000', 0.62));
+    shapes.push(
+      textBox((id += 1), 'Sarlavha', MARGIN_X, H - 2050000, W - MARGIN_X * 2, 1500000,
+        para(slide.title, 4400, 'FFFFFF', { bold: true }) +
+          (slide.bullets[0] ? para(slide.bullets[0].slice(0, 120), 1800, 'D6D6DE') : '')),
+    );
+    return wrapSlide(shapes.join('\n'));
+  }
+
+  // Chap tomondagi urgʻu chizigʻi + sarlavha.
+  shapes.push(rect((id += 1), MARGIN_X, 1050000, 900000, 60000, '8B7CF6'));
+
+  const textWidth = media ? (W - MARGIN_X * 2) * 0.52 : W - MARGIN_X * 2;
+  shapes.push(
+    textBox((id += 1), 'Sarlavha', MARGIN_X, 520000, textWidth, 900000,
+      para(slide.title, 3200, 'FFFFFF', { bold: true })),
   );
 
+  const bullets = slide.bullets
+    .slice(0, media ? 5 : 8)
+    .map((t) => para(t.slice(0, media ? 150 : 220), media ? 1600 : 1800, 'D6D6DE', { bullet: true }))
+    .join('');
+  shapes.push(
+    textBox((id += 1), 'Matn', MARGIN_X, 1400000, textWidth, H - 2200000, bullets || '<a:p/>'),
+  );
+
+  if (media) {
+    // Oʻng tomonda rasm — nisbati saqlangan holda joyga sigʻdiriladi.
+    const boxX = MARGIN_X + textWidth + 500000;
+    const boxW = W - boxX - MARGIN_X;
+    const boxY = 1300000;
+    const boxH = H - boxY - 900000;
+    const ratio = media.height / media.width;
+    let cx = boxW;
+    let cy = cx * ratio;
+    if (cy > boxH) {
+      cy = boxH;
+      cx = cy / ratio;
+    }
+    shapes.push(picture((id += 1), boxX + (boxW - cx) / 2, boxY + (boxH - cy) / 2, cx, cy, 'rId2'));
+    if (slide.caption?.trim()) {
+      shapes.push(
+        textBox((id += 1), 'Izoh', boxX, boxY + boxH + 60000, boxW, 320000,
+          para(slide.caption.slice(0, 90), 1100, '8A8A96', { align: 'ctr' })),
+      );
+    }
+  }
+
+  // Sahifa raqami.
+  shapes.push(
+    textBox((id += 1), 'Raqam', W - 1400000, H - 700000, 800000, 400000,
+      para(String(index + 1), 1200, '6A6A76', { align: 'r' })),
+  );
+
+  return wrapSlide(shapes.join('\n'));
+}
+
+function wrapSlide(body: string): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
  xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 <p:cSld><p:spTree>
 <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>
-${textBox(2, 'Sarlavha', 838200, 520000, W - 1676400, 900000, title)}
-${accentBar}
-${textBox(3, 'Matn', 838200, 1400000, W - 1676400, H - 2200000, bullets || '<a:p/>')}
-${number}
+${body}
 </p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;
 }
 
 /** Markdown matndan .pptx fayl bayti yasaydi. */
-export function buildPptx(markdown: string, title?: string): Uint8Array {
+export async function buildPptx(markdown: string, title?: string): Promise<Uint8Array> {
   const slides = parseSlides(markdown);
   if (title) slides.unshift({ title, bullets: [] });
 
-  const files: Record<string, Uint8Array> = {};
+  // Rasmlarni tayyorlaymiz: har biri ppt/media ichiga JPEG boʻlib tushadi.
+  const prepared = await prepareImages(
+    slides.map((s) => s.image).filter((src): src is string => Boolean(src)),
+  );
+  const media = new Map<number, SlideMedia>();
+  const mediaFiles: Record<string, Uint8Array> = {};
+  slides.forEach((slide, i) => {
+    const img = slide.image ? prepared.get(slide.image) : undefined;
+    if (!img) return;
+    const file = `image${i + 1}.jpeg`;
+    mediaFiles[`ppt/media/${file}`] = b64ToBytes(img.data);
+    media.set(i, { file, width: img.width, height: img.height });
+  });
+
+  const files: Record<string, Uint8Array> = { ...mediaFiles };
 
   const overrides = slides
     .map(
@@ -142,6 +232,7 @@ export function buildPptx(markdown: string, title?: string): Uint8Array {
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="jpeg" ContentType="image/jpeg"/>
 <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
 <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
 <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
@@ -197,10 +288,13 @@ ${presRels}
   files['ppt/theme/theme1.xml'] = strToU8(THEME);
 
   slides.forEach((slide, i) => {
-    files[`ppt/slides/slide${i + 1}.xml`] = strToU8(slideXml(slide, i));
+    const pic = media.get(i);
+    // Birinchi slayd rasmli boʻlsa — muqova koʻrinishida chiziladi.
+    files[`ppt/slides/slide${i + 1}.xml`] = strToU8(slideXml(slide, i, pic, i === 0 && Boolean(pic)));
     files[`ppt/slides/_rels/slide${i + 1}.xml.rels`] = strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+${pic ? `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${pic.file}"/>` : ''}
 </Relationships>`);
   });
 

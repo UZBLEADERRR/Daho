@@ -1,17 +1,26 @@
 import { useMemo, useState } from 'react';
 import { deleteCourse, generateLesson, markTopicDone } from '../../lib/creations';
-import { setState } from '../../lib/store';
-import { useStore } from '../../lib/store';
+import { noteTask, startTask, stopFor, useTaskFor } from '../../lib/tasks';
+import { setState, updateView, useStore } from '../../lib/store';
 import type { Artifact, Course, CourseTopic } from '../../lib/types';
 import { Back, Check, Play, Refresh, Trash } from '../Icons';
 import { Empty, Sheet, Switch, toast } from '../ui';
 
 export function Courses({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => void }) {
   const courses = useStore((s) => s.courses);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // Ochiq kurs store da — boshqa boʻlimga oʻtib qaytsangiz shu joyda qolasiz.
+  const openId = useStore((s) => s.view.courseId);
 
   const course = courses.find((c) => c.id === openId) ?? null;
-  if (course) return <CourseDetail course={course} onBack={() => setOpenId(null)} onOpenArtifact={onOpenArtifact} />;
+  if (course) {
+    return (
+      <CourseDetail
+        course={course}
+        onBack={() => updateView({ courseId: null })}
+        onOpenArtifact={onOpenArtifact}
+      />
+    );
+  }
 
   return (
     <div className="scroll">
@@ -30,7 +39,7 @@ export function Courses({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => v
                 className="card"
                 key={c.id}
                 style={{ display: 'block', width: '100%', textAlign: 'left', marginBottom: 9 }}
-                onClick={() => setOpenId(c.id)}
+                onClick={() => updateView({ courseId: c.id })}
               >
                 <div className="between">
                   <div className="grow" style={{ fontSize: 16, fontWeight: 580 }}>
@@ -68,10 +77,12 @@ function CourseDetail({
   onOpenArtifact: (a: Artifact) => void;
 }) {
   const artifacts = useStore((s) => s.artifacts);
-  const [busyTopic, setBusyTopic] = useState<string | null>(null);
-  const [chars, setChars] = useState(0);
+  // Dars tayyorlash — global vazifa reyestrida. Boshqa boʻlimga oʻtsangiz
+  // ham davom etadi va qaytganingizda holati joyida turadi.
+  const running = useTaskFor('dars', course.id);
   const [query, setQuery] = useState('');
   const [sheet, setSheet] = useState<CourseTopic | null>(null);
+  const busyTopic = running ? running.targetId : null;
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -90,18 +101,29 @@ function CourseDetail({
       onOpenArtifact(existing);
       return;
     }
-    if (busyTopic) return;
-
-    setBusyTopic(topic.id);
-    setChars(0);
-    try {
-      const artifact = await generateLesson(course, topic, setChars);
-      onOpenArtifact(artifact);
-    } catch (err) {
-      toast(String((err as Error)?.message ?? err));
-    } finally {
-      setBusyTopic(null);
+    if (running) {
+      toast('Bir dars tayyorlanmoqda — tugashini kuting.');
+      return;
     }
+
+    await startTask(
+      { kind: 'dars', targetId: course.id, title: topic.title, note: 'boshlandi' },
+      async (signal, taskId) => {
+        try {
+          const artifact = await generateLesson(
+            course,
+            topic,
+            (chars) => noteTask(taskId, `${chars} belgi yozildi`),
+            signal,
+          );
+          onOpenArtifact(artifact);
+        } catch (err) {
+          if ((err as Error)?.name !== 'AbortError') {
+            toast(String((err as Error)?.message ?? err));
+          }
+        }
+      },
+    );
   };
 
   return (
@@ -139,11 +161,19 @@ function CourseDetail({
           hint="Har bir yangi dars uchun mavzuga mos rasm yasaladi. Rasm token sarflaydi, shuning uchun oʻzingiz yoqasiz."
         />
 
-        {busyTopic && (
+        {running && (
           <div className="card" style={{ borderColor: 'var(--accent)', marginBottom: 12 }}>
-            <div style={{ fontSize: 14 }}>Dars tayyorlanmoqda…</div>
+            <div className="between">
+              <div style={{ fontSize: 14 }}>«{running.title}» tayyorlanmoqda…</div>
+              <button className="btn mini ghost" onClick={() => stopFor('dars', course.id)}>
+                Toʻxtatish
+              </button>
+            </div>
             <div className="tiny" style={{ marginTop: 4 }}>
-              {chars > 0 ? `${chars} belgi yozildi` : 'boshlandi'}
+              {running.note}
+            </div>
+            <div className="tiny" style={{ marginTop: 6, opacity: 0.7 }}>
+              Boshqa boʻlimga oʻtsangiz ham tayyorlanish davom etadi.
             </div>
           </div>
         )}

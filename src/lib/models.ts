@@ -12,6 +12,21 @@ export interface ModelInfo {
   score: number;
   preview: boolean;
   description?: string;
+  /** Tashqi provayder id si; boʻsh boʻlsa — Gemini */
+  provider?: string;
+  providerLabel?: string;
+  /** Rasmni koʻra oladimi */
+  vision?: boolean;
+  /** Vositalarni chaqira oladimi */
+  tools?: boolean;
+  /** Kontekst oynasi (token) */
+  context?: number;
+  /** 1 mln kirish tokeni narxi (USD) */
+  inPrice?: number;
+  /** 1 mln chiqish tokeni narxi (USD) */
+  outPrice?: number;
+  /** Bepul modelmi */
+  free?: boolean;
 }
 
 const CACHE_KEY = 'daho.models.v1';
@@ -168,6 +183,21 @@ export function pickModel(
   // Barqaror (preview boʻlmagan) modelga ustunlik beramiz.
   const stable = pool.filter((m) => !m.preview);
   return (stable[0] ?? pool[0]).id;
+}
+
+/**
+ * Gemini-ga xos ishlar uchun model nomi.
+ *
+ * Sxema boʻyicha JSON, Google qidiruvi, audio va PDF oʻqish — bularni
+ * faqat Gemini bajaradi. Foydalanuvchi asosiy modelni tashqi provayderga
+ * (Kimi, Qwen, GPT…) almashtirgan boʻlsa, shu vositalar baribir ishlashi
+ * uchun bu yerda Gemini modeliga qaytamiz.
+ */
+export function geminiModel(preferred?: string): string {
+  if (preferred && !preferred.includes('::')) return preferred;
+  const list = cachedModels().filter((m) => m.role === 'chat' && !m.provider);
+  const stable = list.find((m) => !m.preview);
+  return (stable ?? list[0])?.id ?? FALLBACK_MODELS.chat;
 }
 
 /** Standart taxminlar — API hali soʻralmaganda ishlatiladi. */

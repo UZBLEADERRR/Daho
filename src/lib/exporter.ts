@@ -1,11 +1,10 @@
 import { Capacitor } from '@capacitor/core';
+import { strToU8, zipSync } from 'fflate';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { fileExtension } from './artifacts';
 import { buildDocx } from './docx';
-import { IMAGE_MARK } from './docmodel';
-import { buildDocxWithImages, imageSize, type DocImage, type DocPart } from './office';
-import { buildPdf, loadPdfImages } from './pdf';
+import { buildPdf } from './pdf';
 import { buildPptx } from './pptx';
 import { bytesToB64 } from './audio';
 import type { Artifact } from './types';
@@ -161,97 +160,40 @@ export async function saveBytes(
   return `Saqlandi: ${filename}`;
 }
 
-/** Markdown matnni Word / PDF / slayd qilib chiqaradi. */
-/** Hujjatga qoʻyiladigan rasmlar: `daho-img:ID` belgisi → rasm. */
-export type ExportImages = Record<string, { data: string; mimeType: string; caption?: string }>;
-
-/** Matnni rasm belgilari boʻyicha boʻlaklarga ajratadi (Word uchun). */
-function splitForDocx(
-  markdown: string,
-  sources: ExportImages,
-): { parts: DocPart[]; images: DocImage[] } {
-  const parts: DocPart[] = [];
-  const images: DocImage[] = [];
-  let buffer: string[] = [];
-
-  const flush = () => {
-    if (!buffer.length) return;
-    parts.push({ text: buffer.join('\n') });
-    buffer = [];
-  };
-
-  for (const line of markdown.split('\n')) {
-    const mark = line.trim().match(IMAGE_MARK);
-    const source = mark ? sources[mark[2]] : undefined;
-    if (mark && source) {
-      flush();
-      images.push({
-        data: source.data,
-        mimeType: source.mimeType,
-        caption: mark[1] || source.caption,
-      });
-      parts.push({ image: images.length - 1 });
-    } else {
-      buffer.push(line);
-    }
-  }
-  flush();
-  return { parts, images };
-}
-
-/** Rasm belgilarini oddiy matnga aylantiradi (rasm qoʻllab-quvvatlanmagan format). */
-function stripImageMarks(markdown: string): string {
-  return markdown
-    .split('\n')
-    .filter((line) => !IMAGE_MARK.test(line.trim()))
-    .join('\n');
-}
-
 /**
- * Markdown matnni Word / PDF / slayd / matn qilib chiqaradi.
- * `images` berilsa `![izoh](daho-img:ID)` belgilari oʻrniga rasm qoʻyiladi.
+ * Bir nechta faylni ZIP qilib beradi — kod loyihasini butunlay olish yoki
+ * agent yasagan bir toʻplam faylni bitta arxivda yuborish uchun.
  */
+export async function saveZip(
+  name: string,
+  files: Array<{ path: string; content: string | Uint8Array }>,
+): Promise<string> {
+  if (!files.length) throw new Error('Arxivga soladigan fayl yoʻq');
+  const entries: Record<string, Uint8Array> = {};
+  for (const f of files) {
+    // Yoʻldagi xavfli belgilarni tozalaymiz (`..` bilan chiqib ketmasin).
+    const path = f.path.replace(/^[./]+/, '').replace(/\.\.+/g, '.') || 'fayl';
+    entries[path] = typeof f.content === 'string' ? strToU8(f.content) : f.content;
+  }
+  const bytes = zipSync(entries, { level: 6 });
+  return saveBytes(`${safeName(name)}.zip`, bytes, 'application/zip');
+}
+
+/** Markdown matnni Word / PDF / slayd qilib chiqaradi. */
 export async function exportDocument(
   markdown: string,
   format: DocFormat,
   title: string,
-  images?: ExportImages,
 ): Promise<string> {
   const name = `${safeName(title)}.${format}`;
-  const hasImages = Boolean(images && Object.keys(images).length);
-
   if (format === 'md') {
-    // .md fayl oʻzi yetarli boʻlishi uchun rasmni ichiga joylaymiz.
-    const text = hasImages
-      ? markdown.replace(
-          new RegExp(IMAGE_MARK.source, 'gm'),
-          (line, caption: string, id: string) => {
-            const source = images?.[id];
-            return source ? `![${caption}](data:${source.mimeType};base64,${source.data})` : line;
-          },
-        )
-      : markdown;
-    return saveBytes(name, new TextEncoder().encode(text), DOC_MIME.md);
+    return saveBytes(name, new TextEncoder().encode(markdown), DOC_MIME.md);
   }
-
-  if (format === 'docx') {
-    if (!hasImages) return saveBytes(name, buildDocx(markdown), DOC_MIME.docx);
-    const { parts, images: docImages } = splitForDocx(markdown, images ?? {});
-    // Nisbatni saqlash uchun oʻlchamlarni aniqlaymiz.
-    await Promise.all(
-      docImages.map(async (image) => {
-        const size = await imageSize(image.data, image.mimeType);
-        image.width = size.width;
-        image.height = size.height;
-      }),
-    );
-    return saveBytes(name, buildDocxWithImages(parts, docImages), DOC_MIME.docx);
-  }
-
-  if (format === 'pptx') {
-    return saveBytes(name, buildPptx(stripImageMarks(markdown)), DOC_MIME.pptx);
-  }
-
-  const loaded = hasImages ? await loadPdfImages(images ?? {}) : {};
-  return saveBytes(name, buildPdf(markdown, undefined, loaded), DOC_MIME.pdf);
+  const bytes =
+    format === 'docx'
+      ? await buildDocx(markdown)
+      : format === 'pptx'
+        ? await buildPptx(markdown)
+        : await buildPdf(markdown);
+  return saveBytes(name, bytes, DOC_MIME[format]);
 }

@@ -1,18 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import { blobToWavBytes, bytesToB64, playWavBase64 } from '../lib/audio';
 import { applyAppLook } from '../lib/applook';
-import { saveBackup } from '../lib/exporter';
+import { copyText, saveBackup } from '../lib/exporter';
 import { getRepo, whoAmI } from '../lib/github';
+import { sbPing } from '../lib/supabase';
 import { transcribeAudio } from '../lib/gemini';
-import { cloudEnabled, useCloud } from '../lib/cloud';
-import { applyBackupSetting } from '../lib/cloud';
-import { byRole, cachedModels, getModels, pickModel, type ModelInfo } from '../lib/models';
+import { applyBackupSetting, cloudEnabled, useCloud } from '../lib/cloud';
+import { byRole, cachedModels, geminiModel, getModels, pickModel, type ModelInfo } from '../lib/models';
 import { useInstallPrompt } from '../lib/pwa';
 import { aiAvailable, resolveSource } from '../lib/route';
 import type { AiSource } from '../lib/types';
-import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
+import {
+  VOICES,
+  checkMicrophone,
+  listDeviceVoices,
+  speak,
+  synthesize,
+  type DeviceVoice,
+  type MicCheck,
+} from '../lib/speech';
 import { exportState, getState, importState, resetState, updateSettings, useStore } from '../lib/store';
-import { Refresh } from './Icons';
+import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
+import { UsagePanel } from './UsagePanel';
+import { Copy, Refresh } from './Icons';
 import { Sheet, Switch, toast } from './ui';
 
 const ACCENTS = [
@@ -48,6 +58,8 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [ghChecking, setGhChecking] = useState(false);
+  const [micChecks, setMicChecks] = useState<MicCheck[] | null>(null);
+  const [micBusy, setMicBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -76,7 +88,6 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     }
   };
 
-  const chatModels = byRole(models, 'chat');
   const imageModels = byRole(models, 'image');
   const ttsModels = byRole(models, 'tts');
 
@@ -178,7 +189,16 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
       )}
 
       <div className="section-label" style={{ padding: '0 0 6px' }}>
-        Gemini
+        Gemini (ixtiyoriy)
+      </div>
+
+      <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.55 }}>
+        Ilova <b>faqat OpenRouter</b> (yoki boshqa provayder) bilan ham toʻliq
+        gaplashadi — pastdagi «AI modellar» boʻlimiga qarang. Google kaliti
+        quyidagilar uchun kerak: <b>internet qidiruvi</b>, <b>tabiiy ovoz</b>{' '}
+        (Gemini TTS) va <b>mikrofonni matnga oʻgirish</b>. Kalitsiz ovoz
+        telefonning oʻz xizmati bilan ishlaydi. Rasm yasash uchun OpenRouter’da
+        rasm modeli qoʻshsangiz kifoya.
       </div>
 
       <div className="field">
@@ -218,10 +238,12 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
 
       <div className="field">
         <label>Suhbat modeli</label>
-        <select value={settings.model} onChange={(e) => updateSettings({ model: e.target.value })}>
-          {modelOptions(chatModels, settings.model)}
-        </select>
+        <ChatModelSelect value={settings.model} onChange={(id) => updateSettings({ model: id })} />
       </div>
+
+      <ModelsPanel />
+
+      <UsagePanel />
 
       <div className="field">
         <label>Rasm modeli</label>
@@ -386,6 +408,52 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         </select>
       </div>
 
+      <button
+        className="btn ghost wide"
+        style={{ marginTop: 4 }}
+        disabled={micBusy}
+        onClick={async () => {
+          setMicBusy(true);
+          setMicChecks(null);
+          try {
+            setMicChecks(await checkMicrophone());
+          } finally {
+            setMicBusy(false);
+          }
+        }}
+      >
+        {micBusy ? 'Tekshirilmoqda…' : '🎤 Mikrofonni tekshirish'}
+      </button>
+
+      {micChecks && (
+        <div className="card" style={{ marginTop: 10 }}>
+          {micChecks.map((c) => (
+            <div key={c.step} className="between" style={{ marginBottom: 6, gap: 10 }}>
+              <span style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13.5 }}>
+                  {c.ok ? '✅' : '❌'} {c.step}
+                </div>
+                <div className="tiny" style={{ wordBreak: 'break-word' }}>
+                  {c.detail}
+                </div>
+              </span>
+            </div>
+          ))}
+          <button
+            className="btn mini ghost"
+            style={{ marginTop: 6 }}
+            onClick={async () => {
+              const text = micChecks
+                .map((c) => `${c.ok ? 'OK' : 'XATO'} — ${c.step}: ${c.detail}`)
+                .join('\n');
+              toast((await copyText(text)) ? 'Nusxalandi — menga yuboring' : 'Nusxalab boʻlmadi');
+            }}
+          >
+            <Copy size={12} /> Natijani nusxalash
+          </button>
+        </div>
+      )}
+
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
         GitHub (Daho Code uchun)
       </div>
@@ -444,6 +512,8 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
       >
         {ghChecking ? 'Tekshirilmoqda…' : 'GitHub ulanishini tekshirish'}
       </button>
+
+      <SupabasePanel />
 
       <MicCheck />
 
@@ -798,7 +868,7 @@ function MicCheck() {
       try {
         const text = await transcribeAudio(
           settings.apiKey,
-          settings.model,
+          geminiModel(settings.model),
           { mimeType, data },
           undefined,
           settings.sttLang,
@@ -825,6 +895,87 @@ function MicCheck() {
       {!!lines.length && (
         <div className="tiny" style={{ marginTop: 8, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
           {lines.join('\n')}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Supabase                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Supabase ulanishi — yasalgan ilovalar uchun haqiqiy maʼlumot bazasi.
+ * Faqat ochiq (anon) kalit kiritiladi; u brauzerga chiqarish uchun
+ * moʻljallangan va Supabase tomonida RLS bilan himoyalanadi.
+ */
+function SupabasePanel() {
+  const settings = useStore((s) => s.settings);
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState('');
+
+  const check = async () => {
+    setChecking(true);
+    setResult('');
+    try {
+      const res = await sbPing();
+      setResult(res.message);
+      toast(res.message);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="section-label" style={{ padding: '14px 0 6px' }}>
+        Supabase (maʼlumot bazasi)
+      </div>
+
+      <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.55 }}>
+        Yasalgan ilovaga <b>haqiqiy baza</b> kerak boʻlsa — roʻyxatga olish,
+        foydalanuvchi hisobi, bir nechta odam koʻradigan roʻyxat — Supabase
+        ulang. Bepul. Daho jadvallarni koʻradi, yozuv qoʻshadi va oʻqiydi.
+      </div>
+
+      <div className="field">
+        <label>Loyiha manzili</label>
+        <input
+          value={settings.supabaseUrl}
+          onChange={(e) => updateSettings({ supabaseUrl: e.target.value.trim() })}
+          placeholder="https://xxxxx.supabase.co"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+      </div>
+
+      <div className="field">
+        <label>Ochiq (anon) kalit</label>
+        <input
+          type="password"
+          value={settings.supabaseAnonKey}
+          onChange={(e) => updateSettings({ supabaseAnonKey: e.target.value.trim() })}
+          placeholder="eyJhbGciOi…"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+        <div className="tiny" style={{ marginTop: 6 }}>
+          Supabase → Project Settings → API. <b>anon public</b> kalitini oling.
+          ⚠️ <b>service_role</b> kalitini kiritmang — u maxfiy va hamma
+          himoyani chetlab oʻtadi.
+        </div>
+      </div>
+
+      <button className="btn ghost wide" disabled={checking} onClick={() => void check()}>
+        {checking ? 'Tekshirilmoqda…' : 'Supabase ulanishini tekshirish'}
+      </button>
+
+      {result && (
+        <div className="tiny" style={{ marginTop: 8, opacity: 0.8 }}>
+          {result}
         </div>
       )}
     </>

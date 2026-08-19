@@ -1,4 +1,5 @@
-import { generateImage, streamGenerate } from './gemini';
+import { imageAny } from './providers';
+import { streamResilient } from './resilient';
 import { blocksEmbedding, normalizeUrl } from './openlink';
 import { getState, setState } from './store';
 import type { Artifact, Course, CourseTopic, MiniApp } from './types';
@@ -141,13 +142,13 @@ const LESSON_LAYOUTS = [
     name: 'Kartochkalar',
     brief:
       'Mavzuni 4-6 ta rangli kartochkaga boʻl. Har kartochkada: katta ikonka (emoji yoki SVG), ' +
-      'qisqa sarlavha, 2-3 jumla. Kartochkalar bosilganda kengaysin (ochiladigan tafsilot).',
+      'qisqa sarlavha, 2-3 jumla. Kartochkalar bosilganda kengaysin.',
   },
   {
     name: 'Vaqt chizigʻi',
     brief:
       'Mavzuni bosqichma-bosqich vaqt chizigʻi (timeline) koʻrinishida ber: chapda vertikal ' +
-      'chiziq va nuqtalar, oʻngda qadam izohi. Pastga scroll qilganda qadamlar jonlansin.',
+      'chiziq va nuqtalar, oʻngda qadam izohi. Scroll qilganda qadamlar jonlansin.',
   },
   {
     name: 'Flesh-kartalar',
@@ -165,7 +166,7 @@ const LESSON_LAYOUTS = [
     name: 'Hikoya',
     brief:
       'Mavzuni real hayotdagi qisqa hikoya orqali tushuntir: muammo → urinish → yechim. ' +
-      'Hikoya boʻlaklari orasiga «shu yerda nima boʻldi?» degan kichik savollar qoʻy.',
+      'Hikoya boʻlaklari orasiga kichik savollar qoʻy.',
   },
   {
     name: 'Infografika',
@@ -176,19 +177,21 @@ const LESSON_LAYOUTS = [
   {
     name: 'Taqqoslash',
     brief:
-      'Ikki (yoki uch) yondashuvni yonma-yon ustunlarda taqqosla: qachon qaysi biri ' +
-      'toʻgʻri, xato tushunchalar, «buni qilma / buni qil» juftliklari.',
+      'Ikki (yoki uch) yondashuvni yonma-yon ustunlarda taqqosla: qachon qaysi biri toʻgʻri, ' +
+      'xato tushunchalar, «buni qilma / buni qil» juftliklari.',
   },
   {
     name: 'Sayohat',
     brief:
-      'Darsni qadamlarga bo\'lib, yuqorida progress chiziq bilan «sayohat» qil: ' +
-      'har qadamda kichik vazifa, bajarilgach keyingi qadam ochiladi.',
+      'Darsni qadamlarga boʻlib, yuqorida progress chiziq bilan «sayohat» qil: har qadamda ' +
+      'kichik vazifa, bajarilgach keyingi qadam ochiladi.',
   },
 ];
 
 /** Har darsga oʻz urgʻu rangi — koʻrinish bir xil boʻlib qolmasin. */
-const LESSON_ACCENTS = ['#8b7cf6', '#0ea5a5', '#e07a2f', '#199e70', '#d55181', '#3987e5', '#c98500', '#e05555'];
+const LESSON_ACCENTS = [
+  '#8b7cf6', '#0ea5a5', '#e07a2f', '#199e70', '#d55181', '#3987e5', '#c98500', '#e05555',
+];
 
 function lessonPrompt(course: Course, topic: CourseTopic): string {
   const index = Math.max(0, course.topics.findIndex((t) => t.id === topic.id));
@@ -209,13 +212,14 @@ function lessonBody(
 Mavzu: «${topic.title}»
 ${topic.summary ? `Nima oʻrganiladi: ${topic.summary}` : ''}
 
-Shu mavzu boʻyicha BITTA toʻliq, mustaqil ishlaydigan HTML dars sahifasini yoz.
-Faqat \`\`\`html bloki qaytar, boshqa hech qanday matn yozma.
-
 ## Bu darsning KOʻRINISHI: «${layout.name}»
 ${layout.brief}
 Bu koʻrinishni jiddiy qabul qil — dars boshqa darslarga oʻxshamasin.
 Urgʻu rangi: ${accent}. Shu rangdan tugma, chiziq va urgʻularda foydalan.
+Dars CHIROYLI boʻlsin: yumshoq soyalar, radiusli burchaklar, boʻsh joy, silliq oʻtishlar.
+
+Shu mavzu boʻyicha BITTA toʻliq, mustaqil ishlaydigan HTML dars sahifasini yoz.
+Faqat \`\`\`html bloki qaytar, boshqa hech qanday matn yozma.
 
 Dars sahifasi majburiy tarkibi:
 1. Sarlavha va bir jumlalik maqsad.
@@ -231,8 +235,6 @@ Texnik talablar:
 - Barcha CSS va JS shu faylda. Tashqi CDN, shrift, rasm ISHLATMA.
 - Telefon ekraniga moslashgan, kattа tugmalar, bir ustunli tartib.
 - Qorongʻi fon (#0e0e12), yorugʻ matn (#ededf0), urgʻu rangi ${accent}.
-- Sahifa CHIROYLI boʻlsin: yumshoq soyalar, radiusli burchaklar, boʻsh joy (havo),
-  sarlavhalar ierarxiyasi, silliq oʻtishlar (transition). Bir xil kulrang devor boʻlmasin.
 - Hamma matn oʻzbek tilida (lotin yozuvi).
 - Sahifa uzun boʻlsa boʻlimlarni yigʻiladigan qilma — talaba pastga scroll qilsin.`;
 }
@@ -243,7 +245,7 @@ Texnik talablar:
  */
 /**
  * Darsga mavzuga mos rasm chizib, sahifaning boshiga qoʻyadi.
- * Faqat kurs sozlamasida rasm yoqilgan boʻlsa chaqiriladi.
+ * Faqat kursda rasm yoqilgan boʻlsa chaqiriladi.
  */
 async function illustrateLesson(
   course: Course,
@@ -251,11 +253,8 @@ async function illustrateLesson(
   html: string,
   signal?: AbortSignal,
 ): Promise<string> {
-  const { settings } = getState();
   try {
-    const result = await generateImage(
-      settings.apiKey,
-      settings.imageModel,
+    const pictures = await imageAny(
       `«${course.title}» kursining «${topic.title}» darsi uchun illyustratsiya chiz. ` +
         `${topic.summary || ''}\n` +
         'Uslub: toza, zamonaviy, qorongʻi fonga mos, yumshoq ranglar, oddiy shakllar. ' +
@@ -263,7 +262,7 @@ async function illustrateLesson(
       [],
       signal,
     );
-    const picture = result.images[0];
+    const picture = pictures[0];
     if (!picture) return html;
 
     const figure =
@@ -273,7 +272,6 @@ async function illustrateLesson(
       `alt="${topic.title.replace(/"/g, '')}" style="width:100%;display:block">` +
       `</figure>`;
 
-    // Sarlavhadan keyin qoʻyamiz, boʻlmasa <body> boshiga.
     if (/<\/h1>/i.test(html)) return html.replace(/<\/h1>/i, `</h1>${figure}`);
     if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, (m) => `${m}${figure}`);
     return figure + html;
@@ -291,7 +289,9 @@ export async function generateLesson(
   const { settings } = getState();
   let text = '';
 
-  await streamGenerate({
+  // Chidamli oqim: server band boʻlsa kutadi, model javobni kesib qoʻysa
+  // oʻzi davom ettiradi — dars yarim qolmaydi.
+  await streamResilient({
     apiKey: settings.apiKey,
     model: settings.model,
     contents: [{ role: 'user', parts: [{ text: lessonPrompt(course, topic) }] }],
@@ -301,6 +301,11 @@ export async function generateLesson(
       text += chunk;
       onProgress?.(text.length);
     },
+    rollback: (chars) => {
+      text = text.slice(0, Math.max(0, text.length - chars));
+      onProgress?.(text.length);
+    },
+    allowModelSwap: true,
   });
 
   const match = text.match(/```html\s*\n([\s\S]*?)```/i) ?? text.match(/```\s*\n([\s\S]*?)```/);
@@ -308,7 +313,6 @@ export async function generateLesson(
   if (html.length < 200) throw new Error('Dars yaratilmadi — qaytadan urinib koʻring.');
 
   if (course.illustrated) {
-    onProgress?.(html.length);
     html = await illustrateLesson(course, topic, html, signal);
   }
 

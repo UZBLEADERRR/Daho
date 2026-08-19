@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { FALLBACK_MODELS } from './models';
-import type { AppState, Book, BookChapter, Settings } from './types';
-import { uid } from './utils';
+import type { AppState, Settings } from './types';
 
 const STORAGE_KEY = 'daho.state.v1';
 
@@ -25,12 +24,25 @@ export const DEFAULT_SETTINGS: Settings = {
   sttEngine: 'gemini',
   sttLang: 'uz-UZ',
   githubToken: '',
+  supabaseUrl: '',
+  supabaseAnonKey: '',
   publishDomain: '',
   aiSource: 'auto',
   cloudBackup: true,
   userName: '',
   university: '',
   customInstructions: '',
+  providers: [],
+  hiddenModels: [],
+  favoriteModels: [],
+  roleModels: { bosh: '', dizayn: '', kod: '', tekshir: '', matn: '' },
+  autoContinue: true,
+  maxContinues: 6,
+  agentRounds: 60,
+  autoPickModel: true,
+  autoPool: [],
+  memoryEnabled: true,
+  freeOnly: false,
 };
 
 const EMPTY_STATE: AppState = {
@@ -51,51 +63,45 @@ const EMPTY_STATE: AppState = {
   routes: [],
   books: [],
   browserHistory: [],
+  automations: [],
+  memories: [],
+  view: { tab: 'chat', section: 'bugun', courseId: null, bookId: null, codeId: null },
 };
 
 /** Eski saqlangan holatdagi ishlamay qolgan model nomlarini tozalaydi. */
 const RETIRED_MODELS = /^(gemini-1\.|gemini-2\.0|gemini-2\.5-(flash|pro)$)/;
 
-/**
- * Eski yoki chala saqlangan kitoblarni tuzatadi.
- * Masalan bob raqami yoʻqolган boʻlsa — tartib boʻyicha tiklaymiz,
- * matn maydoni boʻlmasa — boʻsh satr qoʻyamiz (chiqarishda xato bermasin).
- */
-function healBooks(books: Book[] | undefined): Book[] {
-  if (!Array.isArray(books)) return [];
-  return books.map((book) => ({
-    ...book,
-    illustrated: Boolean(book?.illustrated),
-    chapters: (Array.isArray(book?.chapters) ? book.chapters : []).map(
-      (chapter, index): BookChapter => ({
-        ...chapter,
-        id: chapter?.id ?? uid('bob'),
-        no: Number.isFinite(chapter?.no) ? chapter.no : index + 1,
-        title: chapter?.title ?? `${index + 1}-bob`,
-        brief: chapter?.brief ?? '',
-        content: chapter?.content ?? '',
-        words: Number.isFinite(chapter?.words) ? chapter.words : 0,
-        status: chapter?.status ?? (chapter?.content ? 'tayyor' : 'kutilmoqda'),
-        images: Array.isArray(chapter?.images) ? chapter.images : undefined,
-        updatedAt: chapter?.updatedAt ?? Date.now(),
-      }),
-    ),
-  }));
+/** Saqlangan holatni bugungi sxemaga keltiradi (eski nusxalar uchun). */
+function migrate(parsed: Partial<AppState>): AppState {
+  const saved: Partial<Settings> = parsed.settings ?? {};
+  const settings: Settings = {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    // Ichma-ich obyektlar: yangi maydonlar qoʻshilganda yoʻqolib qolmasin.
+    roleModels: { ...DEFAULT_SETTINGS.roleModels, ...(saved.roleModels ?? {}) },
+    providers: Array.isArray(saved.providers) ? saved.providers : [],
+    hiddenModels: Array.isArray(saved.hiddenModels) ? saved.hiddenModels : [],
+    autoPool: Array.isArray(saved.autoPool) ? saved.autoPool : [],
+    favoriteModels: Array.isArray(saved.favoriteModels) ? saved.favoriteModels : [],
+  };
+  if (RETIRED_MODELS.test(settings.model)) settings.model = DEFAULT_SETTINGS.model;
+
+  return {
+    ...structuredClone(EMPTY_STATE),
+    ...parsed,
+    settings,
+    books: Array.isArray(parsed.books) ? parsed.books : [],
+    memories: Array.isArray(parsed.memories) ? parsed.memories : [],
+    automations: Array.isArray(parsed.automations) ? parsed.automations : [],
+    view: { ...EMPTY_STATE.view, ...(parsed.view ?? {}) },
+  };
 }
 
 function load(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return structuredClone(EMPTY_STATE);
-    const parsed = JSON.parse(raw) as Partial<AppState>;
-    const settings = { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) };
-    if (RETIRED_MODELS.test(settings.model)) settings.model = DEFAULT_SETTINGS.model;
-    return {
-      ...structuredClone(EMPTY_STATE),
-      ...parsed,
-      settings,
-      books: healBooks(parsed.books),
-    };
+    return migrate(JSON.parse(raw) as Partial<AppState>);
   } catch {
     return structuredClone(EMPTY_STATE);
   }
@@ -163,6 +169,11 @@ export function updateSettings(patch: Partial<Settings>): void {
   setState((prev) => ({ settings: { ...prev.settings, ...patch } }));
 }
 
+/** Koʻrinish holati — qaysi bo'lim ochiq (sahifa almashganda yoʻqolmaydi). */
+export function updateView(patch: Partial<AppState['view']>): void {
+  setState((prev) => ({ view: { ...prev.view, ...patch } }));
+}
+
 /** Barcha ma'lumotni JSON sifatida qaytaradi (zaxira nusxa uchun). */
 export function exportState(): string {
   return JSON.stringify(state, null, 2);
@@ -173,11 +184,7 @@ export function importState(json: string): boolean {
   try {
     const parsed = JSON.parse(json) as Partial<AppState>;
     if (!parsed || typeof parsed !== 'object') return false;
-    state = {
-      ...structuredClone(EMPTY_STATE),
-      ...parsed,
-      settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
-    };
+    state = migrate(parsed);
     persist();
     listeners.forEach((l) => l());
     return true;

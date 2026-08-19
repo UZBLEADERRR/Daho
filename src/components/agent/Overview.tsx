@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useStore } from '../../lib/store';
+import { updateView, useStore } from '../../lib/store';
 import { DAYS } from '../../lib/types';
 import { fmtDuration, todayISO, weekdayIndex } from '../../lib/utils';
 import { Empty } from '../ui';
@@ -36,6 +36,19 @@ export function Overview({ onNavigate }: { onNavigate: (s: AgentSection) => void
       .reduce((sum, l) => sum + ((l.end ?? 0) - l.start), 0) / 60000,
   );
 
+  const writingBooks = useMemo(
+    () => state.books.filter((b) => b.stage !== 'tayyor' && b.chapters.length).slice(0, 2),
+    [state.books],
+  );
+
+  const todayAutomations = useMemo(
+    () =>
+      state.automations
+        .filter((a) => a.enabled && (!a.days.length || a.days.includes(day)))
+        .sort((a, b) => a.time.localeCompare(b.time)),
+    [state.automations, day],
+  );
+
   const hour = new Date().getHours();
   const greeting =
     hour < 5 ? 'Tunni ham ishga aylantiryapsiz' : hour < 12 ? 'Xayrli tong' : hour < 18 ? 'Xayrli kun' : 'Xayrli kech';
@@ -65,6 +78,48 @@ export function Overview({ onNavigate }: { onNavigate: (s: AgentSection) => void
             <span>daqiqa ish</span>
           </button>
         </div>
+
+        {/* Yozilayotgan kitoblar — jarayon uzun, shuning uchun bosh sahifada. */}
+        {writingBooks.map((b) => {
+          const done = b.chapters.filter((c) => c.done).length;
+          const pct = b.chapters.length ? Math.round((done / b.chapters.length) * 100) : 0;
+          return (
+            <button
+              className="card"
+              key={b.id}
+              style={{ display: 'block', width: '100%', textAlign: 'left', borderColor: 'var(--accent)' }}
+              onClick={() => {
+                updateView({ bookId: b.id });
+                onNavigate('kitoblar');
+              }}
+            >
+              <div className="tiny">📚 Kitob yozilmoqda</div>
+              <div style={{ fontSize: 15, fontWeight: 550, marginTop: 2 }}>{b.title}</div>
+              <div className="progress">
+                <i style={{ width: `${pct}%` }} />
+              </div>
+              <div className="tiny" style={{ marginTop: 5 }}>
+                {done} / {b.chapters.length} bob
+              </div>
+            </button>
+          );
+        })}
+
+        {/* Bugun ishga tushadigan avtomatik topshiriqlar */}
+        {todayAutomations.length > 0 && (
+          <button
+            className="card"
+            style={{ display: 'block', width: '100%', textAlign: 'left' }}
+            onClick={() => onNavigate('avto')}
+          >
+            <div className="tiny">🔁 Bugungi avtomatik topshiriqlar</div>
+            {todayAutomations.slice(0, 3).map((a) => (
+              <div key={a.id} style={{ fontSize: 14, marginTop: 4 }}>
+                {a.time} — {a.title}
+              </div>
+            ))}
+          </button>
+        )}
 
         {running && (
           <div className="card" style={{ borderColor: 'var(--accent)' }}>

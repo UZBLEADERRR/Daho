@@ -1746,16 +1746,43 @@ textarea {
 
 /* Chat jadvallarini chiroyliroq qilish */
 
+/*
+  Xabarning oʻzi yonga siljimaydi — faqat jadval siljiydi. Aks holda uzun
+  jadval butun xabarni cho'zib, matnni ekrandan chiqarib yuboradi.
+*/
 .md {
+  overflow-wrap: anywhere;
+}
+
+/* Jadval uchun siljiydigan quti (markdown.ts oʻzi oʻraydi) */
+.table-scroll {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  /* Yon tomonda yana siljish borligini bildiradigan yumshoq soya */
+  background:
+    linear-gradient(to right, var(--surface) 30%, transparent),
+    linear-gradient(to left, var(--surface) 30%, transparent) 100% 0;
+  background-size: 24px 100%, 24px 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, local;
 }
 
 .md table {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  overflow: hidden;
+  /* Tabiiy kenglik: ustunlar siqilmaydi, matn vertikal tushmaydi */
+  width: auto;
+  min-width: 100%;
+  border: none;
   border-collapse: collapse;
+  margin: 0;
+}
+
+.md .table-scroll td,
+.md .table-scroll th {
+  /* Yacheykadagi matn bir qatorda qolsin — siljitib oʻqiladi */
+  white-space: nowrap;
 }
 
 .md thead {
@@ -2802,6 +2829,183 @@ textarea {
 }
 
 .taskstrip button {
+/* ================================================================== */
+/*  Jonli suhbat                                                       */
+/* ================================================================== */
+
+.live-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  display: flex;
+}
+
+.live {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: calc(10px + var(--safe-top)) 16px calc(22px + var(--safe-bottom));
+}
+
+.live-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.live-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 20px 4px;
+}
+
+.live-hint {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.live-heard {
+  font-size: 15px;
+  color: var(--muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.live-reply {
+  font-size: 18px;
+  line-height: 1.65;
+  text-align: center;
+}
+
+.live-controls {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.live-status {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.live-status.bad {
+  color: var(--danger);
+}
+
+.live-mic {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  border: none;
+  flex: 0 0 auto;
+}
+
+.live-mic .live-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  opacity: 0;
+  transition: transform 90ms linear;
+  pointer-events: none;
+}
+
+.live-mic.on .live-ring {
+  opacity: 1;
+}
+
+.live-mic.on {
+  background: var(--danger);
+}
+
+.live-mic.think {
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.round-btn.live {
+  color: var(--accent);
+}
+
+/* ================================================================== */
+/*  Kitoblar                                                           */
+/* ================================================================== */
+
+.book-cover {
+  flex: 0 0 auto;
+  width: 54px;
+  height: 78px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  border: 1px solid var(--line);
+}
+
+.book-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.book-hero {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  margin: 0 auto 16px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: none;
+  padding: 0;
+}
+
+.book-hero img,
+.book-illus img {
+  width: 100%;
+  display: block;
+}
+
+.book-illus {
+  display: block;
+  width: 100%;
+  margin: 0 0 16px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: none;
+  padding: 0;
+}
+
+.ch-num {
+  flex: 0 0 auto;
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -2837,4 +3041,302 @@ textarea {
     flex: 1 1 0;
     justify-content: flex-end;
   }
+  font-size: 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.ch-num.done {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+.reader p {
+  font-size: 16px;
+  line-height: 1.75;
+  margin: 0 0 12px;
+}
+
+.reader h3,
+.reader h4 {
+  margin: 20px 0 8px;
+  font-size: 16.5px;
+}
+
+/* ================================================================== */
+/*  Modellar va provayderlar                                           */
+/* ================================================================== */
+
+.prov-row,
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  margin-bottom: 7px;
+  text-align: left;
+}
+
+.prov-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.prov-dot[data-on='true'] {
+  background: #2fbf71;
+}
+
+.model-row {
+  opacity: 0.5;
+}
+
+.model-row.on {
+  opacity: 1;
+  border-color: var(--accent);
+}
+
+.model-mark {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 15px;
+}
+
+.model-row:not(.on) .model-mark {
+  color: var(--muted);
+}
+
+/* Yangi komponentlarda label o'rniga span ishlatiladi */
+.field > span {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+.field > span i {
+  font-style: normal;
+  opacity: 0.75;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chips .chip {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
+.chip.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.chip:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- Agent rejasi ---------- */
+
+.plan-card {
+  flex: 0 0 auto;
+  margin: 0 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.plan-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  background: none;
+  border: none;
+  color: var(--text);
+}
+
+.plan-steps {
+  padding: 0 12px 10px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.plan-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  padding: 4px 0;
+  color: var(--text);
+}
+
+.plan-step.done {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--line);
+}
+
+.plan-mark {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 10.5px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.plan-step.done .plan-mark {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---------- Kartochka ichidagi yozuvlar chiqib ketmasin ---------- */
+
+/*
+  Loyiha nomi va repozitoriy nomi uzun boʻlsa kartochkadan chiqib ketardi.
+  Endi nom ikki qatorga sigʻadi, chiplar esa yangi qatorga tushadi.
+*/
+.ellipsis-2 {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+/* Uzun repozitoriy nomi — kesib, uch nuqta bilan */
+.chip.clip {
+  max-width: 52%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Agent olgan skrinshotlar ---------- */
+
+.shot-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 4px;
+}
+
+.shot-thumb {
+  width: 86px;
+  height: 132px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--card);
+  flex: 0 0 auto;
+}
+
+.shot-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+}
+
+.shot-full {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  overflow: auto;
+}
+
+.shot-full img {
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
+.notice {
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---------- Model roʻyxati: sevimli yulduzchasi ---------- */
+
+.star-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 17px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+/* ---------- Xarajat hisoblagichi ---------- */
+
+.usage-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  text-align: center;
+}
+
+.usage-num {
+  font-size: 17px;
+  font-weight: 640;
+  color: var(--accent);
+}
+
+/* ---------- Qidiruvli model tanlagich ---------- */
+
+.model-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+  text-align: left;
+  font-size: 14.5px;
 }

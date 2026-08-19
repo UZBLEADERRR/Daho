@@ -1,6 +1,8 @@
 import { b64ToBytes } from './audio';
-import { generateImage, generateJson } from './gemini';
+import { generateJson } from './gemini';
 import { synthesize } from './speech';
+import { geminiModel } from './models';
+import { imageAny } from './providers';
 import { getState, setState } from './store';
 import type {
   SubtitleStyle,
@@ -144,7 +146,7 @@ export async function planVideo(
 
   const plan = await generateJson<PlanResponse>(
     settings.apiKey,
-    settings.model,
+    geminiModel(settings.model),
     planPrompt(topic, sceneCount, style),
     PLAN_SCHEMA,
     signal,
@@ -233,7 +235,6 @@ export async function generateSceneImages(
   onProgress?: (done: number, total: number) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { settings } = getState();
   const project = getProject(projectId);
   if (!project) return;
 
@@ -257,16 +258,14 @@ export async function generateSceneImages(
     ].filter(Boolean);
 
     try {
-      const result = await generateImage(
-        settings.apiKey,
-        settings.imageModel,
+      const images = await imageAny(
         parts.join(' '),
         character?.refImage ? [{ mimeType: 'image/png', data: character.refImage }] : [],
         signal,
       );
       patchScene(projectId, scene.id, {
-        imageData: result.images[0].data,
-        imageMime: result.images[0].mimeType,
+        imageData: images[0].data,
+        imageMime: images[0].mimeType,
       });
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') throw err;

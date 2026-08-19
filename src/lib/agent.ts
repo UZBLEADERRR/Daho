@@ -1,7 +1,9 @@
 import { drainInterjections } from './ask';
 import { isModelReadable } from './attach';
 import { extractArtifacts } from './artifacts';
-import { GeminiError, generateText } from './gemini';
+import { GeminiError } from './gemini';
+import { learnFromChat, memoryBlock } from './memory';
+import { completeAny } from './providers';
 import { streamResilient } from './resilient';
 import type { GeminiContent, GeminiPart } from './gemini';
 import { getState, setState } from './store';
@@ -11,9 +13,8 @@ import { uid } from './utils';
 
 const MAX_HISTORY = 40;
 /**
- * Bitta soʻrov ichida nechta marta vosita chaqirib, natijasini koʻrib,
- * keyingi qadamni tanlash mumkin. Avval 8 edi — murakkab ish yarim
- * yoʻlda toʻxtab qolardi.
+ * Bitta javob ichida nechta marta vosita chaqirib, natijasini koʻrib,
+ * keyingi qadamni tanlash mumkin. Murakkab ish yarim yoʻlda toʻxtab qolmasin.
  */
 const MAX_TOOL_ROUNDS = 24;
 
@@ -25,6 +26,8 @@ const STEP_LABEL: Record<string, string> = {
   add_schedule_item: 'jadvalga yozilmoqda',
   create_project: 'loyiha rejasi tuzilmoqda',
   create_course: 'kurs mavzulari tuzilmoqda',
+  write_book: 'kitob yozish boshlanmoqda',
+  search_images: 'internetdan rasm qidirilmoqda',
   generate_image: 'rasm chizilmoqda',
   get_location: 'joylashuvingiz aniqlanmoqda',
   find_place: 'xaritadan qidirilmoqda',
@@ -157,10 +160,19 @@ Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jim
 - Bajarilgan ish haqida aytsa — \`log_work\`.
 - Biror sohani oʻrganmoqchi boʻlsa (IELTS, dasturlash, ingliz tili…) — \`create_course\` bilan
   kamida 40 ta mavzudan iborat toʻliq kurs och.
+- KITOB yozish soʻralsa — \`write_book\`. Lekin avval \`ask_user\` bilan soʻra:
+  nima haqida va qaysi turdagi kitob, kim uchun, necha bob, rasm kerakmi.
+  Savollarni bittalab ber (har birida tayyor variantlar bilan), javoblarni
+  toʻplab, keyin \`write_book\` ni bitta toʻliq tavsif bilan chaqir.
+  Kitob matnini oʻzing chatda yozma — vosita fonda yozadi.
 - Hujjatga (Word yoki PDF biriktirilgan boʻlsa) rasm qoʻshish soʻralsa —
   \`illustrate_document\`. Nechta rasm kerakligini foydalanuvchi aytmasa 5 ta qil.
   Natija yangi .docx boʻlib telefonga saqlanadi.
-- Rasm, surat, illyustratsiya, logotip yoki chizma soʻrasa — \`generate_image\`.
+- HAQIQIY rasm kerak boʻlsa (joy, odam, hayvon, mahsulot, tarixiy voqea,
+  «qanday koʻrinadi», «namuna koʻrsat», «ilhom uchun rasmlar») —
+  \`search_images\` bilan internetdan top. Qidiruvni ingliz tilida yoz.
+  Natijani manba havolasi bilan koʻrsat — bu muallif huquqi uchun muhim.
+- Rasm YASASH soʻralsa (chizma, logotip, muqova, tasavvurdagi tasvir) — \`generate_image\`.
   Mavjud rasmni oʻzgartirishni soʻrasa — \`edit_last: "true"\` bilan chaqir.
   Rasm chatda oʻzi koʻrinadi; uni matn bilan qayta tasvirlab berma.
 Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.
@@ -222,6 +234,8 @@ qarorlarni oʻzing qabul qil va nima tanlaganingni aytib qoʻy.
 Har bir vositani chaqirishdan OLDIN bir qisqa jumlada nima qilayotganingni yoz
 («Jadvalingizni tekshiraman», «Konspekt yozib qoʻyaman»). Foydalanuvchi nima
 sodir boʻlayotganini koʻrib tursin.
+
+${memoryBlock()}
 
 ## Kontekst
 ${buildContextSummary()}
@@ -312,8 +326,8 @@ async function autoTitle(chatId: string, firstUserText: string): Promise<void> {
   const fallback = firstUserText.slice(0, 38).trim() || 'Suhbat';
   patchChat(chatId, (c) => ({ ...c, title: fallback }));
   try {
-    const title = await generateText(
-      settings.apiKey,
+    // `completeAny` — model qaysi provayderniki boʻlsa oʻshanga boradi.
+    const title = await completeAny(
       settings.model,
       `Quyidagi savol uchun 2-4 soʻzdan iborat oʻzbekcha sarlavha yoz. Faqat sarlavhani qaytar, tirnoqsiz:\n\n${firstUserText.slice(0, 400)}`,
     );
@@ -494,6 +508,8 @@ export async function sendMessage(
     });
 
     void autoTitle(chatId, text);
+    // Suhbatdan doimiy faktlarni jimgina eslab qolamiz (xato boʻlsa eʼtiborsiz).
+    void learnFromChat(chatId);
     return { ok: true, text: accumulated };
   } catch (err) {
     if (flushTimer) clearTimeout(flushTimer);
