@@ -16,14 +16,11 @@ concurrency:
 jobs:
   build:
     name: Yigʻish
-    # Asosiy (default) tarmoqdan nashr qilinadi — tarmoq nomi oʻzgarsa ham
-    # ish oqimini tahrirlash shart emas. Ikkinchi nom — veb versiya tarmogʻi:
-    # PR qoʻshilgunicha jonli koʻrishga imkon beradi, keyin olib tashlansa
-    # boʻladi.
+    # Faqat asosiy (default) tarmoqdan nashr qilinadi — tarmoq nomi
+    # oʻzgarsa ham ish oqimini tahrirlash shart emas.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.ref_name == github.event.repository.default_branch ||
-      github.ref_name == 'claude/manashu-web-version-wclci1'
+      github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     steps:
       - name: Kodni olish
