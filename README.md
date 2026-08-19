@@ -202,13 +202,21 @@ ishlaydi»).
 
 ## APK ni olish
 
-Har bir push'dan soʻng GitHub Actions APK yigʻadi:
+Eng qulay yoʻl — **Releases**: u yerda `daho.apk` toʻgʻridan-toʻgʻri, GitHub'ga
+kirmasdan, telefonning oʻzida bitta bosishda yuklab olinadi.
 
-1. Repozitoriyning **Actions** boʻlimiga kiring
-2. Oxirgi **«APK yasash»** ishga tushishini oching
-3. Pastdagi **Artifacts** dan `daho-apk` ni yuklab oling
-4. ZIP ichidagi `daho.apk` ni telefonga koʻchiring va oʻrnating
-   («Nomaʼlum manbalardan oʻrnatish» ruxsatini bering)
+https://github.com/UZBLEADERRR/Daho/releases
+
+Reliz qachon yasaladi:
+- asosiy tarmoqqa push qilinganda;
+- **Actions → «APK yasash» → Run workflow** bilan qoʻlda ishga tushirilganda;
+- commit izohida `[apk]` boʻlsa (istalgan tarmoqda).
+
+Har qanday push'da esa APK **Artifacts** sifatida ham saqlanadi:
+**Actions** → oxirgi «APK yasash» → pastdagi **Artifacts** → `daho-apk`
+(zip ichida `daho.apk`).
+
+Oʻrnatishda Android «Nomaʼlum manbalardan oʻrnatish» ruxsatini soʻraydi.
 
 ## Birinchi ishga tushirish
 
