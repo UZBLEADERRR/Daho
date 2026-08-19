@@ -15,7 +15,7 @@
  *   4. har bobning holati saqlanadi: tayyor / chala / xato — shuning uchun
  *      aynan bitta bobni qayta yozdirish yoki davom ettirish mumkin.
  */
-import { generateJson } from './gemini';
+import { generateImage, generateJson } from './gemini';
 import type { GeminiContent } from './gemini';
 import { streamResilient } from './resilient';
 import { getState, setState } from './store';
@@ -88,6 +88,8 @@ export interface BookRequest {
   style?: string;
   chapters?: number;
   targetWords?: number;
+  /** Har bobga rasm chizilsinmi — foydalanuvchi roziligi bilan */
+  illustrated?: boolean;
 }
 
 /** Kitob rejasini tuzadi va uni saqlaydi (boblar hali boʻsh). */
@@ -119,6 +121,7 @@ export async function createBook(req: BookRequest, signal?: AbortSignal): Promis
     audience,
     style,
     targetWords: Math.min(4000, Math.max(300, req.targetWords ?? 900)),
+    illustrated: Boolean(req.illustrated),
     chapters: (plan.chapters ?? []).slice(0, count).map((c, i) => ({
       id: uid('bob'),
       no: i + 1,
@@ -315,6 +318,12 @@ export async function writeChapter(
             ? undefined
             : 'Matn uzilib qoldi — «Davom ettirish» tugmasini bosing',
         });
+
+        // Rasm faqat foydalanuvchi rozi boʻlsa chiziladi.
+        if (book.illustrated && result.complete && !(chapter.images ?? []).length) {
+          noteTask(taskId, 'rasm chizilmoqda');
+          await illustrateChapter(bookId, chapterId, '', signal);
+        }
       } catch (err) {
         if ((err as Error)?.name === 'AbortError') {
           patchChapter(bookId, chapterId, {
@@ -362,6 +371,11 @@ export async function writeWholeBook(bookId: string): Promise<void> {
             status: result.complete ? 'tayyor' : 'chala',
             error: result.complete ? undefined : 'Matn uzilib qoldi',
           });
+
+          if (fresh.illustrated && result.complete && !(chapter.images ?? []).length) {
+            noteTask(taskId, `${chapter.no}-bobga rasm chizilmoqda`);
+            await illustrateChapter(bookId, chapter.id, '', signal);
+          }
         } catch (err) {
           if ((err as Error)?.name === 'AbortError') {
             patchChapter(bookId, chapter.id, { status: chapter.content ? 'chala' : 'kutilmoqda' });
@@ -378,33 +392,137 @@ export async function writeWholeBook(bookId: string): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Rasmlar                                                            */
+/* ------------------------------------------------------------------ */
+
+/** Butun kitob uchun yagona tasviriy uslub — rasmlar bir-biriga mos boʻlsin. */
+function artDirection(book: Book): string {
+  return (
+    `Uslub: zamonaviy, toza kitob illyustratsiyasi; yumshoq ranglar, oddiy shakllar, ` +
+    `chuqur foni yoʻq, chetlari toza. Kitob mavzusi: ${book.topic}. ` +
+    `Rasmda YOZUV, harf, raqam yoki logotip BOʻLMASIN — faqat tasvir.`
+  );
+}
+
+/**
+ * Bobga rasm chizadi va saqlaydi.
+ * Foydalanuvchi roziligi bilan chaqiriladi (kitob sozlamasi yoki tugma).
+ */
+export async function illustrateChapter(
+  bookId: string,
+  chapterId: string,
+  hint = '',
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const book = getBook(bookId);
+  const chapter = book?.chapters.find((c) => c.id === chapterId);
+  if (!book || !chapter) return false;
+
+  const { settings } = getState();
+  const subject =
+    hint.trim() ||
+    `${chapter.title}. ${chapter.brief}`.trim() ||
+    book.topic;
+
+  const prompt =
+    `Kitobning «${chapter.title}» bobi uchun illyustratsiya chiz.\n` +
+    `Bobda nima haqida gap ketadi: ${subject}\n` +
+    artDirection(book);
+
+  try {
+    const result = await generateImage(
+      settings.apiKey,
+      settings.imageModel,
+      prompt,
+      [],
+      signal,
+    );
+    const picture = result.images[0];
+    if (!picture) return false;
+
+    patchChapter(bookId, chapterId, {
+      images: [
+        ...(chapter.images ?? []),
+        {
+          id: uid('rasm'),
+          data: picture.data,
+          mimeType: picture.mimeType || 'image/png',
+          caption: chapter.title,
+        },
+      ],
+    });
+    return true;
+  } catch {
+    // Rasm chiqmasa kitob baribir tayyor — jimgina oʻtamiz.
+    return false;
+  }
+}
+
+export function removeChapterImage(bookId: string, chapterId: string, imageId: string): void {
+  const chapter = getBook(bookId)?.chapters.find((c) => c.id === chapterId);
+  if (!chapter) return;
+  patchChapter(bookId, chapterId, {
+    images: (chapter.images ?? []).filter((img) => img.id !== imageId),
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /*  Chiqarish                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Butun kitobni bitta markdown matnga yigʻadi. */
+/**
+ * Butun kitobni bitta markdown matnga yigʻadi.
+ * Rasmlar `daho-img:` havolasi bilan belgilanadi — Word/PDF ga chiqarishda
+ * shu belgilar oʻrniga haqiqiy rasm qoʻyiladi.
+ */
 export function bookMarkdown(book: Book): string {
+  const chapters = book.chapters ?? [];
   const head = `# ${book.title}\n\n`;
   const toc =
     '## Mundarija\n\n' +
-    book.chapters.map((c) => `${c.no}. ${c.title}`).join('\n') +
+    chapters.map((c, i) => `${c.no ?? i + 1}. ${c.title ?? ''}`).join('\n') +
     '\n\n---\n\n';
-  const body = book.chapters
-    .filter((c) => c.content.trim())
-    .map((c) => {
-      const text = c.content.trim();
+
+  const body = chapters
+    .filter((c) => (c.content ?? '').trim())
+    .map((c, i) => {
+      const text = (c.content ?? '').trim();
       // Bob sarlavhasi matnda boʻlmasa — qoʻshamiz.
-      const hasTitle = new RegExp(`^#{1,3}\\s`).test(text);
-      return hasTitle ? text : `## ${c.no}. ${c.title}\n\n${text}`;
+      const hasTitle = /^#{1,3}\s/.test(text);
+      const withTitle = hasTitle ? text : `## ${c.no ?? i + 1}. ${c.title ?? ''}\n\n${text}`;
+      const pictures = (c.images ?? [])
+        .map((img) => `\n\n![${img.caption}](daho-img:${img.id})`)
+        .join('');
+      return withTitle + pictures;
     })
     .join('\n\n---\n\n');
+
   return head + toc + body + '\n';
 }
 
-export function bookProgress(book: Book): { done: number; total: number; words: number } {
+/** Chiqarish uchun kitobdagi barcha rasmlar (id boʻyicha). */
+export function bookImages(book: Book): Record<string, { data: string; mimeType: string; caption: string }> {
+  const out: Record<string, { data: string; mimeType: string; caption: string }> = {};
+  for (const chapter of book.chapters ?? []) {
+    for (const image of chapter.images ?? []) {
+      out[image.id] = { data: image.data, mimeType: image.mimeType, caption: image.caption };
+    }
+  }
+  return out;
+}
+
+export function bookProgress(book: Book): {
+  done: number;
+  total: number;
+  words: number;
+  images: number;
+} {
+  const chapters = book.chapters ?? [];
   return {
-    done: book.chapters.filter((c) => c.status === 'tayyor').length,
-    total: book.chapters.length,
-    words: book.chapters.reduce((sum, c) => sum + c.words, 0),
+    done: chapters.filter((c) => c.status === 'tayyor').length,
+    total: chapters.length,
+    words: chapters.reduce((sum, c) => sum + (c.words ?? 0), 0),
+    images: chapters.reduce((sum, c) => sum + (c.images?.length ?? 0), 0),
   };
 }
 

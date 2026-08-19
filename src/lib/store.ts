@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { FALLBACK_MODELS } from './models';
-import type { AppState, Settings } from './types';
+import type { AppState, Book, BookChapter, Settings } from './types';
+import { uid } from './utils';
 
 const STORAGE_KEY = 'daho.state.v1';
 
@@ -55,6 +56,33 @@ const EMPTY_STATE: AppState = {
 /** Eski saqlangan holatdagi ishlamay qolgan model nomlarini tozalaydi. */
 const RETIRED_MODELS = /^(gemini-1\.|gemini-2\.0|gemini-2\.5-(flash|pro)$)/;
 
+/**
+ * Eski yoki chala saqlangan kitoblarni tuzatadi.
+ * Masalan bob raqami yoʻqolган boʻlsa — tartib boʻyicha tiklaymiz,
+ * matn maydoni boʻlmasa — boʻsh satr qoʻyamiz (chiqarishda xato bermasin).
+ */
+function healBooks(books: Book[] | undefined): Book[] {
+  if (!Array.isArray(books)) return [];
+  return books.map((book) => ({
+    ...book,
+    illustrated: Boolean(book?.illustrated),
+    chapters: (Array.isArray(book?.chapters) ? book.chapters : []).map(
+      (chapter, index): BookChapter => ({
+        ...chapter,
+        id: chapter?.id ?? uid('bob'),
+        no: Number.isFinite(chapter?.no) ? chapter.no : index + 1,
+        title: chapter?.title ?? `${index + 1}-bob`,
+        brief: chapter?.brief ?? '',
+        content: chapter?.content ?? '',
+        words: Number.isFinite(chapter?.words) ? chapter.words : 0,
+        status: chapter?.status ?? (chapter?.content ? 'tayyor' : 'kutilmoqda'),
+        images: Array.isArray(chapter?.images) ? chapter.images : undefined,
+        updatedAt: chapter?.updatedAt ?? Date.now(),
+      }),
+    ),
+  }));
+}
+
 function load(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -66,6 +94,7 @@ function load(): AppState {
       ...structuredClone(EMPTY_STATE),
       ...parsed,
       settings,
+      books: healBooks(parsed.books),
     };
   } catch {
     return structuredClone(EMPTY_STATE);

@@ -10,7 +10,11 @@ export type Block =
   | { type: 'p'; runs: Run[] }
   | { type: 'ul' | 'ol'; items: Run[][] }
   | { type: 'code'; text: string }
+  | { type: 'img'; id: string; caption: string }
   | { type: 'hr' };
+
+/** `![izoh](daho-img:ID)` — hujjatga qoʻyiladigan rasm belgisi. */
+export const IMAGE_MARK = /^!\[([^\]]*)\]\(daho-img:([^)]+)\)$/;
 
 /** `**qalin**`, `*qiya*`, `` `kod` `` — bo'laklarga ajratadi. */
 export function parseInline(text: string): Run[] {
@@ -54,6 +58,13 @@ export function parseDocument(markdown: string): Block[] {
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     const trimmed = line.trim();
+
+    const picture = trimmed.match(IMAGE_MARK);
+    if (picture) {
+      flushParagraph();
+      blocks.push({ type: 'img', id: picture[2], caption: picture[1] });
+      continue;
+    }
 
     if (trimmed.startsWith('```')) {
       flushParagraph();

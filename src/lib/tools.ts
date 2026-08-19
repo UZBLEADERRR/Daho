@@ -41,7 +41,16 @@ import type {
   TimeLog,
 } from './types';
 import { fmtDuration, todayISO, uid, weekdayIndex } from './utils';
-import { findVideos, languageName, parseYouTube, readVideo, toNarration, toSrt } from './ytube';
+import { fallbackModel } from './resilient';
+import {
+  findVideos,
+  languageName,
+  parseYouTube,
+  readVideo,
+  searchUrl,
+  toNarration,
+  toSrt,
+} from './ytube';
 
 export interface ToolOutcome {
   ok: boolean;
@@ -310,6 +319,11 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         words: { type: 'NUMBER', description: 'Bitta bob uchun taxminiy soʻz soni (300-4000)' },
         audience: { type: 'STRING', description: 'Kim uchun yozilyapti' },
         style: { type: 'STRING', description: 'Uslub: sodda, ilmiy, hikoyaviy…' },
+        images: {
+          type: 'BOOLEAN',
+          description:
+            'Har bobga rasm chizilsinmi (standart: ha). Foydalanuvchi «rasmsiz» desa false ber.',
+        },
       },
       required: ['topic'],
     },
@@ -723,6 +737,7 @@ export async function executeTool(
             targetWords: num(args.words, 900),
             audience: str(args.audience),
             style: str(args.style),
+            illustrated: args.images !== false,
           },
           ctx.signal,
         );
@@ -734,6 +749,7 @@ export async function executeTool(
           payload: {
             sarlavha: book.title,
             boblar: book.chapters.map((c) => `${c.no}. ${c.title}`),
+            rasmlar: args.images !== false ? 'har bobga rasm chiziladi' : 'rasmsiz',
             koʻrsatma:
               'Reja tayyor va boblar YOZILA BOSHLADI (pastdagi qatorda koʻrinadi). ' +
               'Foydalanuvchiga ayt: «Agent → Kitoblar» boʻlimida jarayonni kuzatadi, ' +
@@ -770,46 +786,64 @@ export async function executeTool(
       if (!query) return { ok: false, summary: 'Mavzu berilmadi', payload: { error: 'query_yoq' } };
       const language = str(args.language);
       const { settings } = getState();
-      try {
-        const ask =
-          `YouTube dan «${query}» mavzusidagi eng foydali 3-5 ta videoni top` +
-          (language ? ` (${language} tilida boʻlsa afzal)` : '') +
-          `. Har biri uchun toʻliq youtube.com/watch?v=... havolasini, sarlavhasini va ` +
-          `nima haqidaligini bir jumlada yoz. Faqat haqiqatan mavjud videolarni ber.`;
-        const answer = await searchAnswer(settings.apiKey, settings.model, ask, ctx.signal);
-        const found = [
-          ...findVideos(answer.text),
-          ...findVideos(answer.sources.map((s) => s.url).join(' ')),
-        ];
-        const unique = found.filter(
-          (v, i) => found.findIndex((o) => o.id === v.id) === i,
-        );
-        if (!unique.length) {
-          return {
-            ok: false,
-            summary: 'Video topilmadi',
-            payload: { natija: answer.text, izoh: 'YouTube havolasi topilmadi' },
-          };
+      const ask =
+        `YouTube dan «${query}» mavzusidagi eng foydali 3-5 ta videoni top` +
+        (language ? ` (${language} tilida boʻlsa afzal)` : '') +
+        `. Har biri uchun toʻliq youtube.com/watch?v=... havolasini, sarlavhasini va ` +
+        `nima haqidaligini bir jumlada yoz. Faqat haqiqatan mavjud videolarni ber.`;
+
+      const browse = searchUrl(query);
+      let note = '';
+
+      // Google qidiruvi band boʻlishi mumkin — bir necha model bilan urinamiz.
+      const models = [settings.model, fallbackModel(settings.model)].filter(
+        (m): m is string => Boolean(m),
+      );
+
+      for (const model of models) {
+        try {
+          const answer = await searchAnswer(settings.apiKey, model, ask, ctx.signal);
+          const found = [
+            ...findVideos(answer.text),
+            ...findVideos(answer.sources.map((src) => src.url).join(' ')),
+          ];
+          const unique = found.filter((v, i) => found.findIndex((o) => o.id === v.id) === i);
+
+          if (unique.length) {
+            return {
+              ok: true,
+              summary: `${unique.length} ta video topildi`,
+              payload: {
+                izoh: answer.text,
+                videolar: unique.map((v) => v.url),
+                youtube_qidiruv: browse,
+                koʻrsatma:
+                  'Havolalarni javobingda yoz — ular chatda pleyer boʻlib chiqadi. ' +
+                  'Har biri haqida bir jumla ayt.',
+              },
+            };
+          }
+          note = answer.text;
+        } catch (err) {
+          if ((err as Error)?.name === 'AbortError') throw err;
+          note = String((err as Error)?.message ?? err);
         }
-        return {
-          ok: true,
-          summary: `${unique.length} ta video topildi`,
-          payload: {
-            izoh: answer.text,
-            videolar: unique.map((v) => v.url),
-            koʻrsatma:
-              'Havolalarni javobingda yoz — ular chatda pleyer boʻlib chiqadi. ' +
-              'Har biri haqida bir jumla ayt.',
-          },
-        };
-      } catch (err) {
-        if ((err as Error)?.name === 'AbortError') throw err;
-        return {
-          ok: false,
-          summary: `Video qidiruvi ishlamadi: ${(err as Error).message}`,
-          payload: { error: String((err as Error)?.message ?? err) },
-        };
       }
+
+      // Qidiruv natija bermadi — YouTube ni ilovaning oʻzida ochib beramiz.
+      openSite(browse);
+      return {
+        ok: true,
+        summary: 'YouTube qidiruvi ochildi',
+        payload: {
+          izoh: note,
+          youtube_qidiruv: browse,
+          koʻrsatma:
+            'Qidiruv natija bermadi, shuning uchun YouTube qidiruvi ilovaning ichki ' +
+            'brauzerida ochildi — foydalanuvchi videoni oʻzi tanlaydi. Buni bir jumlada ayt ' +
+            'va agar aniq video havolasini bersa, uni tarjima qilib bera olishingni eslat.',
+        },
+      };
     }
 
     case 'read_video': {
@@ -923,21 +957,38 @@ export async function executeTool(
       const query = str(args.query);
       if (!query) return { ok: false, summary: 'Savol berilmadi', payload: { error: 'query_yoq' } };
       const { settings } = getState();
-      try {
-        const answer = await searchAnswer(settings.apiKey, settings.model, query, ctx.signal);
-        return {
-          ok: true,
-          summary: `Qidirildi: ${query.slice(0, 40)}`,
-          payload: { natija: answer.text, manbalar: answer.sources },
-        };
-      } catch (err) {
-        if ((err as Error)?.name === 'AbortError') throw err;
-        return {
-          ok: false,
-          summary: `Qidiruv ishlamadi: ${(err as Error).message}`,
-          payload: { error: String((err as Error)?.message ?? err) },
-        };
+
+      // Qidiruv serveri band boʻlsa boshqa model bilan ham urinib koʻramiz.
+      const models = [settings.model, fallbackModel(settings.model)].filter(
+        (m): m is string => Boolean(m),
+      );
+      let lastError = '';
+
+      for (const model of models) {
+        try {
+          const answer = await searchAnswer(settings.apiKey, model, query, ctx.signal);
+          return {
+            ok: true,
+            summary: `Qidirildi: ${query.slice(0, 40)}`,
+            payload: { natija: answer.text, manbalar: answer.sources },
+          };
+        } catch (err) {
+          if ((err as Error)?.name === 'AbortError') throw err;
+          lastError = String((err as Error)?.message ?? err);
+        }
       }
+
+      return {
+        ok: false,
+        summary: `Qidiruv ishlamadi: ${lastError}`,
+        payload: {
+          error: lastError,
+          koʻrsatma:
+            'Qidiruv serveri band. Foydalanuvchiga aytib, kerak boʻlsa open_site bilan ' +
+            'tegishli saytni ochib ber yoki oʻzingdagi bilim bilan javob ber (lekin ' +
+            'maʼlumot eskirgan boʻlishi mumkinligini ayt).',
+        },
+      };
     }
 
     case 'plan_route': {

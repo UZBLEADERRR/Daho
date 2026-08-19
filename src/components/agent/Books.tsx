@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import {
+  bookImages,
   bookMarkdown,
   bookProgress,
   createBook,
   deleteBook,
   getBook,
+  illustrateChapter,
+  removeChapterImage,
   writeChapter,
   writeWholeBook,
 } from '../../lib/book';
@@ -13,7 +16,7 @@ import { isRunning, stopFor, useTasks } from '../../lib/tasks';
 import { useStore } from '../../lib/store';
 import type { Book, BookChapter } from '../../lib/types';
 import { Markdown } from '../Markdown';
-import { Empty, Sheet, toast } from '../ui';
+import { Empty, Sheet, Switch, toast } from '../ui';
 
 const STATUS_LABEL: Record<BookChapter['status'], string> = {
   kutilmoqda: 'kutilmoqda',
@@ -39,6 +42,7 @@ function NewBook({ onDone }: { onDone: (id: string) => void }) {
   const [style, setStyle] = useState('');
   const [chapters, setChapters] = useState(10);
   const [words, setWords] = useState(900);
+  const [illustrated, setIllustrated] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -54,6 +58,7 @@ function NewBook({ onDone }: { onDone: (id: string) => void }) {
         style: style.trim(),
         chapters,
         targetWords: words,
+        illustrated,
       });
       toast(`«${book.title}» rejasi tayyor — ${book.chapters.length} bob`);
       onDone(book.id);
@@ -111,6 +116,13 @@ function NewBook({ onDone }: { onDone: (id: string) => void }) {
           />
         </label>
       </div>
+      <Switch
+        on={illustrated}
+        onChange={setIllustrated}
+        label="Har bobga rasm chizilsin"
+        hint="Bob yozilgach unga mos illyustratsiya chiziladi. Rasm token sarflaydi — istamasangiz oʻchiring, keyin qoʻlda ham qoʻshsa boʻladi."
+      />
+
       <button className="btn wide" style={{ marginTop: 10 }} disabled={busy} onClick={() => void submit()}>
         {busy ? 'Reja tuzilmoqda…' : 'Reja tuzish'}
       </button>
@@ -129,6 +141,7 @@ function BookView({ book, onBack }: { book: Book; onBack: () => void }) {
   const [preview, setPreview] = useState<BookChapter | null>(null);
   const [fixing, setFixing] = useState<BookChapter | null>(null);
   const [instruction, setInstruction] = useState('');
+  const [drawing, setDrawing] = useState('');
   const [exporting, setExporting] = useState(false);
 
   const progress = bookProgress(book);
@@ -138,7 +151,7 @@ function BookView({ book, onBack }: { book: Book; onBack: () => void }) {
   const onExport = async (format: DocFormat) => {
     setExporting(false);
     try {
-      toast(await exportDocument(bookMarkdown(book), format, book.title));
+      toast(await exportDocument(bookMarkdown(book), format, book.title, bookImages(book)));
     } catch (err) {
       toast(`Chiqarib boʻlmadi: ${(err as Error).message}`);
     }
@@ -156,6 +169,7 @@ function BookView({ book, onBack }: { book: Book; onBack: () => void }) {
         </div>
         <div className="tiny">
           {progress.done}/{progress.total} bob tayyor · {progress.words.toLocaleString('ru-RU')} soʻz
+          {progress.images ? ` · ${progress.images} rasm` : ''}
         </div>
         <div className="meter" style={{ marginTop: 8 }}>
           <i style={{ width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%` }} />
@@ -185,14 +199,15 @@ function BookView({ book, onBack }: { book: Book; onBack: () => void }) {
         </div>
 
         <div className="section-label">Boblar</div>
-        {book.chapters.map((chapter) => {
+        {book.chapters.map((chapter, index) => {
           const busy = isRunning('kitob', chapter.id);
+          const no = chapter.no ?? index + 1;
           return (
             <div className="cloud-card" key={chapter.id}>
               <div className="between">
                 <div className="grow" onClick={() => chapter.content && setPreview(chapter)}>
                   <b>
-                    {chapter.no}. {chapter.title}
+                    {no}. {chapter.title}
                   </b>
                   <div className="tiny">
                     {chapter.brief}
@@ -209,6 +224,23 @@ function BookView({ book, onBack }: { book: Book; onBack: () => void }) {
                 </div>
               )}
               {chapter.error && <div className="tiny error">{chapter.error}</div>}
+
+              {!!chapter.images?.length && (
+                <div className="img-strip">
+                  {chapter.images.map((image) => (
+                    <img
+                      key={image.id}
+                      src={`data:${image.mimeType};base64,${image.data}`}
+                      alt={image.caption}
+                      onClick={() => {
+                        if (window.confirm('Shu rasm oʻchirilsinmi?')) {
+                          removeChapterImage(book.id, chapter.id, image.id);
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
 
               <div className="row" style={{ marginTop: 8 }}>
                 {busy ? (
@@ -237,6 +269,18 @@ function BookView({ book, onBack }: { book: Book; onBack: () => void }) {
                       <>
                         <button className="btn mini ghost" onClick={() => setPreview(chapter)}>
                           Oʻqish
+                        </button>
+                        <button
+                          className="btn mini ghost"
+                          disabled={drawing === chapter.id}
+                          onClick={async () => {
+                            setDrawing(chapter.id);
+                            const ok = await illustrateChapter(book.id, chapter.id);
+                            setDrawing('');
+                            toast(ok ? 'Rasm qoʻshildi' : 'Rasm chizilmadi');
+                          }}
+                        >
+                          {drawing === chapter.id ? 'Chizilmoqda…' : 'Rasm'}
                         </button>
                         <button
                           className="btn mini ghost"
@@ -272,13 +316,24 @@ function BookView({ book, onBack }: { book: Book; onBack: () => void }) {
       </div>
 
       {preview && (
-        <Sheet title={`${preview.no}. ${preview.title}`} onClose={() => setPreview(null)}>
+        <Sheet title={`${preview.no ?? ''} ${preview.title}`.trim()} onClose={() => setPreview(null)}>
+          {!!preview.images?.length && (
+            <div className="img-strip">
+              {preview.images.map((image) => (
+                <img
+                  key={image.id}
+                  src={`data:${image.mimeType};base64,${image.data}`}
+                  alt={image.caption}
+                />
+              ))}
+            </div>
+          )}
           <Markdown text={preview.content} />
         </Sheet>
       )}
 
       {fixing && (
-        <Sheet title={`${fixing.no}-bobni tuzatish`} onClose={() => setFixing(null)}>
+        <Sheet title={`${fixing.no ?? ''}-bobni tuzatish`} onClose={() => setFixing(null)}>
           <div className="field">
             <label>Nimani oʻzgartirish kerak?</label>
             <textarea

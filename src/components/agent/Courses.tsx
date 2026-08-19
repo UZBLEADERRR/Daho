@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { deleteCourse, generateLesson, markTopicDone } from '../../lib/creations';
+import { setState } from '../../lib/store';
 import { useStore } from '../../lib/store';
 import type { Artifact, Course, CourseTopic } from '../../lib/types';
 import { Back, Check, Play, Refresh, Trash } from '../Icons';
-import { Empty, Sheet, toast } from '../ui';
+import { Empty, Sheet, Switch, toast } from '../ui';
 
 export function Courses({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => void }) {
   const courses = useStore((s) => s.courses);
@@ -123,6 +124,19 @@ function CourseDetail({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Mavzu qidirish…"
           style={{ marginBottom: 12 }}
+        />
+
+        <Switch
+          on={Boolean(course.illustrated)}
+          onChange={(value) =>
+            setState((s) => ({
+              courses: s.courses.map((c) =>
+                c.id === course.id ? { ...c, illustrated: value } : c,
+              ),
+            }))
+          }
+          label="Darslarga rasm chizilsin"
+          hint="Har bir yangi dars uchun mavzuga mos rasm yasaladi. Rasm token sarflaydi, shuning uchun oʻzingiz yoqasiz."
         />
 
         {busyTopic && (

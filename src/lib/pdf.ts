@@ -94,9 +94,65 @@ function writeText(
   state.current.pen.y += opts.gapAfter ?? 6;
 }
 
+/** Hujjatga qoʻyiladigan rasmlar: `daho-img:ID` → yuklangan rasm. */
+export type PdfImages = Record<string, HTMLImageElement>;
+
+/** Rasmlarni oldindan yuklaydi — chizish sinxron boʻlishi kerak. */
+export async function loadPdfImages(
+  sources: Record<string, { data: string; mimeType: string }>,
+): Promise<PdfImages> {
+  const entries = await Promise.all(
+    Object.entries(sources).map(
+      ([id, src]) =>
+        new Promise<[string, HTMLImageElement | null]>((resolve) => {
+          const image = new Image();
+          image.onload = () => resolve([id, image]);
+          image.onerror = () => resolve([id, null]);
+          image.src = `data:${src.mimeType};base64,${src.data}`;
+        }),
+    ),
+  );
+  const out: PdfImages = {};
+  for (const [id, image] of entries) if (image) out[id] = image;
+  return out;
+}
+
+/** Rasmni sahifaga joylaydi; joy yetmasa yangi sahifaga oʻtadi. */
+function drawPicture(
+  state: { pages: HTMLCanvasElement[]; current: { canvas: HTMLCanvasElement; pen: Pen } },
+  image: HTMLImageElement,
+  caption: string,
+): void {
+  const maxWidth = PAGE_W - MARGIN * 2;
+  const ratio = image.naturalHeight / Math.max(1, image.naturalWidth) || 0.66;
+  let width = maxWidth;
+  let height = width * ratio;
+  const maxHeight = PAGE_H - MARGIN * 2 - 30;
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height / ratio;
+  }
+
+  if (state.current.pen.y + height > PAGE_H - MARGIN) {
+    state.pages.push(state.current.canvas);
+    state.current = newPage();
+  }
+
+  const x = MARGIN + (maxWidth - width) / 2;
+  state.current.pen.ctx.drawImage(image, x, state.current.pen.y, width, height);
+  state.current.pen.y += height + 6;
+
+  if (caption.trim()) {
+    writeText(state, caption.trim(), { size: 9.5, color: '#6c6c78', gapAfter: 12 });
+  } else {
+    state.current.pen.y += 10;
+  }
+}
+
 function drawBlock(
   state: { pages: HTMLCanvasElement[]; current: { canvas: HTMLCanvasElement; pen: Pen } },
   block: Block,
+  images: PdfImages = {},
 ): void {
   switch (block.type) {
     case 'h1':
@@ -143,6 +199,11 @@ function drawBlock(
         lineHeight: 13,
       });
       break;
+    case 'img': {
+      const picture = images[block.id];
+      if (picture) drawPicture(state, picture, block.caption);
+      break;
+    }
     case 'hr': {
       const { ctx, y } = state.current.pen;
       ctx.strokeStyle = '#d8d8de';
@@ -247,20 +308,20 @@ function assemblePdf(images: Uint8Array[], width: number, height: number): Uint8
 }
 
 /** Markdown matndan .pdf fayl bayti yasaydi. */
-export function buildPdf(markdown: string, title?: string): Uint8Array {
+export function buildPdf(markdown: string, title?: string, images: PdfImages = {}): Uint8Array {
   const blocks = parseDocument(markdown);
   const state = { pages: [] as HTMLCanvasElement[], current: newPage() };
 
   if (title) {
     writeText(state, title, { size: 26, bold: true, gapAfter: 16 });
   }
-  for (const block of blocks) drawBlock(state, block);
+  for (const block of blocks) drawBlock(state, block, images);
   state.pages.push(state.current.canvas);
 
-  const images = state.pages.map((canvas) =>
+  const pages = state.pages.map((canvas) =>
     dataUrlToBytes(canvas.toDataURL('image/jpeg', 0.86)),
   );
-  return assemblePdf(images, PAGE_W, PAGE_H);
+  return assemblePdf(pages, PAGE_W, PAGE_H);
 }
 
 /** Faqat sarlavhani olish uchun yordamchi (eksport nomi uchun). */

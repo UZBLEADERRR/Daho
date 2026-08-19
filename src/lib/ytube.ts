@@ -55,6 +55,11 @@ export function findVideos(text: string): VideoRef[] {
   return out;
 }
 
+/** YouTube qidiruv sahifasi — qidiruv ishlamay qolganda zaxira yoʻl. */
+export function searchUrl(query: string): string {
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+}
+
 export function embedUrl(ref: VideoRef): string {
   const params = new URLSearchParams({ rel: '0', playsinline: '1' });
   if (ref.start) params.set('start', String(ref.start));

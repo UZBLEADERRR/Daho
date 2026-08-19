@@ -511,16 +511,36 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
       </div>
 
       <div className="field">
-        <label>Shrift oʻlchami: {Math.round(settings.fontScale * 100)}%</label>
+        <label>Matn oʻlchami: {Math.round(settings.fontScale * 100)}%</label>
         <input
           type="range"
           min={0.85}
-          max={1.3}
+          max={2}
           step={0.05}
           value={settings.fontScale}
           onChange={(e) => updateSettings({ fontScale: Number(e.target.value) })}
           style={{ padding: 0, background: 'none', border: 'none' }}
         />
+        <div className="row" style={{ marginTop: 8 }}>
+          {[0.9, 1, 1.2, 1.5, 1.8].map((value) => (
+            <button
+              key={value}
+              className={
+                Math.abs(settings.fontScale - value) < 0.03 ? 'btn mini' : 'btn mini ghost'
+              }
+              onClick={() => updateSettings({ fontScale: value })}
+            >
+              {Math.round(value * 100)}%
+            </button>
+          ))}
+        </div>
+        <div
+          className="cloud-card"
+          style={{ marginTop: 10, fontSize: `${(15 * settings.fontScale).toFixed(1)}px` }}
+        >
+          Suhbatdagi matn shunday koʻrinadi. Kattalashtirsangiz javoblar,
+          konspekt va kitob matni ham shu oʻlchamda boʻladi.
+        </div>
       </div>
 
       <div className="section-label" style={{ padding: '10px 0 6px' }}>

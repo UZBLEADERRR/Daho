@@ -1,4 +1,4 @@
-import { streamGenerate } from './gemini';
+import { generateImage, streamGenerate } from './gemini';
 import { blocksEmbedding, normalizeUrl } from './openlink';
 import { getState, setState } from './store';
 import type { Artifact, Course, CourseTopic, MiniApp } from './types';
@@ -129,7 +129,80 @@ tasdiqla va qanday video tayyorlanayotganini ayt. Kod yoki ssenariy yozma.`;
 /*  Kurs darslari                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Dars koʻrinishlari.
+ *
+ * Avval har bir dars bir xil qolipda chiqardi va zerikarli edi. Endi mavzu
+ * tartibiga qarab qolip almashadi — kurs ichida darslar bir-biriga
+ * oʻxshamaydi, lekin bir xil sifatda qoladi.
+ */
+const LESSON_LAYOUTS = [
+  {
+    name: 'Kartochkalar',
+    brief:
+      'Mavzuni 4-6 ta rangli kartochkaga boʻl. Har kartochkada: katta ikonka (emoji yoki SVG), ' +
+      'qisqa sarlavha, 2-3 jumla. Kartochkalar bosilganda kengaysin (ochiladigan tafsilot).',
+  },
+  {
+    name: 'Vaqt chizigʻi',
+    brief:
+      'Mavzuni bosqichma-bosqich vaqt chizigʻi (timeline) koʻrinishida ber: chapda vertikal ' +
+      'chiziq va nuqtalar, oʻngda qadam izohi. Pastga scroll qilganda qadamlar jonlansin.',
+  },
+  {
+    name: 'Flesh-kartalar',
+    brief:
+      'Asosiy tushunchalarni oʻgiriladigan (flip) kartalar qil: old tomonda savol/atama, ' +
+      'orqasida javob. Kamida 6 ta karta, keyin ularga asoslangan test.',
+  },
+  {
+    name: 'Laboratoriya',
+    brief:
+      'Interaktiv simulyator yasa: slayder yoki tugmalar bilan qiymat oʻzgartirilsin va ' +
+      'natija jonli oʻzgarsin (grafik, jadval yoki SVG). Talaba oʻzi «oʻynab» tushunsin.',
+  },
+  {
+    name: 'Hikoya',
+    brief:
+      'Mavzuni real hayotdagi qisqa hikoya orqali tushuntir: muammo → urinish → yechim. ' +
+      'Hikoya boʻlaklari orasiga «shu yerda nima boʻldi?» degan kichik savollar qoʻy.',
+  },
+  {
+    name: 'Infografika',
+    brief:
+      'Katta raqamlar, ulush doiralari va SVG diagrammalar bilan infografika uslubida ber. ' +
+      'Har bir raqam ostida bir jumlalik izoh boʻlsin.',
+  },
+  {
+    name: 'Taqqoslash',
+    brief:
+      'Ikki (yoki uch) yondashuvni yonma-yon ustunlarda taqqosla: qachon qaysi biri ' +
+      'toʻgʻri, xato tushunchalar, «buni qilma / buni qil» juftliklari.',
+  },
+  {
+    name: 'Sayohat',
+    brief:
+      'Darsni qadamlarga bo\'lib, yuqorida progress chiziq bilan «sayohat» qil: ' +
+      'har qadamda kichik vazifa, bajarilgach keyingi qadam ochiladi.',
+  },
+];
+
+/** Har darsga oʻz urgʻu rangi — koʻrinish bir xil boʻlib qolmasin. */
+const LESSON_ACCENTS = ['#8b7cf6', '#0ea5a5', '#e07a2f', '#199e70', '#d55181', '#3987e5', '#c98500', '#e05555'];
+
 function lessonPrompt(course: Course, topic: CourseTopic): string {
+  const index = Math.max(0, course.topics.findIndex((t) => t.id === topic.id));
+  const layout = LESSON_LAYOUTS[index % LESSON_LAYOUTS.length];
+  const accent = LESSON_ACCENTS[index % LESSON_ACCENTS.length];
+  return lessonBody(course, topic, layout, accent);
+}
+
+function lessonBody(
+  course: Course,
+  topic: CourseTopic,
+  layout: { name: string; brief: string },
+  accent: string,
+): string {
   return `Sen "${course.title}" kursining oʻqituvchisisan. Soha: ${course.field}. ` +
     `Daraja: ${course.level}. Talabaning maqsadi: ${course.goal || 'sohani puxta oʻzlashtirish'}.
 
@@ -138,6 +211,11 @@ ${topic.summary ? `Nima oʻrganiladi: ${topic.summary}` : ''}
 
 Shu mavzu boʻyicha BITTA toʻliq, mustaqil ishlaydigan HTML dars sahifasini yoz.
 Faqat \`\`\`html bloki qaytar, boshqa hech qanday matn yozma.
+
+## Bu darsning KOʻRINISHI: «${layout.name}»
+${layout.brief}
+Bu koʻrinishni jiddiy qabul qil — dars boshqa darslarga oʻxshamasin.
+Urgʻu rangi: ${accent}. Shu rangdan tugma, chiziq va urgʻularda foydalan.
 
 Dars sahifasi majburiy tarkibi:
 1. Sarlavha va bir jumlalik maqsad.
@@ -152,7 +230,9 @@ Dars sahifasi majburiy tarkibi:
 Texnik talablar:
 - Barcha CSS va JS shu faylda. Tashqi CDN, shrift, rasm ISHLATMA.
 - Telefon ekraniga moslashgan, kattа tugmalar, bir ustunli tartib.
-- Qorongʻi fon (#0e0e12), yorugʻ matn (#ededf0), urgʻu rangi #8b7cf6.
+- Qorongʻi fon (#0e0e12), yorugʻ matn (#ededf0), urgʻu rangi ${accent}.
+- Sahifa CHIROYLI boʻlsin: yumshoq soyalar, radiusli burchaklar, boʻsh joy (havo),
+  sarlavhalar ierarxiyasi, silliq oʻtishlar (transition). Bir xil kulrang devor boʻlmasin.
 - Hamma matn oʻzbek tilida (lotin yozuvi).
 - Sahifa uzun boʻlsa boʻlimlarni yigʻiladigan qilma — talaba pastga scroll qilsin.`;
 }
@@ -161,6 +241,47 @@ Texnik talablar:
  * Mavzu uchun interaktiv dars yaratadi va uni artifact sifatida saqlaydi.
  * Yaratilgan artifact id sini qaytaradi.
  */
+/**
+ * Darsga mavzuga mos rasm chizib, sahifaning boshiga qoʻyadi.
+ * Faqat kurs sozlamasida rasm yoqilgan boʻlsa chaqiriladi.
+ */
+async function illustrateLesson(
+  course: Course,
+  topic: CourseTopic,
+  html: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const { settings } = getState();
+  try {
+    const result = await generateImage(
+      settings.apiKey,
+      settings.imageModel,
+      `«${course.title}» kursining «${topic.title}» darsi uchun illyustratsiya chiz. ` +
+        `${topic.summary || ''}\n` +
+        'Uslub: toza, zamonaviy, qorongʻi fonga mos, yumshoq ranglar, oddiy shakllar. ' +
+        'Rasmda YOZUV, harf yoki raqam BOʻLMASIN.',
+      [],
+      signal,
+    );
+    const picture = result.images[0];
+    if (!picture) return html;
+
+    const figure =
+      `<figure style="margin:0 0 18px;border-radius:16px;overflow:hidden;` +
+      `box-shadow:0 10px 30px rgba(0,0,0,.35)">` +
+      `<img src="data:${picture.mimeType || 'image/png'};base64,${picture.data}" ` +
+      `alt="${topic.title.replace(/"/g, '')}" style="width:100%;display:block">` +
+      `</figure>`;
+
+    // Sarlavhadan keyin qoʻyamiz, boʻlmasa <body> boshiga.
+    if (/<\/h1>/i.test(html)) return html.replace(/<\/h1>/i, `</h1>${figure}`);
+    if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, (m) => `${m}${figure}`);
+    return figure + html;
+  } catch {
+    return html;
+  }
+}
+
 export async function generateLesson(
   course: Course,
   topic: CourseTopic,
@@ -183,8 +304,13 @@ export async function generateLesson(
   });
 
   const match = text.match(/```html\s*\n([\s\S]*?)```/i) ?? text.match(/```\s*\n([\s\S]*?)```/);
-  const html = (match?.[1] ?? text).trim();
+  let html = (match?.[1] ?? text).trim();
   if (html.length < 200) throw new Error('Dars yaratilmadi — qaytadan urinib koʻring.');
+
+  if (course.illustrated) {
+    onProgress?.(html.length);
+    html = await illustrateLesson(course, topic, html, signal);
+  }
 
   const artifact: Artifact = {
     id: uid('a_'),

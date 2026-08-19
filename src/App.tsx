@@ -61,6 +61,8 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', accent);
+    // Suhbat matni shu oʻzgaruvchi orqali kattalashadi (px emas, sozlanadigan).
+    document.documentElement.style.setProperty('--chat-font', `${(15 * fontScale).toFixed(1)}px`);
     document.documentElement.style.fontSize = `${Math.round(16 * fontScale)}px`;
   }, [accent, fontScale]);
 

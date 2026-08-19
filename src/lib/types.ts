@@ -209,6 +209,8 @@ export interface Course {
   goal: string;
   level: string;
   topics: CourseTopic[];
+  /** Darslarga rasm chizilsinmi (foydalanuvchi roziligi bilan) */
+  illustrated?: boolean;
   createdAt: number;
 }
 
@@ -282,6 +284,14 @@ export interface VideoProject {
 
 export type ChapterStatus = 'kutilmoqda' | 'yozilmoqda' | 'tayyor' | 'chala' | 'xato';
 
+export interface BookImage {
+  id: string;
+  /** base64, prefikssiz */
+  data: string;
+  mimeType: string;
+  caption: string;
+}
+
 export interface BookChapter {
   id: string;
   /** Tartib raqami (1 dan) */
@@ -292,6 +302,8 @@ export interface BookChapter {
   content: string;
   words: number;
   status: ChapterStatus;
+  /** Bob uchun chizilgan rasmlar */
+  images?: BookImage[];
   error?: string;
   updatedAt: number;
 }
@@ -304,6 +316,8 @@ export interface Book {
   style: string;
   /** Har bir bob uchun taxminiy soʻz soni */
   targetWords: number;
+  /** Har bobga rasm chizilsinmi (foydalanuvchi roziligi) */
+  illustrated: boolean;
   chapters: BookChapter[];
   createdAt: number;
   updatedAt: number;
