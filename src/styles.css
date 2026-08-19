@@ -2367,74 +2367,226 @@ textarea {
   min-width: 0;
 }
 
-@media (min-width: 960px) {
+@media (min-width: 900px) {
+  :root {
+    /* Oʻqish uchun qulay ustun kengligi */
+    --col: 720px;
+    --col-wide: 980px;
+  }
+
+  /* ---- Yon panel ---- */
+
   .sidebar.pinned {
     position: relative;
     inset: auto;
-    width: 276px;
-    flex: 0 0 276px;
+    width: 284px;
+    flex: 0 0 284px;
     animation: none;
     padding-top: 0;
+    background: color-mix(in srgb, var(--surface) 72%, var(--bg));
   }
+
+  .sidebar-head {
+    height: 58px;
+  }
+
+  .sidebar-body {
+    scrollbar-width: thin;
+  }
+
+  .side-link,
+  .chat-row {
+    border-radius: 11px;
+  }
+
+  /* ---- Yuqori qator ---- */
 
   .topbar {
-    padding: 0 14px;
+    height: 58px;
+    padding: 0 16px;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px);
   }
 
-  /* Oʻqish qulay boʻlishi uchun matn kengligi cheklanadi */
-  .msgs,
-  .composer > *,
-  .seg,
+  .tabs {
+    margin: 0 auto;
+    flex: 0 0 auto;
+  }
+
+
+  /* ---- Matn ustuni ---- */
+
+  .msgs {
+    max-width: var(--col);
+    margin: 0 auto;
+    padding: 22px 16px 10px;
+    gap: 20px;
+  }
+
+  .msg.user {
+    max-width: 78%;
+  }
+
+  .seg {
+    max-width: var(--col-wide);
+    margin: 0 auto;
+    padding: 12px 18px;
+  }
+
   .pad {
-    max-width: 900px;
+    max-width: var(--col-wide);
+    margin: 0 auto;
+    padding: 18px;
+  }
+
+  /* ---- Yozish maydoni: uzun emas, ixcham kartochka ---- */
+
+  .composer {
+    padding: 10px 16px 18px;
+    background: linear-gradient(to top, var(--bg) 62%, transparent);
+  }
+
+  .composer > * {
+    max-width: var(--col);
     margin-left: auto;
     margin-right: auto;
   }
 
-  .composer {
-    padding: 8px 14px 14px;
+  .composer-box {
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28);
+    padding: 6px;
   }
 
-  /* Modal oynalar markazda, kartochka koʻrinishida */
+  .composer-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28),
+      0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .composer textarea {
+    padding: 9px 6px;
+  }
+
+  /* ---- Oynalar ---- */
+
   .modal-scrim {
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: 28px;
   }
 
   .sheet {
-    border-radius: 18px;
+    border-radius: 20px;
     border: 1px solid var(--line);
-    max-width: 720px;
+    max-width: 680px;
     max-height: 86vh;
-    padding-bottom: 20px;
-    animation: fade 0.16s ease;
+    padding: 20px 22px 22px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+    animation: pop 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .viewer-head {
+    padding: 0 14px;
   }
 
   .stat-grid {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
-}
 
-@media (min-width: 1440px) {
-  .msgs,
-  .composer > *,
-  .seg,
-  .pad {
-    max-width: 1040px;
+  /* ---- Kartochkalar jonliroq ---- */
+
+  .cloud-card,
+  .plan-card,
+  .artifact-card,
+  .app-tile,
+  .card {
+    transition: border-color 0.16s, transform 0.16s, box-shadow 0.16s;
+  }
+
+  .taskstrip {
+    padding-left: 18px;
+    padding-right: 18px;
   }
 }
 
-/* Sichqoncha bor qurilmalarda ustiga borilganda belgilanadi */
+@media (min-width: 1400px) {
+  :root {
+    --col: 780px;
+    --col-wide: 1120px;
+  }
+}
+
+/* Ingichka, mavzuga mos aylantirgich */
+@media (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (hover: hover) {
   .side-link:hover,
   .btn.ghost:hover,
-  .icon-btn:hover {
+  .icon-btn:hover,
+  .chat-row:hover {
     background: var(--surface-2);
   }
 
-  .scroll {
-    scrollbar-width: thin;
+  .cloud-card:hover,
+  .plan-card:hover,
+  .artifact-card:hover {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  }
+
+  .artifact-card:hover,
+  .app-tile:hover {
+    transform: translateY(-1px);
+  }
+
+  .quick-site:hover,
+  .seg button:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .btn:hover:not(:disabled) {
+    filter: brightness(1.06);
+  }
+
+  .yt-card:hover .yt-play svg {
+    background: rgba(0, 0, 0, 0.8);
   }
 }
 
@@ -2482,7 +2634,7 @@ textarea {
   cursor: zoom-in;
 }
 
-@media (min-width: 960px) {
+@media (min-width: 900px) {
   .img-strip img {
     height: 190px;
     max-width: 420px;
@@ -2658,4 +2810,31 @@ textarea {
   color: var(--muted);
   background: var(--surface-2);
   flex: 0 0 auto;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+/* Keng ekranda yuqori qatordagi sarlavha */
+.topbar-title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 560;
+  color: var(--muted);
+}
+
+/* Keng ekranda: sarlavha chapda, tugmalar oʻngda — tablar aynan markazda */
+@media (min-width: 900px) {
+  .topbar-right {
+    flex: 1 1 0;
+    justify-content: flex-end;
+  }
 }

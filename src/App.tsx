@@ -13,7 +13,7 @@ import { VideoStudio } from './components/VideoStudio';
 import { Browser } from './components/Browser';
 import { AccountSheet } from './components/cloud/AccountSheet';
 import { AdminPanel } from './components/cloud/AdminPanel';
-import type { AgentSection } from './components/agent/sections';
+import { SECTION_LABEL, type AgentSection } from './components/agent/sections';
 import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
 import { onOpenSite } from './lib/browserbus';
@@ -29,10 +29,10 @@ type Tab = 'chat' | 'agent' | 'kod';
 /** Keng ekranmi — desktop koʻrinishi uchun (yon panel doim ochiq). */
 function useWideScreen(): boolean {
   const [wide, setWide] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 960px)').matches,
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 900px)').matches,
   );
   useEffect(() => {
-    const media = window.matchMedia('(min-width: 960px)');
+    const media = window.matchMedia('(min-width: 900px)');
     const onChange = () => setWide(media.matches);
     media.addEventListener('change', onChange);
     return () => media.removeEventListener('change', onChange);
@@ -45,6 +45,8 @@ export default function App() {
   const accent = useStore((s) => s.settings.accent);
   const fontScale = useStore((s) => s.settings.fontScale);
   const hasKey = useStore((s) => Boolean(s.settings.apiKey));
+  const chats = useStore((s) => s.chats);
+  const activeChatId = useStore((s) => s.activeChatId);
   const cloud = useCloud();
   const wide = useWideScreen();
 
@@ -168,10 +170,18 @@ export default function App() {
 
       <div className="app">
         <header className="topbar">
-          {!wide && (
+          {!wide ? (
             <button className="icon-btn" onClick={() => setSidebar(true)} aria-label="Menyu">
               <Menu />
             </button>
+          ) : (
+            <div className="topbar-title">
+              {tab === 'chat'
+                ? (chats.find((c) => c.id === activeChatId)?.title ?? 'Yangi suhbat')
+                : tab === 'agent'
+                  ? SECTION_LABEL[section]
+                  : 'Daho Code'}
+            </div>
           )}
 
           <div className="tabs">
@@ -186,24 +196,26 @@ export default function App() {
             </button>
           </div>
 
-          {cloudEnabled && (
-            <button
-              className={cloud.status === 'kirgan' ? 'icon-btn on' : 'icon-btn'}
-              onClick={() => setAccountOpen(true)}
-              aria-label="Daho Cloud"
-              title={cloud.account?.plan?.name ?? 'Daho Cloud'}
-            >
-              <Cloud size={19} />
-            </button>
-          )}
+          <div className="topbar-right">
+            {cloudEnabled && (
+              <button
+                className={cloud.status === 'kirgan' ? 'icon-btn on' : 'icon-btn'}
+                onClick={() => setAccountOpen(true)}
+                aria-label="Daho Cloud"
+                title={cloud.account?.plan?.name ?? 'Daho Cloud'}
+              >
+                <Cloud size={19} />
+              </button>
+            )}
 
-          <button
-            className="icon-btn"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Sozlamalar"
-          >
-            <SettingsIcon size={20} />
-          </button>
+            <button
+              className="icon-btn"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Sozlamalar"
+            >
+              <SettingsIcon size={20} />
+            </button>
+          </div>
         </header>
 
         <main className="main">
