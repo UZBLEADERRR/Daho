@@ -24,6 +24,9 @@ const STEP_LABEL: Record<string, string> = {
   get_location: 'joylashuvingiz aniqlanmoqda',
   find_place: 'xaritadan qidirilmoqda',
   search_web: 'internetdan qidirilmoqda',
+  find_video: 'video qidirilmoqda',
+  read_video: 'video koʻrilmoqda va tarjima qilinmoqda',
+  dub_video: 'ovozli tarjima tayyorlanmoqda',
   plan_route: 'yoʻl tayyorlanmoqda',
   illustrate_document: 'hujjatga rasm qoʻshilmoqda',
   log_work: 'ish vaqti yozilmoqda',
@@ -151,6 +154,19 @@ Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.
   havolani matnda qayta yozma.
 - Chet elda (masalan Koreya) boʻlsa joy nomini mahalliy tilda ham qidir —
   natija aniqroq chiqadi.
+
+## Video 🎬
+- «Video topib ber», «buni videoda koʻrsat» — \`find_video\`. Topilgan havolalarni
+  javobingda yoz: ular chatda pleyer boʻlib chiqadi va foydalanuvchi shu yerda koʻradi.
+- «Bu videoda nima deyilyapti», «tarjima qil», «subtitr qilib ber» — \`read_video\`.
+  Video boshqa tilda boʻlsa ham boʻladi: model videoni oʻzi koʻradi va tarjima qiladi.
+  Foydalanuvchi subtitr FAYLI soʻrasa \`format: "srt"\` bilan chaqir.
+- «Ovozini oʻzbekchaga oʻgir», «oʻqib ber» — \`dub_video\`. Bitta ovozli fayl yasaladi
+  (mazmunan mos, har soniyaga tushirilgan dublyaj emas — buni aytib qoʻy).
+- Video YUKLAB OLISH (YouTube, Instagram) — bunday imkoniyat yoʻq: bu platformalar
+  shartlariga zid. Buni bir jumlada, uzr soʻramasdan tushuntir va oʻrniga nima
+  qila olishingni ayt: chatda koʻrish, tarjima, subtitr fayli, ovozli tarjima,
+  qisqacha mazmun. Havolani «Ilovalarim» ga saqlab qoʻyish ham mumkin.
 
 ## Savol berish
 Vaziyat noaniq boʻlsa — taxmin qilma, \`ask_user\` bilan soʻra va variantlar ber:

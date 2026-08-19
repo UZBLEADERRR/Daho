@@ -20,6 +20,8 @@ function safeName(title: string): string {
 
 function mimeFor(artifact: Artifact): string {
   if (artifact.kind === 'image') return artifact.mimeType ?? 'image/png';
+  if (artifact.kind === 'audio') return artifact.mimeType ?? 'audio/wav';
+  if (artifact.lang === 'srt') return 'application/x-subrip';
   if (artifact.lang === 'html') return 'text/html';
   if (artifact.lang === 'json') return 'application/json';
   return 'text/plain';
@@ -45,7 +47,7 @@ function webDownload(filename: string, content: string, mime: string, isBase64: 
 export async function saveArtifact(artifact: Artifact): Promise<string> {
   const filename = `${safeName(artifact.title)}.${fileExtension(artifact)}`;
   const mime = mimeFor(artifact);
-  const isBase64 = artifact.kind === 'image';
+  const isBase64 = artifact.kind === 'image' || artifact.kind === 'audio';
 
   if (!Capacitor.isNativePlatform()) {
     webDownload(filename, artifact.content, mime, isBase64);

@@ -42,13 +42,13 @@ export interface Chat {
   updatedAt: number;
 }
 
-export type ArtifactKind = 'html' | 'code' | 'image' | 'markdown';
+export type ArtifactKind = 'html' | 'code' | 'image' | 'markdown' | 'audio';
 
 export interface Artifact {
   id: string;
   kind: ArtifactKind;
   title: string;
-  /** html/code/markdown uchun matn; image uchun base64 */
+  /** html/code/markdown uchun matn; image va audio uchun base64 */
   content: string;
   lang?: string;
   mimeType?: string;

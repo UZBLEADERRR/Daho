@@ -4,6 +4,8 @@ import type { Attachment } from './types';
 export interface GeminiPart {
   text?: string;
   inlineData?: { mimeType: string; data: string };
+  /** Tashqi fayl — masalan YouTube havolasi (modelning oʻzi koʻradi) */
+  fileData?: { fileUri: string; mimeType?: string };
   functionCall?: { name: string; args: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
   /**
@@ -385,6 +387,64 @@ export async function generateJson<T>(
     const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (fenced) return JSON.parse(fenced[1]) as T;
     throw new GeminiError('Model tushunarsiz javob qaytardi. Qaytadan urining.', 0);
+  }
+}
+
+/**
+ * Video (masalan YouTube havolasi) boʻyicha soʻrov.
+ *
+ * Gemini YouTube havolasini toʻgʻridan-toʻgʻri oʻqiy oladi: videoni yuklab
+ * olish yoki subtitr faylini qidirish shart emas. Shu bilan tarjima,
+ * qisqacha mazmun va vaqt belgilari bitta soʻrovda olinadi.
+ */
+export async function generateFromVideo<T>(
+  apiKey: string,
+  model: string,
+  videoUrl: string,
+  prompt: string,
+  schema?: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<T> {
+  ensureAccess(apiKey);
+
+  const generationConfig: Record<string, unknown> = { temperature: 0.3 };
+  if (schema) {
+    generationConfig.responseMimeType = 'application/json';
+    generationConfig.responseSchema = schema;
+  }
+
+  const res = await withRetry(async () => {
+    const r = await aiFetch(apiKey, `/models/${encodeURIComponent(model)}:generateContent`, {
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ fileData: { fileUri: videoUrl } }, { text: prompt }],
+          },
+        ],
+        generationConfig,
+      }),
+      signal,
+    }).catch(asGeminiError);
+    await assertOk(r);
+    return r;
+  }, signal, 4);
+
+  const data = await res.json();
+  const parts: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
+  const raw = parts
+    .filter((p) => !p.thought)
+    .map((p) => p.text ?? '')
+    .join('')
+    .trim();
+
+  if (!schema) return raw as unknown as T;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenced) return JSON.parse(fenced[1]) as T;
+    throw new GeminiError('Video boʻyicha javob tushunarsiz keldi.', 0);
   }
 }
 

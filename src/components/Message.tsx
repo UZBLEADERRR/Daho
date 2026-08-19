@@ -12,6 +12,8 @@ import { Copy, Download, Refresh, Speaker } from './Icons';
 import { RouteCard } from './RouteCard';
 import { ToolLine, splitByTools } from './ToolLine';
 import { VideoCard } from './VideoStudio';
+import { YouTubeCard } from './VideoLink';
+import { findVideos } from '../lib/ytube';
 import { Sheet, toast } from './ui';
 
 interface Props {
@@ -47,6 +49,9 @@ export function MessageView({
       .map((id) => artifacts.find((a) => a.id === id))
       .filter((a): a is Artifact => Boolean(a));
   }, [message.artifactIds, artifacts]);
+
+  // Javobdagi YouTube havolalari — chatning oʻzida pleyer boʻlib chiqadi.
+  const videoLinks = useMemo(() => findVideos(message.text), [message.text]);
 
   // Rasmlar chatda oʻzi koʻrinadi, qolganlari kod bloklariga bogʻlanadi.
   const pictures = useMemo(() => linked.filter((a) => a.kind === 'image'), [linked]);
@@ -160,6 +165,10 @@ export function MessageView({
             <ToolLine key={ci} call={call} />
           ))}
         </div>
+      ))}
+
+      {videoLinks.map((v) => (
+        <YouTubeCard key={v.id} video={v} />
       ))}
 
       {pictures.map((img) => (

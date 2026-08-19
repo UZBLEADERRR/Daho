@@ -2553,3 +2553,81 @@ textarea {
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
 }
+
+/* ---------- YouTube ---------- */
+
+.yt-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  aspect-ratio: 16 / 9;
+}
+
+.yt-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.yt-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+
+.yt-play svg {
+  background: rgba(0, 0, 0, 0.62);
+  border-radius: 50%;
+  padding: 13px;
+  width: 52px;
+  height: 52px;
+}
+
+.yt-tag {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+}
+
+.yt-frame {
+  margin: 8px 0;
+}
+
+.yt-frame iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 14px;
+  background: #000;
+}
+
+/* ---------- Ovozli artifact ---------- */
+
+.audio-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  margin: 8px 0;
+}
+
+.audio-card audio {
+  width: 100%;
+  height: 36px;
+}

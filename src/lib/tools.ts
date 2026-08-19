@@ -22,6 +22,7 @@ import {
   type Spot,
   type TravelMode,
 } from './place';
+import { synthesize } from './speech';
 import { getState, setState } from './store';
 import { DAYS } from './types';
 import type {
@@ -38,6 +39,7 @@ import type {
   TimeLog,
 } from './types';
 import { fmtDuration, todayISO, uid, weekdayIndex } from './utils';
+import { findVideos, languageName, parseYouTube, readVideo, toNarration, toSrt } from './ytube';
 
 export interface ToolOutcome {
   ok: boolean;
@@ -289,6 +291,55 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'find_video',
+    description:
+      'Mavzu boʻyicha YouTube dan video topadi. Foydalanuvchi «video topib ber», ' +
+      '«videosini koʻrsat», «tushuntiruvchi video» desa shuni chaqir. ' +
+      'Topilgan havolalar chatda pleyer boʻlib chiqadi — havolani matnda qayta yozma.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: { type: 'STRING', description: 'Nima haqida video kerak' },
+        language: {
+          type: 'STRING',
+          description: 'Qaysi tildagi video afzal (masalan «oʻzbek», «rus», «ingliz»). Boʻsh boʻlsa farqi yoʻq.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'read_video',
+    description:
+      'YouTube videoni koʻrib chiqadi: mazmunini yozadi va subtitrini tarjima qiladi. ' +
+      'Foydalanuvchi «bu videoda nima deyilyapti», «tarjima qil», «subtitr qilib ber» desa ishlat. ' +
+      'format="srt" boʻlsa subtitr fayli ham yasaladi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'YouTube havolasi' },
+        lang: { type: 'STRING', description: 'Qaysi tilga tarjima qilinsin: uz-UZ, ru-RU, en-US, tr-TR' },
+        format: { type: 'STRING', description: '«matn» (standart) yoki «srt»' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'dub_video',
+    description:
+      'YouTube videoni soʻralgan tilda BITTA ovozli fayl qilib oʻqib beradi ' +
+      '(videoning ovozini almashtirmaydi — alohida audio yasaladi). ' +
+      'Foydalanuvchi «videoni tarjima qilib oʻqib ber», «ovozini oʻzbekchaga oʻgir» desa ishlat.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'YouTube havolasi' },
+        lang: { type: 'STRING', description: 'Ovoz tili: uz-UZ, ru-RU, en-US, tr-TR' },
+      },
+      required: ['url'],
     },
   },
   {
@@ -621,6 +672,160 @@ export async function executeTool(
         return {
           ok: false,
           summary: `Qidiruv ishlamadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'find_video': {
+      const query = str(args.query);
+      if (!query) return { ok: false, summary: 'Mavzu berilmadi', payload: { error: 'query_yoq' } };
+      const language = str(args.language);
+      const { settings } = getState();
+      try {
+        const ask =
+          `YouTube dan «${query}» mavzusidagi eng foydali 3-5 ta videoni top` +
+          (language ? ` (${language} tilida boʻlsa afzal)` : '') +
+          `. Har biri uchun toʻliq youtube.com/watch?v=... havolasini, sarlavhasini va ` +
+          `nima haqidaligini bir jumlada yoz. Faqat haqiqatan mavjud videolarni ber.`;
+        const answer = await searchAnswer(settings.apiKey, settings.model, ask, ctx.signal);
+        const found = [
+          ...findVideos(answer.text),
+          ...findVideos(answer.sources.map((s) => s.url).join(' ')),
+        ];
+        const unique = found.filter(
+          (v, i) => found.findIndex((o) => o.id === v.id) === i,
+        );
+        if (!unique.length) {
+          return {
+            ok: false,
+            summary: 'Video topilmadi',
+            payload: { natija: answer.text, izoh: 'YouTube havolasi topilmadi' },
+          };
+        }
+        return {
+          ok: true,
+          summary: `${unique.length} ta video topildi`,
+          payload: {
+            izoh: answer.text,
+            videolar: unique.map((v) => v.url),
+            koʻrsatma:
+              'Havolalarni javobingda yoz — ular chatda pleyer boʻlib chiqadi. ' +
+              'Har biri haqida bir jumla ayt.',
+          },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Video qidiruvi ishlamadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'read_video': {
+      const ref = parseYouTube(str(args.url));
+      if (!ref) {
+        return { ok: false, summary: 'YouTube havolasi notoʻgʻri', payload: { error: 'url_yoq' } };
+      }
+      const lang = str(args.lang, getState().settings.ttsLang || 'uz-UZ');
+      const wantSrt = /srt|subtitr|fayl/i.test(str(args.format));
+
+      try {
+        const read = await readVideo(ref, lang, ctx.signal);
+        const artifacts: Artifact[] = [];
+
+        if (wantSrt && read.captions.length) {
+          artifacts.push({
+            id: uid('art'),
+            kind: 'code',
+            lang: 'srt',
+            title: `${read.title || 'Video'} — subtitr (${languageName(lang)})`,
+            content: toSrt(read.captions),
+            createdAt: Date.now(),
+          });
+        }
+
+        const preview = read.captions
+          .slice(0, 40)
+          .map((c) => `[${Math.floor(c.start / 60)}:${String(Math.floor(c.start % 60)).padStart(2, '0')}] ${c.text}`)
+          .join('\n');
+
+        return {
+          ok: true,
+          summary: `Video oʻqildi: ${read.title || ref.id}`,
+          artifacts,
+          payload: {
+            sarlavha: read.title,
+            asl_til: read.language,
+            mazmuni: read.summary,
+            subtitr_boʻlaklari: read.captions.length,
+            tarjima_boshi: preview,
+            fayl: wantSrt && artifacts.length ? '.srt fayli tayyor' : undefined,
+            koʻrsatma:
+              'Mazmunini oʻz soʻzing bilan yoz. Subtitrni toʻliq koʻchirma — ' +
+              'asosiy fikrlarni va muhim joylarni vaqti bilan ayt.',
+          },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Video oʻqilmadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'dub_video': {
+      const ref = parseYouTube(str(args.url));
+      if (!ref) {
+        return { ok: false, summary: 'YouTube havolasi notoʻgʻri', payload: { error: 'url_yoq' } };
+      }
+      const lang = str(args.lang, getState().settings.ttsLang || 'uz-UZ');
+
+      try {
+        const read = await readVideo(ref, lang, ctx.signal);
+        const narration = toNarration(read);
+        if (!narration) {
+          return { ok: false, summary: 'Videodan matn chiqmadi', payload: { error: 'matn_yoq' } };
+        }
+
+        let wav: string;
+        try {
+          wav = await synthesize(narration, undefined, ctx.signal);
+        } catch {
+          // Uzun matn ovozga sigʻmasa — qisqacha mazmunni oʻqiymiz.
+          wav = await synthesize(read.summary, undefined, ctx.signal);
+        }
+
+        return {
+          ok: true,
+          summary: `Ovozli tarjima tayyor (${languageName(lang)})`,
+          artifacts: [
+            {
+              id: uid('art'),
+              kind: 'audio',
+              mimeType: 'audio/wav',
+              title: `${read.title || 'Video'} — ${languageName(lang)} ovoz`,
+              content: wav,
+              createdAt: Date.now(),
+            },
+          ],
+          payload: {
+            sarlavha: read.title,
+            mazmuni: read.summary,
+            koʻrsatma:
+              'Ovozli fayl chatda oʻzi chiqadi — uni matn bilan qayta tasvirlama. ' +
+              'Faqat qisqacha mazmunini ayt.',
+          },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Ovozli tarjima boʻlmadi: ${(err as Error).message}`,
           payload: { error: String((err as Error)?.message ?? err) },
         };
       }

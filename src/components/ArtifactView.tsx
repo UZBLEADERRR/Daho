@@ -12,6 +12,7 @@ const KIND_LABEL: Record<string, string> = {
   image: 'Rasm',
   markdown: 'Matn',
   code: 'Kod',
+  audio: 'Ovoz',
 };
 
 export function ArtifactCard({
@@ -33,6 +34,20 @@ export function ArtifactCard({
           alt={artifact.title}
         />
       </button>
+    );
+  }
+
+  // Ovoz — chatning oʻzida eshitiladi.
+  if (artifact.kind === 'audio') {
+    return (
+      <div className="audio-card">
+        <div className="artifact-title">{artifact.title}</div>
+        <audio
+          controls
+          preload="none"
+          src={`data:${artifact.mimeType ?? 'audio/wav'};base64,${artifact.content}`}
+        />
+      </div>
     );
   }
 
@@ -141,7 +156,18 @@ export function ArtifactViewer({
       </div>
 
       <div className="viewer-body">
-        {artifact.kind === 'image' ? (
+        {artifact.kind === 'audio' ? (
+          <div className="pad">
+            <div className="audio-card">
+              <div className="artifact-title">{artifact.title}</div>
+              <audio
+                controls
+                autoPlay
+                src={`data:${artifact.mimeType ?? 'audio/wav'};base64,${artifact.content}`}
+              />
+            </div>
+          </div>
+        ) : artifact.kind === 'image' ? (
           <div className="imgwrap">
             <img
               src={`data:${artifact.mimeType ?? 'image/png'};base64,${artifact.content}`}

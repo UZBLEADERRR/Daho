@@ -132,6 +132,7 @@ export function toPreviewDocument(artifact: Artifact): string {
 
 export function fileExtension(artifact: Artifact): string {
   if (artifact.kind === 'image') return artifact.mimeType?.includes('jpeg') ? 'jpg' : 'png';
+  if (artifact.kind === 'audio') return artifact.mimeType?.includes('mpeg') ? 'mp3' : 'wav';
   const map: Record<string, string> = {
     javascript: 'js',
     typescript: 'ts',
