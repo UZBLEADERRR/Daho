@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export type TaskKind = 'chat' | 'code' | 'video' | 'dars' | 'rasm';
+export type TaskKind = 'chat' | 'code' | 'video' | 'dars' | 'rasm' | 'kitob';
 
 export interface RunningTask {
   id: string;

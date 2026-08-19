@@ -48,6 +48,7 @@ const EMPTY_STATE: AppState = {
   videos: [],
   code: [],
   routes: [],
+  books: [],
   browserHistory: [],
 };
 

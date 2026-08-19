@@ -22,6 +22,7 @@ import {
   type Spot,
   type TravelMode,
 } from './place';
+import { createBook, writeWholeBook } from './book';
 import { openSite } from './browserbus';
 import { synthesize } from './speech';
 import { getState, setState } from './store';
@@ -292,6 +293,25 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'create_book',
+    description:
+      'KITOB yoki uzun qoʻllanma yozishni boshlaydi: avval boblar rejasini tuzadi, ' +
+      'soʻng boblarni birma-bir yozadi (foydalanuvchi boshqa boʻlimga oʻtsa ham davom etadi). ' +
+      'Foydalanuvchi «kitob yozib ber», «qoʻllanma tuz», «koʻp bobli material» desa SHUNI chaqir — ' +
+      'kitobni chatda oʻzing yozishga urinma, matn uzilib qoladi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        topic: { type: 'STRING', description: 'Kitob mavzusi' },
+        chapters: { type: 'NUMBER', description: 'Boblar soni (3-40, odatda 10-15)' },
+        words: { type: 'NUMBER', description: 'Bitta bob uchun taxminiy soʻz soni (300-4000)' },
+        audience: { type: 'STRING', description: 'Kim uchun yozilyapti' },
+        style: { type: 'STRING', description: 'Uslub: sodda, ilmiy, hikoyaviy…' },
+      },
+      required: ['topic'],
     },
   },
   {
@@ -687,6 +707,45 @@ export async function executeTool(
         return {
           ok: false,
           summary: `Qidiruv ishlamadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'create_book': {
+      const topic = str(args.topic);
+      if (!topic) return { ok: false, summary: 'Mavzu berilmadi', payload: { error: 'topic_yoq' } };
+      try {
+        const book = await createBook(
+          {
+            topic,
+            chapters: num(args.chapters, 10),
+            targetWords: num(args.words, 900),
+            audience: str(args.audience),
+            style: str(args.style),
+          },
+          ctx.signal,
+        );
+        // Boblar fonda yozila boshlaydi — foydalanuvchi kutib turmaydi.
+        void writeWholeBook(book.id);
+        return {
+          ok: true,
+          summary: `«${book.title}» — ${book.chapters.length} bob`,
+          payload: {
+            sarlavha: book.title,
+            boblar: book.chapters.map((c) => `${c.no}. ${c.title}`),
+            koʻrsatma:
+              'Reja tayyor va boblar YOZILA BOSHLADI (pastdagi qatorda koʻrinadi). ' +
+              'Foydalanuvchiga ayt: «Agent → Kitoblar» boʻlimida jarayonni kuzatadi, ' +
+              'istalgan bobni oʻqiydi, tuzattiradi va tayyor kitobni Word/PDF qilib yuklab oladi. ' +
+              'Boblar roʻyxatini qisqacha sanab oʻt.',
+          },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Kitob rejasi tuzilmadi: ${(err as Error).message}`,
           payload: { error: String((err as Error)?.message ?? err) },
         };
       }

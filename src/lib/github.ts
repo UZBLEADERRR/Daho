@@ -543,11 +543,20 @@ export function closeIssue(
 
 /* ---------- Reliz ---------- */
 
+export interface GhAsset {
+  id: number;
+  name: string;
+  size: number;
+  browser_download_url: string;
+  content_type: string;
+}
+
 export interface GhRelease {
   id: number;
   tag_name: string;
   name: string;
   html_url: string;
+  assets?: GhAsset[];
 }
 
 export function createRelease(
@@ -566,6 +575,39 @@ export function createRelease(
 
 export function listReleases(token: string, owner: string, repo: string): Promise<GhRelease[]> {
   return gh<GhRelease[]>(token, `/repos/${owner}/${repo}/releases?per_page=20`);
+}
+
+/**
+ * Fayl baytlarini oladi (APK, zip va h.k.).
+ *
+ * GitHub Actions artefakti faqat token bilan yuklanadi va u boshqa domenga
+ * yoʻnaltiradi — brauzer bunday javobni oʻqishga har doim ham ruxsat bermaydi.
+ * Shuning uchun chaqiruvchi xatoni ushlab, havolani tashqi brauzerda ochishi
+ * kerak (u yerda tizim yuklab oluvchisi ishlaydi).
+ */
+export async function fetchBinary(url: string, token?: string): Promise<Uint8Array> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: token
+        ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }
+        : {},
+    });
+  } catch {
+    throw new GitHubError('Faylni olib boʻlmadi (tarmoq yoki brauzer cheklovi).', 0);
+  }
+  if (!res.ok) throw new GitHubError(`Fayl yuklanmadi (HTTP ${res.status})`, res.status);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+/** Ish natijasidagi artefakt (zip) baytlari. */
+export function downloadArtifact(
+  token: string,
+  owner: string,
+  repo: string,
+  artifactId: number,
+): Promise<Uint8Array> {
+  return fetchBinary(`${API}/repos/${owner}/${repo}/actions/artifacts/${artifactId}/zip`, token);
 }
 
 /* ---------- Qidiruv ---------- */

@@ -278,6 +278,37 @@ export interface VideoProject {
   updatedAt: number;
 }
 
+/* ---------- Kitob ---------- */
+
+export type ChapterStatus = 'kutilmoqda' | 'yozilmoqda' | 'tayyor' | 'chala' | 'xato';
+
+export interface BookChapter {
+  id: string;
+  /** Tartib raqami (1 dan) */
+  no: number;
+  title: string;
+  /** Rejadagi izoh — bobda nima yoritiladi */
+  brief: string;
+  content: string;
+  words: number;
+  status: ChapterStatus;
+  error?: string;
+  updatedAt: number;
+}
+
+export interface Book {
+  id: string;
+  title: string;
+  topic: string;
+  audience: string;
+  style: string;
+  /** Har bir bob uchun taxminiy soʻz soni */
+  targetWords: number;
+  chapters: BookChapter[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 /* ---------- Daho Code ---------- */
 
 export interface CodeFile {
@@ -322,6 +353,7 @@ export interface AppState {
   videos: VideoProject[];
   code: CodeProject[];
   routes: RoutePlan[];
+  books: Book[];
   /** Ilova ichidagi brauzer tarixi */
   browserHistory: BrowserVisit[];
 }

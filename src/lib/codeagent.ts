@@ -1,4 +1,7 @@
 import type { FunctionDeclaration, GeminiContent, GeminiPart } from './gemini';
+import { unzipSync } from 'fflate';
+import { openExternal } from './openlink';
+import { saveBytes } from './exporter';
 import { streamResilient } from './resilient';
 import {
   closeIssue,
@@ -11,7 +14,9 @@ import {
   createRepo,
   deleteRepoFile,
   dispatchWorkflow,
+  downloadArtifact,
   enablePages,
+  fetchBinary,
   listBranches,
   listCommits,
   listContents,
@@ -66,6 +71,7 @@ const STEP_LABEL: Record<string, string> = {
   write_workflow: 'ish oqimi yozilmoqda',
   run_workflow: 'yigʻish boshlandi',
   check_workflow: 'yigʻish tekshirilmoqda',
+  send_file: 'fayl yuborilmoqda',
   test_app: 'ilova sinovdan oʻtkazilmoqda',
   github_branch: 'tarmoqlar bilan ishlanmoqda',
   github_pull_request: 'pull request bilan ishlanmoqda',
@@ -241,6 +247,28 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
       'Oxirgi ishga tushishlar holatini tekshiradi: bajarilyaptimi, muvaffaqiyatlimi, ' +
       'natija fayllari (APK va h.k.) bormi. Yiqilgan boʻlsa sababini qaytaradi.',
     parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'send_file',
+    description:
+      'Tayyor faylni foydalanuvchining qurilmasiga BERADI — saqlash/ulashish oynasi ochiladi. ' +
+      'APK yigʻilib boʻlgach ALBATTA shuni chaqir: aks holda foydalanuvchi faylni ololmaydi. ' +
+      'Manba: "artifact" — GitHub Actions natijasi (zip ichidan kerakli fayl olinadi), ' +
+      '"release" — reliz fayli, yoki toʻgʻridan-toʻgʻri havola.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        source: {
+          type: 'STRING',
+          description: '"artifact" (standart), "release" yoki toʻliq https havola',
+        },
+        name: {
+          type: 'STRING',
+          description: 'Fayl nomi yoki uning bir qismi, masalan ".apk" yoki "app-debug"',
+        },
+      },
+      required: [],
+    },
   },
   {
     name: 'test_app',
@@ -657,6 +685,132 @@ async function runTool(
       };
     }
 
+    case 'send_file': {
+      const link = getCodeProject(projectId)?.repo;
+      const want = str(args.name, '.apk').toLowerCase();
+      const source = str(args.source, 'artifact');
+
+      /** Baytlarni foydalanuvchiga beradi. */
+      const hand = async (filename: string, bytes: Uint8Array) => {
+        const mime = filename.endsWith('.apk')
+          ? 'application/vnd.android.package-archive'
+          : filename.endsWith('.zip')
+            ? 'application/zip'
+            : 'application/octet-stream';
+        const note = await saveBytes(filename, bytes, mime);
+        return {
+          ok: true,
+          summary: `Fayl berildi: ${filename}`,
+          payload: {
+            fayl: filename,
+            hajm: `${Math.round(bytes.length / 1024)} KB`,
+            holat: note,
+            koʻrsatma:
+              'Fayl foydalanuvchining qurilmasiga saqlandi. APK boʻlsa uni ochib ' +
+              'oʻrnatishini ayt («Nomaʼlum manbalardan oʻrnatish» ruxsati kerak boʻlishi mumkin).',
+          },
+        };
+      };
+
+      // --- toʻgʻridan-toʻgʻri havola
+      if (/^https?:\/\//i.test(source)) {
+        try {
+          const bytes = await fetchBinary(source);
+          const filename = source.split('/').pop()?.split('?')[0] || 'fayl';
+          return await hand(filename, bytes);
+        } catch {
+          openExternal(source);
+          return {
+            ok: true,
+            summary: 'Havola brauzerda ochildi',
+            payload: { havola: source, izoh: 'Fayl brauzer orqali yuklab olinadi' },
+          };
+        }
+      }
+
+      if (!link) {
+        return { ok: false, summary: 'Repozitoriy ulanmagan', payload: { error: 'repo_yoq' } };
+      }
+
+      // --- reliz fayli (ochiq havola — eng ishonchli yoʻl)
+      if (source === 'release') {
+        const releases = await listReleases(token, link.owner, link.repo);
+        const asset = releases
+          .flatMap((r) => r.assets ?? [])
+          .find((a) => a.name.toLowerCase().includes(want)) ??
+          releases.flatMap((r) => r.assets ?? [])[0];
+        if (!asset) {
+          return {
+            ok: false,
+            summary: 'Relizda fayl yoʻq',
+            payload: { error: 'asset_yoq', izoh: 'Avval reliz yasab, faylni unga qoʻshish kerak' },
+          };
+        }
+        try {
+          const bytes = await fetchBinary(asset.browser_download_url);
+          return await hand(asset.name, bytes);
+        } catch {
+          openExternal(asset.browser_download_url);
+          return {
+            ok: true,
+            summary: `«${asset.name}» brauzerda ochildi`,
+            payload: { havola: asset.browser_download_url },
+          };
+        }
+      }
+
+      // --- Actions artefakti
+      const runs = await listRuns(token, link.owner, link.repo, 10);
+      const done = runs.find((r) => r.conclusion === 'success');
+      if (!done) {
+        return {
+          ok: false,
+          summary: 'Muvaffaqiyatli yigʻilish topilmadi',
+          payload: { error: 'run_yoq', izoh: 'Avval run_workflow, keyin check_workflow' },
+        };
+      }
+
+      const artifacts = await listRunArtifacts(token, link.owner, link.repo, done.id);
+      const live = artifacts.filter((a) => !a.expired);
+      if (!live.length) {
+        return {
+          ok: false,
+          summary: 'Natija fayllari yoʻq yoki muddati oʻtgan',
+          payload: { error: 'artifact_yoq', havola: done.html_url },
+        };
+      }
+      const chosen = live.find((a) => a.name.toLowerCase().includes(want)) ?? live[0];
+
+      try {
+        const zip = await downloadArtifact(token, link.owner, link.repo, chosen.id);
+        const files = unzipSync(zip);
+        const names = Object.keys(files);
+        const pick =
+          names.find((n) => n.toLowerCase().includes(want)) ??
+          names.find((n) => n.toLowerCase().endsWith('.apk')) ??
+          names[0];
+        if (!pick) {
+          return { ok: false, summary: 'Zip boʻsh chiqdi', payload: { error: 'bosh_zip' } };
+        }
+        return await hand(pick.split('/').pop() || pick, files[pick]);
+      } catch (err) {
+        // Brauzer artefakt yuklashga ruxsat bermadi — ish sahifasini ochamiz.
+        openExternal(done.html_url);
+        return {
+          ok: false,
+          summary: 'Artefaktni ilova ichida yuklab boʻlmadi',
+          payload: {
+            error: String((err as Error)?.message ?? err),
+            havola: done.html_url,
+            koʻrsatma:
+              'Foydalanuvchiga: fayl GitHub sahifasida ochildi, «Artifacts» boʻlimidan ' +
+              'yuklab oladi. Keyingi safar ish oqimiga reliz qadamini qoʻshsang ' +
+              '(softprops/action-gh-release@v2), fayl toʻgʻridan-toʻgʻri yuboriladi.',
+          },
+        };
+      }
+    }
+
     case 'check_workflow': {
       const link = getCodeProject(projectId)?.repo;
       if (!link) {
@@ -954,6 +1108,21 @@ ${fileTree(project) || '(boʻsh)'}
 7. APK, test yoki deploy kerak boʻlsa: \`write_workflow\` → \`github_push\` →
    \`run_workflow\` → soʻng \`check_workflow\` bilan natijani tekshir. Yiqilsa
    sababini oʻqib, kodni tuzat va qaytadan yubor.
+8. **Tayyor faylni foydalanuvchiga BER.** Yigʻish muvaffaqiyatli boʻlgach
+   \`send_file\` ni chaqir — APK telefonga saqlanadi va ulashish oynasi ochiladi.
+   «GitHub’dan yuklab oling» deb qoʻyish YETARLI EMAS: foydalanuvchi faylni
+   ilovaning oʻzidan olishi kerak.
+   APK ish oqimini yozganingda oxiriga reliz qadamini ham qoʻsh — shunda
+   fayl ochiq havolaga chiqadi va ishonchli yetkaziladi:
+   \`\`\`yaml
+   - uses: softprops/action-gh-release@v2
+     with:
+       tag_name: apk-\${{ github.run_number }}
+       files: '**/*.apk'
+     env:
+       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+   \`\`\`
+   (ish oqimiga \`permissions: contents: write\` kerak boʻladi)
 
 ## Katta loyiha — avval ARXITEKTURA 🏗
 Kichik ish (bitta sahifa, bitta tuzatish) boʻlsa darhol qil. Lekin loyiha katta

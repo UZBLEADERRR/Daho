@@ -1,6 +1,7 @@
 export const AGENT_SECTIONS = [
   'bugun',
   'kurslar',
+  'kitoblar',
   'ilovalar',
   'jadval',
   'vazifalar',
@@ -16,6 +17,7 @@ export type AgentSection = (typeof AGENT_SECTIONS)[number];
 export const SECTION_LABEL: Record<AgentSection, string> = {
   bugun: 'Bugun',
   kurslar: 'Kurslar',
+  kitoblar: 'Kitoblar',
   ilovalar: 'Ilovalarim',
   jadval: 'Jadval',
   vazifalar: 'Vazifalar',
@@ -29,6 +31,7 @@ export const SECTION_LABEL: Record<AgentSection, string> = {
 export const SECTION_EMOJI: Record<AgentSection, string> = {
   bugun: '✨',
   kurslar: '🎓',
+  kitoblar: '📖',
   ilovalar: '🧩',
   jadval: '📅',
   vazifalar: '✅',
