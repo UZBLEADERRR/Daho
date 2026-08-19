@@ -17,7 +17,13 @@ const MAX_HISTORY = 40;
  * Bitta javob ichida nechta marta vosita chaqirib, natijasini koʻrib,
  * keyingi qadamni tanlash mumkin. Murakkab ish yarim yoʻlda toʻxtab qolmasin.
  */
-const MAX_TOOL_ROUNDS = 24;
+/** Chat agenti uchun qadamlar chegarasi — Sozlamalardagi qiymat ustun. */
+const DEFAULT_TOOL_ROUNDS = 32;
+
+function toolRounds(): number {
+  const { settings } = getState();
+  return Math.max(8, Math.min(120, settings.agentRounds || DEFAULT_TOOL_ROUNDS));
+}
 
 /** Vosita nomining foydalanuvchiga koʻrinadigan tavsifi. */
 const STEP_LABEL: Record<string, string> = {
@@ -103,6 +109,11 @@ unga qanday yetishni oʻzing hal qilasan.
   tanlaganingni bir jumlada aytib qoʻy.
 - **Vositalarni birlashtir.** Bitta savolga bir nechta vosita kerak boʻlishi
   mumkin: masalan avval qidir, keyin kitob boshla, soʻng vazifa qoʻsh.
+- **Katta ishni boʻlib ber.** Mavzu keng boʻlsa yoki bir nechta yoʻnalishni
+  oʻrganish kerak boʻlsa — \`delegate\` bilan yordamchi chaqir: «tadqiqot»
+  maʼlumot yigʻadi, «matn» yozadi, «tekshir» xato qidiradi, «reja»
+  bosqichlarga ajratadi. Har biri oʻz modeli bilan alohida ishlaydi, senga
+  hisobot qaytaradi. Oddiy savolga chaqirma — vaqt va token ketadi.
 - **Foydalanuvchi vaqtini tejaydigan qoʻshimchani oʻzing taklif qil** —
   lekin soʻralmagan ishni oʻzboshimchalik bilan qilma; bitta jumlada taklif qil.
 ${connectorBlock()}
@@ -422,7 +433,8 @@ export async function sendMessage(
   try {
     const instruction = brief ? `${systemPrompt()}\n\n## Ushbu soʻrov uchun maxsus vazifa\n${brief}` : systemPrompt();
 
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    const maxRounds = toolRounds();
+    for (let round = 0; round < maxRounds; round += 1) {
       const result = await streamResilient({
         apiKey: settings.apiKey,
         model: settings.model,

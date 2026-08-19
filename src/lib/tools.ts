@@ -2,6 +2,7 @@ import { askUser } from './ask';
 import { b64ToBytes } from './audio';
 import { createBook, writeBook } from './book';
 import { activeConnectors, callConnector, findAction, findConnector } from './connectors';
+import { helperRole, runHelper } from './helper';
 import { fetchImageData, searchImages } from './imagesearch';
 import { geminiModel } from './models';
 import { canSearchWeb, imageAny } from './providers';
@@ -502,6 +503,33 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'delegate',
+    description:
+      'YORDAMCHI AGENT chaqiradi — ish katta boʻlsa boʻlaklab, har boʻlagini '
+      + 'alohida mutaxassisga berasan. Yordamchi oʻz modeli bilan ishlaydi, '
+      + 'kerak boʻlsa internetdan qidiradi, sayt va video oʻqiydi, keyin senga '
+      + 'hisobot qaytaradi.\n'
+      + 'Rollar: "tadqiqot" (maʼlumot yigʻish), "matn" (yozish, tahrirlash, '
+      + 'tarjima), "tekshir" (xato va nomuvofiqlik qidirish), "reja" '
+      + '(bosqichlarga ajratish).\n'
+      + 'Qachon ishlatasan: mavzu keng boʻlsa va bir nechta yoʻnalishni '
+      + 'parallel oʻrganish kerak boʻlsa; uzun matnni yozdirib, keyin '
+      + 'tekshirtirish kerak boʻlsa. Oddiy savolga chaqirma — oʻzing javob ber.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        role: { type: 'STRING', description: 'tadqiqot | matn | tekshir | reja' },
+        task: {
+          type: 'STRING',
+          description:
+            'Toʻliq va aniq topshiriq. Yordamchi suhbat tarixini KOʻRMAYDI — '
+            + 'kerakli kontekstni shu yerda yozib ber.',
+        },
+      },
+      required: ['role', 'task'],
+    },
+  },
+  {
     name: 'connect_app',
     description:
       'BOSHQA ILOVAGA soʻrov yuboradi — foydalanuvchi ulab qoʻygan xizmatlar: '
@@ -577,6 +605,39 @@ export async function executeTool(
         summary: `Soʻraldi: ${question.slice(0, 50)} → ${answer.slice(0, 40)}`,
         payload: { javob: answer },
       };
+    }
+
+    case 'delegate': {
+      const role = helperRole(str(args.role, 'reja'));
+      const task = str(args.task);
+      if (!task) {
+        return { ok: false, summary: 'Topshiriq boʻsh', payload: { xato: 'task kerak' } };
+      }
+      try {
+        const report = await runHelper(role, task, {
+          chatId: ctx.chatId,
+          signal: ctx.signal,
+        });
+        if (!report.text) {
+          return {
+            ok: false,
+            summary: `${role} yordamchisi javob qaytarmadi`,
+            payload: { xato: 'Yordamchidan boʻsh javob keldi — oʻzing bajar.' },
+          };
+        }
+        return {
+          ok: true,
+          summary: `${role} yordamchisi ishladi${report.steps ? ` (${report.steps} qadam)` : ''}`,
+          payload: { rol: role, model: report.model, hisobot: report.text },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'Yordamchi ishlamadi',
+          payload: { xato: String((err as Error)?.message ?? err) },
+        };
+      }
     }
 
     case 'connect_list': {
