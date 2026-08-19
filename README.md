@@ -165,8 +165,8 @@ npm run dev      # http://localhost:5173
 npm run build    # natija: dist/ — istalgan statik hostingga
 ```
 
-`main` ga push qilinganda GitHub Pages ga avtomatik nashr qilinadi
-(`.github/workflows/web.yml`). Bulut kerak boʻlsa repo secret'lariga
+Asosiy (default) tarmoqqa push qilinganda GitHub Pages ga avtomatik nashr
+qilinadi (`.github/workflows/web.yml`); qoʻlda ham ishga tushirsa boʻladi. Bulut kerak boʻlsa repo secret'lariga
 `VITE_SUPABASE_URL` va `VITE_SUPABASE_ANON_KEY` ni qoʻshing.
 
 ## Daho Cloud — obuna va nazorat
