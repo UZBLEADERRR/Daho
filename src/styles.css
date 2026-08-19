@@ -3052,6 +3052,17 @@ textarea {
     flex: 1 1 0;
     justify-content: flex-end;
   }
+}
+
+/* Kitob boblari roʻyxatidagi tartib raqami */
+.ch-num {
+  flex: 0 0 auto;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
   font-size: 12px;
   background: var(--surface-2);
   color: var(--muted);
@@ -3405,5 +3416,21 @@ textarea {
   .settings-row:hover {
     border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
     background: var(--surface);
+  }
+}
+
+
+/* ================================================================== */
+/*  Keng ekran: toʻliq ekranli oynalar yon panelni yopmasin            */
+/* ================================================================== */
+
+@media (min-width: 900px) {
+  /* Brauzer, artifact, video studiya va kod oynasi mobil uchun butun
+     ekranni egallaydi. Kompyuterda esa yon panel ochiq turgani uchun
+     ular panelning oʻng tomonidan boshlanishi kerak — aks holda boʻlim
+     almashtirib boʻlmaydi. */
+  .viewer,
+  .live-scrim {
+    left: 284px;
   }
 }
