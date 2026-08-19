@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fileIcon, prepareFile } from '../lib/attach';
 import { startListening, type ListenHandle } from '../lib/speech';
+import { updateView, useStore } from '../lib/store';
 import type { Attachment } from '../lib/types';
 import { Close, Mic, Plus, Send, Stop } from './Icons';
 import { Sheet, toast } from './ui';
@@ -79,6 +80,20 @@ export function Composer({
   const [docs, setDocs] = useState<string[]>([]);
   const [mic, setMic] = useState<'oʻchiq' | 'yozilmoqda' | 'tahlil'>('oʻchiq');
   const [menu, setMenu] = useState(false);
+
+  // Imkoniyatlar galereyasidan tayyor matn kelsa — maydonga qoʻyamiz.
+  const draft = useStore((st) => st.view.draft);
+  useEffect(() => {
+    if (!draft) return;
+    setText(draft);
+    updateView({ draft: null });
+    requestAnimationFrame(() => {
+      const area = areaRef.current;
+      if (!area) return;
+      area.focus();
+      area.setSelectionRange(area.value.length, area.value.length);
+    });
+  }, [draft]);
   const listenRef = useRef<ListenHandle | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);

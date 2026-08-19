@@ -4,6 +4,7 @@ import { Apps } from './agent/Apps';
 import { Artifacts } from './agent/Artifacts';
 import { Automations } from './agent/Automations';
 import { Books } from './agent/Books';
+import { Connectors } from './agent/Connectors';
 import { Courses } from './agent/Courses';
 import { Notes } from './agent/Notes';
 import { Overview } from './agent/Overview';
@@ -43,7 +44,7 @@ function Videos({ onOpenVideo }: { onOpenVideo: (id: string) => void }) {
 export function AgentView({ section, onSection, onOpenArtifact, onOpenVideo }: Props) {
   return (
     <>
-      <div className="seg">
+      <div className="seg agent-seg">
         {AGENT_SECTIONS.map((s) => (
           <button key={s} className={section === s ? 'on' : ''} onClick={() => onSection(s)}>
             {SECTION_LABEL[s]}
@@ -54,6 +55,7 @@ export function AgentView({ section, onSection, onOpenArtifact, onOpenVideo }: P
       {section === 'bugun' && <Overview onNavigate={onSection} />}
       {section === 'kitoblar' && <Books onOpenArtifact={onOpenArtifact} />}
       {section === 'avto' && <Automations />}
+      {section === 'ulanish' && <Connectors />}
       {section === 'kurslar' && <Courses onOpenArtifact={onOpenArtifact} />}
       {section === 'ilovalar' && <Apps />}
       {section === 'jadval' && <Schedule />}

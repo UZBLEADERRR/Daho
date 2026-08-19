@@ -1,4 +1,5 @@
 import { drainInterjections } from './ask';
+import { connectorCatalog } from './connectors';
 import { isModelReadable } from './attach';
 import { extractArtifacts } from './artifacts';
 import { GeminiError } from './gemini';
@@ -44,6 +45,25 @@ const STEP_LABEL: Record<string, string> = {
   read_data: 'maʼlumotlaringiz oʻqilmoqda',
 };
 
+/**
+ * Ulangan ilovalar haqida model bilishi kerak: bor ulanishlar roʻyxati
+ * prompt ga qoʻshiladi, aks holda model ular yoʻq deb oʻylaydi.
+ */
+function connectorBlock(): string {
+  const catalog = connectorCatalog();
+  if (!catalog) return '';
+  return `
+## Ulangan ilovalar 🔌
+Foydalanuvchi quyidagi xizmatlarni ulab qoʻygan — ularga \`connect_app\` bilan
+soʻrov yubora olasan:
+
+${catalog}
+
+Tashqi ish soʻralganda («telegramga tashla», «notionga yoz», «chiroqni yoq»)
+oldin shu roʻyxatga qara. Kerakli ulanish yoʻq boʻlsa — Agent → Ulanishlar
+boʻlimidan qoʻshishni ayt.`;
+}
+
 function systemPrompt(): string {
   const { settings } = getState();
   const who = [
@@ -85,7 +105,7 @@ unga qanday yetishni oʻzing hal qilasan.
   mumkin: masalan avval qidir, keyin kitob boshla, soʻng vazifa qoʻsh.
 - **Foydalanuvchi vaqtini tejaydigan qoʻshimchani oʻzing taklif qil** —
   lekin soʻralmagan ishni oʻzboshimchalik bilan qilma; bitta jumlada taklif qil.
-
+${connectorBlock()}
 ## Uslub
 - Har doim oʻzbek tilida (lotin yozuvi) javob ber, foydalanuvchi boshqa tilda yozmasa.
 - Qisqa va aniq yoz. Suv quyma, ortiqcha muqaddima qilma.

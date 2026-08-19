@@ -1,4 +1,5 @@
 import type { FunctionDeclaration, GeminiContent, GeminiPart } from './gemini';
+import { activeConnectors, callConnector, findAction, findConnector } from './connectors';
 import { unzipSync } from 'fflate';
 import { openExternal } from './openlink';
 import { saveBytes } from './exporter';
@@ -621,6 +622,28 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
       },
       required: ['action'],
     },
+  },
+  {
+    name: 'connect_app',
+    description:
+      'Foydalanuvchi ulab qoʻygan tashqi xizmatga soʻrov yuboradi (Telegram, '
+      + 'Discord, Slack, Notion, Airtable, Home Assistant, webhook…). Loyihani '
+      + 'nashr qilgach xabar berish, natijani jamoaga tashlash yoki tashqi '
+      + 'maʼlumotni olib kelish uchun. Qanday ulanish borligini «connect_list» aytadi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        connector: { type: 'STRING', description: 'Ulanish nomi' },
+        action: { type: 'STRING', description: 'Amal nomi' },
+        data: { type: 'OBJECT', description: 'Amal talab qiladigan maydonlar' },
+      },
+      required: ['connector', 'action'],
+    },
+  },
+  {
+    name: 'connect_list',
+    description: 'Ulangan tashqi xizmatlar va ularning amallari roʻyxati.',
+    parameters: { type: 'OBJECT', properties: {} },
   },
   {
     name: 'web_search',
@@ -1515,6 +1538,59 @@ async function runTool(
           eslatma: 'Foydalanuvchiga ulashish oynasi ochilgani va faylni saqlashi mumkinligini ayt.',
         },
       };
+    }
+
+    case 'connect_list': {
+      const list = activeConnectors();
+      return {
+        ok: true,
+        summary: list.length ? `${list.length} ta ulanish` : 'Ulanish yoʻq',
+        payload: {
+          ulanishlar: list.map((c) => ({
+            nom: c.name,
+            amallar: c.actions.map((a) => ({ nom: a.name, izoh: a.description })),
+          })),
+        },
+      };
+    }
+
+    case 'connect_app': {
+      const connector = findConnector(str(args.connector));
+      if (!connector) {
+        return {
+          ok: false,
+          summary: 'Ulanish topilmadi',
+          payload: { bor: activeConnectors().map((c) => c.name) },
+        };
+      }
+      const action = findAction(connector, str(args.action));
+      if (!action) {
+        return {
+          ok: false,
+          summary: 'Amal topilmadi',
+          payload: { amallar: connector.actions.map((a) => a.name) },
+        };
+      }
+      try {
+        const res = await callConnector(
+          connector,
+          action,
+          args.data && typeof args.data === 'object' ? (args.data as Record<string, unknown>) : {},
+          signal,
+        );
+        return {
+          ok: res.ok,
+          summary: `${connector.name} → ${action.name}: ${res.ok ? 'yuborildi' : `xato ${res.status}`}`,
+          payload: { holat: res.status, javob: res.body.slice(0, 1200) },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'Ulanib boʻlmadi',
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
     }
 
     case 'web_search': {

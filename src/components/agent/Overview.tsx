@@ -1,8 +1,14 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import {
+  CAPABILITY_GROUPS,
+  capabilityCount,
+  type Capability,
+  type CapabilityGroup,
+} from '../../lib/capabilities';
 import { updateView, useStore } from '../../lib/store';
+import { Sheet } from '../ui';
 import { DAYS } from '../../lib/types';
 import { fmtDuration, todayISO, weekdayIndex } from '../../lib/utils';
-import { Empty } from '../ui';
 import type { AgentSection } from './sections';
 
 export function Overview({ onNavigate }: { onNavigate: (s: AgentSection) => void }) {
@@ -79,6 +85,8 @@ export function Overview({ onNavigate }: { onNavigate: (s: AgentSection) => void
           </button>
         </div>
 
+        <Capabilities />
+
         {/* Yozilayotgan kitoblar — jarayon uzun, shuning uchun bosh sahifada. */}
         {writingBooks.map((b) => {
           const done = b.chapters.filter((c) => c.done).length;
@@ -133,10 +141,8 @@ export function Overview({ onNavigate }: { onNavigate: (s: AgentSection) => void
           </div>
         )}
 
-        <div className="section-label">Bugungi darslar</div>
-        {lessons.length === 0 ? (
-          <Empty title="Bugun dars yoʻq" hint="Jadval boʻlimidan darslarni qoʻshing." />
-        ) : (
+        {lessons.length > 0 && <div className="section-label">Bugungi darslar</div>}
+        {lessons.length === 0 ? null : (
           lessons.map((l) => (
             <div
               className="lesson"
@@ -156,10 +162,8 @@ export function Overview({ onNavigate }: { onNavigate: (s: AgentSection) => void
           ))
         )}
 
-        <div className="section-label">Muddati kelgan vazifalar</div>
-        {dueTasks.length === 0 ? (
-          <Empty title="Hammasi joyida" hint="Muddati kelgan vazifa yoʻq." />
-        ) : (
+        {dueTasks.length > 0 && <div className="section-label">Muddati kelgan vazifalar</div>}
+        {dueTasks.length === 0 ? null : (
           dueTasks.map((t) => (
             <button
               className="list-item"
@@ -180,5 +184,80 @@ export function Overview({ onNavigate }: { onNavigate: (s: AgentSection) => void
         )}
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Nima qila olaman — imkoniyatlar galereyasi                         */
+/* ------------------------------------------------------------------ */
+
+function Capabilities() {
+  const settings = useStore((s) => s.settings);
+  const [open, setOpen] = useState<CapabilityGroup | null>(null);
+
+  const ready = (cap: Capability): boolean => {
+    if (cap.needs === 'gemini') return Boolean(settings.apiKey);
+    if (cap.needs === 'github') return Boolean(settings.githubToken);
+    if (cap.needs === 'ulanish') return (settings.connectors ?? []).some((c) => c.enabled);
+    return true;
+  };
+
+  const start = (cap: Capability) => {
+    setOpen(null);
+    updateView({ tab: 'chat', draft: cap.prompt });
+  };
+
+  return (
+    <>
+      <div className="between" style={{ margin: '18px 0 10px' }}>
+        <div className="section-label" style={{ padding: 0 }}>
+          Nima qila olaman
+        </div>
+        <span className="tiny">{capabilityCount()} ta imkoniyat</span>
+      </div>
+
+      <div className="cap-groups">
+        {CAPABILITY_GROUPS.map((g) => (
+          <button className="cap-group" key={g.id} onClick={() => setOpen(g)}>
+            <span className="cap-group-icons">
+              {g.items.slice(0, 4).map((i) => (
+                <i key={i.id}>{i.icon}</i>
+              ))}
+            </span>
+            <b>{g.title}</b>
+            <i>{g.hint}</i>
+            <span className="cap-group-count">{g.items.length}</span>
+          </button>
+        ))}
+      </div>
+
+      {open && (
+        <Sheet title={open.title} onClose={() => setOpen(null)}>
+          <p className="muted" style={{ marginTop: 0 }}>{open.hint}</p>
+          {open.items.map((cap) => {
+            const on = ready(cap);
+            return (
+              <button className="cap-item" key={cap.id} onClick={() => start(cap)}>
+                <span className="cap-item-icon">{cap.icon}</span>
+                <span className="grow">
+                  <b>{cap.title}</b>
+                  <i>{cap.what}</i>
+                  {!on && (
+                    <em>
+                      {cap.needs === 'gemini'
+                        ? 'Gemini kaliti kerak'
+                        : cap.needs === 'github'
+                          ? 'GitHub tokeni kerak'
+                          : 'Avval ilova ulash kerak'}
+                    </em>
+                  )}
+                </span>
+                <span className="cap-item-go">›</span>
+              </button>
+            );
+          })}
+        </Sheet>
+      )}
+    </>
   );
 }

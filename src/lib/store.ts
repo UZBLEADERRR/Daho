@@ -37,6 +37,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenModels: [],
   favoriteModels: [],
   roleModels: { bosh: '', dizayn: '', kod: '', tekshir: '', matn: '' },
+  connectors: [],
   autoContinue: true,
   maxContinues: 6,
   agentRounds: 60,
@@ -84,6 +85,7 @@ function migrate(parsed: Partial<AppState>): AppState {
     hiddenModels: Array.isArray(saved.hiddenModels) ? saved.hiddenModels : [],
     autoPool: Array.isArray(saved.autoPool) ? saved.autoPool : [],
     favoriteModels: Array.isArray(saved.favoriteModels) ? saved.favoriteModels : [],
+    connectors: Array.isArray(saved.connectors) ? saved.connectors : [],
   };
   if (RETIRED_MODELS.test(settings.model)) settings.model = DEFAULT_SETTINGS.model;
 

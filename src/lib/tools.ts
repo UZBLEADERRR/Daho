@@ -1,6 +1,7 @@
 import { askUser } from './ask';
 import { b64ToBytes } from './audio';
 import { createBook, writeBook } from './book';
+import { activeConnectors, callConnector, findAction, findConnector } from './connectors';
 import { fetchImageData, searchImages } from './imagesearch';
 import { geminiModel } from './models';
 import { canSearchWeb, imageAny } from './providers';
@@ -501,6 +502,36 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'connect_app',
+    description:
+      'BOSHQA ILOVAGA soʻrov yuboradi — foydalanuvchi ulab qoʻygan xizmatlar: '
+      + 'Telegram, Discord, Slack, Notion, Airtable, Home Assistant, webhook va '
+      + 'boshqalar. Xabar yuborish, yozuv qoʻshish, qurilmani yoqish, maʼlumot '
+      + 'oʻqish — hammasi shu vosita orqali.\n'
+      + 'Qaysi ulanishlar borligini «connect_list» aytadi. Ulanish yoʻq boʻlsa '
+      + 'foydalanuvchiga Agent → Ulanishlar boʻlimidan qoʻshishni ayt.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        connector: { type: 'STRING', description: 'Ulanish nomi, masalan "Telegram"' },
+        action: { type: 'STRING', description: 'Amal nomi, masalan "xabar yuborish"' },
+        data: {
+          type: 'OBJECT',
+          description:
+            'Amal talab qiladigan maydonlar. Masalan Telegram uchun {"text": "Salom"}.',
+        },
+      },
+      required: ['connector', 'action'],
+    },
+  },
+  {
+    name: 'connect_list',
+    description:
+      'Foydalanuvchi ulab qoʻygan ilovalar va ularning amallari roʻyxatini beradi. '
+      + 'Tashqi xizmat kerak boʻlsa avval shuni chaqir.',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
     name: 'read_data',
     description:
       'Foydalanuvchining saqlangan maʼlumotlarini oʻqiydi: jadval, vazifalar, konspektlar, loyihalar, ish vaqti qaydlari.',
@@ -546,6 +577,80 @@ export async function executeTool(
         summary: `Soʻraldi: ${question.slice(0, 50)} → ${answer.slice(0, 40)}`,
         payload: { javob: answer },
       };
+    }
+
+    case 'connect_list': {
+      const list = activeConnectors();
+      if (!list.length) {
+        return {
+          ok: true,
+          summary: 'Hech qanday ulanish qoʻshilmagan',
+          payload: {
+            ulanishlar: [],
+            izoh:
+              'Foydalanuvchi Agent → Ulanishlar boʻlimidan Telegram, Notion, '
+              + 'webhook va boshqa xizmatlarni ulashi mumkin.',
+          },
+        };
+      }
+      return {
+        ok: true,
+        summary: `${list.length} ta ulanish`,
+        payload: {
+          ulanishlar: list.map((c) => ({
+            nom: c.name,
+            amallar: c.actions.map((a) => ({ nom: a.name, izoh: a.description })),
+          })),
+        },
+      };
+    }
+
+    case 'connect_app': {
+      const wanted = str(args.connector);
+      const connector = findConnector(wanted);
+      if (!connector) {
+        const have = activeConnectors().map((c) => c.name);
+        return {
+          ok: false,
+          summary: `«${wanted}» ulanishi topilmadi`,
+          payload: {
+            xato: have.length
+              ? `Bunday ulanish yoʻq. Bor ulanishlar: ${have.join(', ')}.`
+              : 'Hali hech qanday ilova ulanmagan. Agent → Ulanishlar boʻlimidan qoʻshish kerak.',
+          },
+        };
+      }
+      const action = findAction(connector, str(args.action));
+      if (!action) {
+        return {
+          ok: false,
+          summary: `«${connector.name}» da bunday amal yoʻq`,
+          payload: { amallar: connector.actions.map((a) => a.name) },
+        };
+      }
+
+      const data =
+        args.data && typeof args.data === 'object'
+          ? (args.data as Record<string, unknown>)
+          : {};
+
+      try {
+        const res = await callConnector(connector, action, data, ctx.signal);
+        return {
+          ok: res.ok,
+          summary: `${connector.icon} ${connector.name} → ${action.name}: ${res.ok ? 'yuborildi' : `xato ${res.status}`}`,
+          payload: res.ok
+            ? { holat: res.status, javob: res.body.slice(0, 1200) }
+            : { holat: res.status, xato: res.body.slice(0, 1200) },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `${connector.name} ga ulanib boʻlmadi`,
+          payload: { xato: String((err as Error)?.message ?? err) },
+        };
+      }
     }
 
     case 'create_note': {

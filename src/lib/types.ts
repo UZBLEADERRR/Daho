@@ -199,6 +199,8 @@ export interface Settings {
   favoriteModels: string[];
   /** Koʻp agentli ishda rollar boʻyicha modellar */
   roleModels: RoleModels;
+  /** Boshqa ilovalar bilan ulanishlar — kalitlari bulutga chiqmaydi */
+  connectors: Connector[];
   /** Kuchsiz model javobni kesib qoʻysa — avtomatik davom ettirish */
   autoContinue: boolean;
   /** Bitta javob uchun koʻpi bilan nechta davom ettirish */
@@ -282,6 +284,38 @@ export interface Course {
 }
 
 /* ---------- Video ---------- */
+
+/* ---------- Ulanishlar (boshqa ilovalar bilan) ---------- */
+
+export interface ConnectorAction {
+  id: string;
+  /** Foydalanuvchi va model koʻradigan nom — «xabar yuborish» */
+  name: string;
+  /** Model uchun izoh: nima qiladi, qaysi maydonlar kerak */
+  description: string;
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** Asosiy manzilga qoʻshiladigan yoʻl; `{{kalit}}` qoʻyish mumkin */
+  path: string;
+  /** JSON tanasi namunasi; `{{kalit}}` lar maʼlumotdan toʻldiriladi */
+  bodyTemplate?: string;
+}
+
+export interface Connector {
+  id: string;
+  name: string;
+  icon: string;
+  baseUrl: string;
+  auth: {
+    kind: 'yoq' | 'bearer' | 'header' | 'query';
+    /** header/query uchun nom */
+    name?: string;
+    value?: string;
+  };
+  headers?: Record<string, string>;
+  actions: ConnectorAction[];
+  enabled: boolean;
+  note?: string;
+}
 
 export interface SubtitleStyle {
   /** Subtitr videoga yozilsinmi (oʻchirilsa faqat rasm va ovoz qoladi) */
@@ -544,6 +578,8 @@ export interface ViewState {
   courseId: string | null;
   bookId: string | null;
   codeId: string | null;
+  /** Chat maydoniga tayyor matn qoʻyish uchun (imkoniyatlar galereyasidan) */
+  draft?: string | null;
 }
 
 export const DAYS = [
