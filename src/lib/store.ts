@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { FALLBACK_MODELS } from './models';
+import { idbGet, idbSet, requestPersistentStorage } from './storage';
 import type { AppState, Settings } from './types';
 
 const STORAGE_KEY = 'daho.state.v1';
@@ -97,29 +98,133 @@ function migrate(parsed: Partial<AppState>): AppState {
   };
 }
 
-function load(): AppState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return structuredClone(EMPTY_STATE);
-    return migrate(JSON.parse(raw) as Partial<AppState>);
-  } catch {
-    return structuredClone(EMPTY_STATE);
-  }
+/**
+ * localStorage da faqat kichik narsalar qoladi: ilova ochilishi bilanoq
+ * mavzu va sozlama koʻrinsin. Ogʻir maʼlumot (suhbat, rasm, video, kitob)
+ * IndexedDB da — u yerda joy yuzlab megabayt.
+ */
+const LIGHT_KEY = 'daho.light.v1';
+
+interface LightState {
+  settings: Settings;
+  view: AppState['view'];
 }
 
-let state: AppState = load();
+function loadLight(): AppState {
+  try {
+    const raw = localStorage.getItem(LIGHT_KEY);
+    if (raw) {
+      const light = JSON.parse(raw) as Partial<LightState>;
+      return migrate({ settings: light.settings, view: light.view });
+    }
+    // Eski nusxa — hammasi bitta kalitda edi.
+    const legacy = localStorage.getItem(STORAGE_KEY);
+    if (legacy) return migrate(JSON.parse(legacy) as Partial<AppState>);
+  } catch {
+    /* buzuq boʻlsa — pastda IndexedDB dan tiklanadi */
+  }
+  return structuredClone(EMPTY_STATE);
+}
+
+let state: AppState = loadLight();
 const listeners = new Set<() => void>();
 
+/** Saqlash muvaffaqiyatsiz boʻlsa — foydalanuvchiga aytish uchun. */
+let storageError = '';
+export function getStorageError(): string {
+  return storageError;
+}
+
+let hydrated = false;
+export function isHydrated(): boolean {
+  return hydrated;
+}
+
+/**
+ * IndexedDB dan toʻliq holatni oʻqiydi. Ilova shu tugagach koʻrsatiladi,
+ * aks holda hali oʻqilmagan boʻsh holat ustiga yozib yuborilardi.
+ */
+export async function hydrate(): Promise<void> {
+  if (hydrated) return;
+  try {
+    const saved = await idbGet<Partial<AppState>>(STORAGE_KEY);
+    if (saved) {
+      state = migrate(saved);
+    } else {
+      // Birinchi ishga tushish yoki eski versiyadan koʻchish.
+      const legacy = localStorage.getItem(STORAGE_KEY);
+      if (legacy) {
+        state = migrate(JSON.parse(legacy) as Partial<AppState>);
+        const moved = await idbSet(STORAGE_KEY, state);
+        // Koʻchirish oʻtgandagina eski kalitni boʻshatamiz.
+        if (moved) localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+  } catch (err) {
+    console.warn('Maʼlumotni oʻqishda xato:', err);
+  }
+  hydrated = true;
+  void requestPersistentStorage();
+  listeners.forEach((l) => l());
+}
+
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function writeNow(): Promise<void> {
+  // Holat oʻqilmasidan yozib yuborsak — bor maʼlumot ustiga boʻsh holat tushadi.
+  if (!hydrated) return;
+
+  // Kichik qismi localStorage ga: ilova keyingi safar darrov ochilsin.
+  try {
+    const light: LightState = { settings: state.settings, view: state.view };
+    localStorage.setItem(LIGHT_KEY, JSON.stringify(light));
+  } catch {
+    /* sozlama saqlanmasa ham asosiy ombor ishlaydi */
+  }
+
+  const ok = await idbSet(STORAGE_KEY, state);
+  if (ok) {
+    storageError = '';
+    return;
+  }
+
+  // IndexedDB ishlamadi — oxirgi chora sifatida localStorage.
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    storageError = '';
+  } catch {
+    storageError =
+      'Maʼlumot saqlanmadi — qurilmada joy tugagan boʻlishi mumkin. '
+      + 'Sozlamalar → Maʼlumotlar boʻlimidan zaxira nusxa oling va keraksiz '
+      + 'rasm/videolarni oʻchiring.';
+    console.warn(storageError);
+  }
+  listeners.forEach((l) => l());
+}
+
 function persist() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (err) {
-      console.warn('Saqlashda xato (xotira toʻlgan boʻlishi mumkin):', err);
-    }
+    saveTimer = null;
+    void writeNow();
   }, 120);
+}
+
+/** Kutib turgan yozuvni darhol bajaradi. */
+export function flushState(): Promise<void> {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  return writeNow();
+}
+
+if (typeof document !== 'undefined') {
+  // Android ilovani `beforeunload` bermay yopadi — `hidden` ishonchliroq.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushState();
+  });
+  window.addEventListener('pagehide', () => void flushState());
 }
 
 export function getState(): AppState {

@@ -19,7 +19,16 @@ import {
   type DeviceVoice,
   type MicCheck,
 } from '../lib/speech';
-import { exportState, getState, importState, resetState, updateSettings, useStore } from '../lib/store';
+import {
+  exportState,
+  getState,
+  getStorageError,
+  importState,
+  resetState,
+  updateSettings,
+  useStore,
+} from '../lib/store';
+import { requestPersistentStorage, storageEstimate } from '../lib/storage';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
 import { UsagePanel } from './UsagePanel';
 import { Copy, Refresh } from './Icons';
@@ -702,7 +711,12 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
       body: (
         <>
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
-        Maʼlumotlar
+        Qurilmadagi joy
+      </div>
+      <StoragePanel />
+
+      <div className="section-label" style={{ padding: '14px 0 6px' }}>
+        Zaxira nusxa
       </div>
 
       <input
@@ -1115,6 +1129,49 @@ function SupabasePanel() {
           {result}
         </div>
       )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Qurilmadagi joy                                                    */
+/* ------------------------------------------------------------------ */
+
+function StoragePanel() {
+  const [info, setInfo] = useState<{ usedMb: number; quotaMb: number } | null>(null);
+  const [persistent, setPersistent] = useState<boolean | null>(null);
+  const error = getStorageError();
+
+  useEffect(() => {
+    void storageEstimate().then(setInfo);
+    void requestPersistentStorage().then(setPersistent);
+  }, []);
+
+  const pct = info && info.quotaMb ? Math.min(100, Math.round((info.usedMb / info.quotaMb) * 100)) : 0;
+
+  return (
+    <>
+      {error && <div className="err" style={{ marginBottom: 10 }}>{error}</div>}
+
+      {info ? (
+        <>
+          <div className="progress">
+            <i style={{ width: `${Math.max(2, pct)}%` }} />
+          </div>
+          <div className="tiny" style={{ marginTop: 6 }}>
+            {info.usedMb} MB band · {info.quotaMb} MB ruxsat berilgan ({pct}%)
+          </div>
+        </>
+      ) : (
+        <div className="tiny">Joy hajmi aniqlanmadi.</div>
+      )}
+
+      <div className="tiny" style={{ marginTop: 8, lineHeight: 1.55 }}>
+        {persistent === true
+          ? '✓ Maʼlumot doimiy saqlanadi — brauzer joy tugaganda ham oʻchirmaydi.'
+          : 'Maʼlumot vaqtinchalik omborda. Qurilmada joy tugasa tizim uni tozalab '
+            + 'yuborishi mumkin — muhim narsalarni zaxira nusxaga oling.'}
+      </div>
     </>
   );
 }
