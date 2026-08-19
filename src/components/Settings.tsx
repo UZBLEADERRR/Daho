@@ -59,6 +59,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
   const [testing, setTesting] = useState(false);
   const [ghChecking, setGhChecking] = useState(false);
   const [micChecks, setMicChecks] = useState<MicCheck[] | null>(null);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [micBusy, setMicBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -133,20 +134,24 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     );
   };
 
-  return (
-    <Sheet title="Sozlamalar" onClose={onClose}>
-      {install.available && (
-        <button
-          className="btn wide"
-          style={{ marginBottom: 14 }}
-          onClick={() => void install.install()}
-        >
-          Ilovani qurilmaga oʻrnatish
-        </button>
-      )}
-
-      {cloudEnabled && (
+  /** Sozlamalar boʻlimlari — bittasi ochiladi, qolgani xalaqit bermaydi. */
+  const groups: Array<{
+    id: string;
+    icon: string;
+    title: string;
+    hint: string;
+    show?: boolean;
+    body: JSX.Element;
+  }> = [
+    {
+      id: 'cloud',
+      icon: '☁️',
+      title: 'Daho Cloud',
+      hint: 'Hisob, obuna va sinxronizatsiya',
+      show: cloudEnabled,
+      body: (
         <>
+
           <div className="section-label" style={{ padding: '0 0 6px' }}>
             Daho Cloud
           </div>
@@ -184,17 +189,23 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
             hint="Suhbat, konspekt, vazifa va loyihalar barcha qurilmalarda bir xil boʻladi. API kalit va GitHub tokeni hech qachon yuborilmaydi."
           />
 
-          <div className="divider" />
         </>
-      )}
-
+      ),
+    },
+    {
+      id: 'ai',
+      icon: '🧠',
+      title: 'AI modellar',
+      hint: 'Gemini, OpenRouter, rol modellari va ijodkorlik',
+      body: (
+        <>
       <div className="section-label" style={{ padding: '0 0 6px' }}>
         Gemini (ixtiyoriy)
       </div>
 
       <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.55 }}>
         Ilova <b>faqat OpenRouter</b> (yoki boshqa provayder) bilan ham toʻliq
-        gaplashadi — pastdagi «AI modellar» boʻlimiga qarang. Google kaliti
+        gaplashadi — pastdagi «Provayderlar» roʻyxatiga qarang. Google kaliti
         quyidagilar uchun kerak: <b>internet qidiruvi</b>, <b>tabiiy ovoz</b>{' '}
         (Gemini TTS) va <b>mikrofonni matnga oʻgirish</b>. Kalitsiz ovoz
         telefonning oʻz xizmati bilan ishlaydi. Rasm yasash uchun OpenRouter’da
@@ -243,8 +254,6 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
 
       <ModelsPanel />
 
-      <UsagePanel />
-
       <div className="field">
         <label>Rasm modeli</label>
         {imageModels.length ? (
@@ -275,6 +284,27 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         />
       </div>
 
+        </>
+      ),
+    },
+    {
+      id: 'xarajat',
+      icon: '📊',
+      title: 'Xarajat va xotira',
+      hint: 'Sarflangan token, narx va eslab qolinganlar',
+      body: (
+        <>
+      <UsagePanel />
+        </>
+      ),
+    },
+    {
+      id: 'ovoz',
+      icon: '🎙',
+      title: 'Ovoz va mikrofon',
+      hint: 'Diktor, tillar, nutqni tanish va tekshiruv',
+      body: (
+        <>
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
         Ovoz
       </div>
@@ -454,6 +484,18 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         </div>
       )}
 
+
+            <MicCheck />
+        </>
+      ),
+    },
+    {
+      id: 'github',
+      icon: '⌨️',
+      title: 'GitHub',
+      hint: 'Daho Code uchun token va nashr domeni',
+      body: (
+        <>
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
         GitHub (Daho Code uchun)
       </div>
@@ -513,12 +555,38 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         {ghChecking ? 'Tekshirilmoqda…' : 'GitHub ulanishini tekshirish'}
       </button>
 
+        </>
+      ),
+    },
+    {
+      id: 'supabase',
+      icon: '🗄',
+      title: 'Supabase',
+      hint: 'Loyihalaringiz uchun maʼlumot bazasi',
+      body: (
+        <>
       <SupabasePanel />
-
-      <MicCheck />
-
+        </>
+      ),
+    },
+    {
+      id: 'qiyofa',
+      icon: '🎨',
+      title: 'Ilova qiyofasi',
+      hint: 'Ilova nomi va ikonkasini almashtirish',
+      body: (
+        <>
       <AppLook />
-
+        </>
+      ),
+    },
+    {
+      id: 'shaxsiy',
+      icon: '👤',
+      title: 'Shaxsiy',
+      hint: 'Ismingiz, oʻqish joyingiz va koʻrsatmalar',
+      body: (
+        <>
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
         Shaxsiy
       </div>
@@ -549,6 +617,16 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         />
       </div>
 
+        </>
+      ),
+    },
+    {
+      id: 'korinish',
+      icon: '🌗',
+      title: 'Koʻrinish',
+      hint: 'Mavzu, rang va matn oʻlchami',
+      body: (
+        <>
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
         Koʻrinish
       </div>
@@ -613,6 +691,16 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         </div>
       </div>
 
+        </>
+      ),
+    },
+    {
+      id: 'malumot',
+      icon: '💾',
+      title: 'Maʼlumotlar',
+      hint: 'Zaxira nusxa, tiklash va tozalash',
+      body: (
+        <>
       <div className="section-label" style={{ padding: '10px 0 6px' }}>
         Maʼlumotlar
       </div>
@@ -661,6 +749,55 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
 
       <div className="tiny" style={{ textAlign: 'center', marginTop: 16 }}>
         Daho 2.0 · maʼlumotlar faqat shu telefonda saqlanadi
+      </div>
+        </>
+      ),
+    },
+  ];
+
+  const current = groups.find((g) => g.id === openGroup);
+
+  if (current) {
+    return (
+      <Sheet title={current.title} onClose={() => setOpenGroup(null)}>
+        <button className="btn ghost mini" style={{ marginBottom: 12 }} onClick={() => setOpenGroup(null)}>
+          ← Sozlamalar
+        </button>
+        {current.body}
+      </Sheet>
+    );
+  }
+
+  return (
+    <Sheet title="Sozlamalar" onClose={onClose}>
+      {install.available && (
+        <button
+          className="btn wide"
+          style={{ marginBottom: 14 }}
+          onClick={() => void install.install()}
+        >
+          Ilovani qurilmaga oʻrnatish
+        </button>
+      )}
+
+
+      <div className="settings-menu">
+        {groups
+          .filter((g) => g.show !== false)
+          .map((g) => (
+            <button key={g.id} className="settings-row" onClick={() => setOpenGroup(g.id)}>
+              <span className="settings-icon">{g.icon}</span>
+              <span className="grow">
+                <b>{g.title}</b>
+                <i>{g.hint}</i>
+              </span>
+              <span className="settings-arrow">›</span>
+            </button>
+          ))}
+      </div>
+
+      <div className="tiny" style={{ textAlign: 'center', marginTop: 16 }}>
+        Daho 2.0 · maʼlumotlar faqat shu qurilmada saqlanadi
       </div>
     </Sheet>
   );

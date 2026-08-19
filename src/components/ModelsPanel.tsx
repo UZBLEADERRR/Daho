@@ -103,7 +103,7 @@ export function ModelsPanel() {
   return (
     <>
       <div className="section-label" style={{ padding: '14px 0 6px' }}>
-        AI modellar
+        Provayderlar (OpenRouter va boshqalar)
       </div>
 
       <div className="tiny" style={{ marginBottom: 10 }}>
