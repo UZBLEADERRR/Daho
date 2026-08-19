@@ -16,15 +16,24 @@ concurrency:
 jobs:
   build:
     name: Yigʻish
-    # Faqat asosiy (default) tarmoqdan nashr qilinadi — tarmoq nomi
-    # oʻzgarsa ham ish oqimini tahrirlash shart emas.
+    # Asosiy (default) tarmoqdan nashr qilinadi — tarmoq nomi oʻzgarsa ham
+    # ish oqimini tahrirlash shart emas. Ikkinchi nom — veb versiya tarmogʻi:
+    # PR qoʻshilgunicha jonli koʻrishga imkon beradi, keyin olib tashlansa
+    # boʻladi.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.ref_name == github.event.repository.default_branch
+      github.ref_name == github.event.repository.default_branch ||
+      github.ref_name == 'claude/manashu-web-version-wclci1'
     runs-on: ubuntu-latest
     steps:
       - name: Kodni olish
         uses: actions/checkout@v4
+
+      - name: Pages ni yoqish va sozlash
+        # enablement: repozitoriyda Pages hali yoqilmagan boʻlsa oʻzi yoqadi.
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Node.js sozlash
         uses: actions/setup-node@v4
