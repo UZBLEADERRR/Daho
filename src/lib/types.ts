@@ -284,6 +284,8 @@ export interface Course {
 /* ---------- Video ---------- */
 
 export interface SubtitleStyle {
+  /** Subtitr videoga yozilsinmi (oʻchirilsa faqat rasm va ovoz qoladi) */
+  enabled?: boolean;
   font: string;
   size: number;
   color: string;
@@ -339,8 +341,12 @@ export interface VideoProject {
   scenes: VideoScene[];
   characters: VideoCharacter[];
   subtitle: SubtitleStyle;
+  /** Diktor va subtitr tili — «Qayta tarjima» shuni oʻzgartiradi */
+  language?: string;
   /** Render natijasi — obyekt URL emas, base64 webm */
   outputMime?: string;
+  /** Faylni qaysi kengaytma bilan saqlash kerak */
+  outputExt?: 'mp4' | 'webm';
   outputSize?: number;
   error?: string;
   createdAt: number;

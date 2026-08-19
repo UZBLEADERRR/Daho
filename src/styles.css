@@ -14,6 +14,7 @@
   --accent: #8b7cf6;
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
   --danger: #f4655f;
+  --warn: #d89b2a;
   --ok: #4ec98a;
   --radius: 14px;
   --nav: 52px;
