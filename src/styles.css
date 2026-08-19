@@ -112,9 +112,11 @@ textarea {
 /* ---------- Karkas ---------- */
 
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-width: 0;
   padding-top: var(--safe-top);
 }
 
@@ -1842,12 +1844,13 @@ textarea {
 /* ---------- Ishlayotgan vazifalar qatori ---------- */
 
 .taskbar {
-  flex: 0 0 auto;
   display: grid;
   gap: 5px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg);
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
 .taskbar-item {
@@ -2431,4 +2434,122 @@ textarea {
   .scroll {
     scrollbar-width: thin;
   }
+}
+
+/* Suzuvchi «hozir nima bajarilyapti» tugmachasi — tartibni surmaydi */
+.taskpill-wrap {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  width: max-content;
+  max-width: min(94%, 460px);
+  pointer-events: none;
+}
+
+.taskpill-wrap > * {
+  pointer-events: auto;
+}
+
+.taskpill-wrap.open {
+  width: min(94%, 460px);
+}
+
+.taskpill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 5px 11px 5px 9px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  font-size: 12.5px;
+  animation: fade 0.2s ease;
+}
+
+.taskpill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  max-width: 42vw;
+}
+
+/* ---------- Matn ichidagi rasmlar ---------- */
+
+.md img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+/* Ketma-ket rasmlar — gorizontal lenta */
+.img-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding: 2px 0 6px;
+  margin: 6px 0;
+}
+
+.img-strip::-webkit-scrollbar {
+  height: 5px;
+}
+
+.img-strip::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.img-strip img {
+  height: 152px;
+  width: auto;
+  max-width: 78vw;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  scroll-snap-align: start;
+  cursor: zoom-in;
+}
+
+@media (min-width: 960px) {
+  .img-strip img {
+    height: 190px;
+    max-width: 420px;
+  }
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.92);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  animation: fade 0.15s ease;
+}
+
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.lightbox > .icon-btn {
+  position: absolute;
+  top: calc(10px + var(--safe-top));
+  right: 10px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
 }

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { splitSegments, type Segment } from '../lib/artifacts';
 import { copyText, exportDocument, DOC_LABEL, type DocFormat } from '../lib/exporter';
-import { renderMarkdown } from '../lib/markdown';
+import { Markdown } from './Markdown';
 import { speak, stopSpeaking } from '../lib/speech';
 import { useStore } from '../lib/store';
 import type { Artifact, Message as Msg } from '../lib/types';
@@ -108,13 +108,7 @@ export function MessageView({
   const renderSegment = (seg: Segment, key: string) => {
     if (seg.type === 'text') {
       if (!seg.value.trim()) return null;
-      return (
-        <div
-          key={key}
-          className="md"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.value) }}
-        />
-      );
+      return <Markdown key={key} text={seg.value} />;
     }
 
     if (seg.lang === 'chart') {

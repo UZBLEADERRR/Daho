@@ -14,8 +14,8 @@ import { getRepo, listRepos, whoAmI, type GhRepo } from '../lib/github';
 import { saveLinkApp } from '../lib/creations';
 import { byRole, cachedModels } from '../lib/models';
 import { TEMPLATES } from '../lib/templates';
-import { renderMarkdown } from '../lib/markdown';
-import { sandboxDocument } from '../lib/sandbox';
+import { Markdown } from './Markdown';
+import { IFRAME_ALLOW, IFRAME_SANDBOX, sandboxDocument } from '../lib/sandbox';
 import { getState, useStore, updateSettings } from '../lib/store';
 import type { Attachment, CodeProject } from '../lib/types';
 import { relativeTime } from '../lib/utils';
@@ -412,10 +412,7 @@ function CodeChat({ project }: { project: CodeProject }) {
                   {splitByTools(m.text, m.toolCalls).map((block, bi) => (
                     <div key={bi}>
                       {block.text.trim() && (
-                        <div
-                          className="md"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(block.text) }}
-                        />
+                        <Markdown text={block.text} />
                       )}
                       {block.calls.map((call, ci) => (
                         <ToolLine key={ci} call={call} />
@@ -711,7 +708,8 @@ function Preview({ project }: { project: CodeProject }) {
           key={key}
           title={project.name}
           srcDoc={doc}
-          sandbox="allow-scripts allow-forms allow-modals allow-popups"
+          sandbox={IFRAME_SANDBOX}
+          allow={IFRAME_ALLOW}
         />
       </div>
     </>

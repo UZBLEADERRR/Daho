@@ -17,6 +17,7 @@ import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
 import { cloudEnabled, initCloud, useCloud } from './lib/cloud';
 import { getModels, pickModel } from './lib/models';
+import { installDeviceBridge } from './lib/devicebridge';
 import { installSandboxStore } from './lib/sandbox';
 import { getState, updateSettings, useStore } from './lib/store';
 import type { Artifact } from './lib/types';
@@ -62,6 +63,9 @@ export default function App() {
 
   // Qumboxdagi ilovalar saqlagan maʼlumotni qabul qilamiz.
   useEffect(() => installSandboxStore(), []);
+
+  // Kamera, mikrofon va joylashuvni qumboxdagi ilovalarga uzatamiz.
+  useEffect(() => installDeviceBridge(), []);
 
   // Bulut: sessiya, hisob va sinxronizatsiya.
   useEffect(() => initCloud(), []);
@@ -192,8 +196,6 @@ export default function App() {
           </button>
         </header>
 
-        <TaskBar />
-
         <main className="main">
           {tab === 'chat' && (
             <ChatView onOpenArtifact={setArtifact} onOpenVideo={setVideoId} />
@@ -208,6 +210,8 @@ export default function App() {
           )}
           {tab === 'kod' && <CodeView />}
         </main>
+
+        <TaskBar />
       </div>
 
       {settingsOpen && (

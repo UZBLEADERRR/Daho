@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { isPreviewable, toPreviewDocument } from '../lib/artifacts';
+import { IFRAME_ALLOW, IFRAME_SANDBOX } from '../lib/sandbox';
 import { saveApp } from '../lib/creations';
 import { copyText, saveArtifact } from '../lib/exporter';
 import type { Artifact } from '../lib/types';
@@ -152,7 +153,8 @@ export function ArtifactViewer({
             key={reloadKey}
             title={artifact.title}
             srcDoc={doc}
-            sandbox="allow-scripts allow-forms allow-modals allow-popups"
+            sandbox={IFRAME_SANDBOX}
+            allow={IFRAME_ALLOW}
           />
         ) : (
           <pre>{artifact.content}</pre>
