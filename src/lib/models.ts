@@ -1,4 +1,5 @@
 import { listModels, type RemoteModel } from './gemini';
+import { aiAvailable, resolveSource } from './route';
 
 export type ModelRole = 'chat' | 'image' | 'tts' | 'video' | 'embed' | 'other';
 
@@ -18,6 +19,8 @@ const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 soat
 
 interface Cache {
   fetchedAt: number;
+  /** Roʻyxat qaysi manbadan olingan — bulutda faqat rejadagi modellar boʻladi */
+  source: 'byok' | 'cloud';
   models: ModelInfo[];
 }
 
@@ -87,6 +90,8 @@ function readCache(): Cache | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Cache;
     if (!Array.isArray(parsed.models) || !parsed.models.length) return null;
+    // Manba almashgan boʻlsa (oʻz kaliti ↔ obuna) roʻyxat boshqacha boʻladi.
+    if (parsed.source !== resolveSource()) return null;
     return parsed;
   } catch {
     return null;
@@ -95,7 +100,10 @@ function readCache(): Cache | null {
 
 function writeCache(models: ModelInfo[]): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), models }));
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({ fetchedAt: Date.now(), source: resolveSource(), models }),
+    );
   } catch {
     /* xotira toʻlgan boʻlishi mumkin */
   }
@@ -110,7 +118,7 @@ let inflight: Promise<ModelInfo[]> | null = null;
 export async function getModels(apiKey: string, force = false): Promise<ModelInfo[]> {
   const cache = readCache();
   if (!force && cache && Date.now() - cache.fetchedAt < CACHE_TTL) return cache.models;
-  if (!apiKey) return cache?.models ?? [];
+  if (!aiAvailable(apiKey)) return cache?.models ?? [];
 
   if (inflight && !force) return inflight;
 

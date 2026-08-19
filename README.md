@@ -1,9 +1,18 @@
 # Daho
 
-Universitet uchun shaxsiy AI yordamchi va agent. Butunlay telefonda ishlaydi —
-**hech qanday server yoʻq**. Barcha maʼlumot (suhbatlar, konspektlar, jadval,
-vazifalar) faqat qurilmaning oʻzida saqlanadi, Gemini API ga esa ilova
-toʻgʻridan-toʻgʻri murojaat qiladi.
+Universitet uchun shaxsiy AI yordamchi va agent. **Telefon, planshet va
+kompyuterda bir xil ishlaydi** — bitta kod, bitta interfeys: Android ilovasi
+(APK) va veb versiya (PWA).
+
+Ikki rejim bor va ikkalasi bir vaqtda yashaydi:
+
+- **Mahalliy rejim** — hech qanday server yoʻq. Oʻz Gemini kalitingizni
+  kiritasiz, barcha maʼlumot faqat qurilmada qoladi, ilova Google'ga
+  toʻgʻridan-toʻgʻri murojaat qiladi. Ilova internetsiz ham ochiladi.
+- **Daho Cloud** — hisob ochasiz: maʼlumot qurilmalar orasida sinxronlanadi,
+  obuna orqali modellar ochiladi, tokenlar va narx nazorat qilinadi, fon
+  vazifalari ilova yopiq boʻlsa ham serverda bajariladi.
+  Oʻrnatish: [`docs/CLOUD.md`](docs/CLOUD.md).
 
 ## Nimalar bor
 
@@ -138,6 +147,59 @@ ish vaqtingizni qaydga oladi.
 > «Hosila mavzusini tushuntir va saqlab qoʻy» → tushuntiradi va konspekt qiladi
 > «Formulalarni yodlash uchun test ilovasi yasab ber» → ishlaydigan ilova beradi
 
+## Veb versiya (desktop va mobil)
+
+Bir xil ilova brauzerda ham ishlaydi:
+
+- **Bitta interfeys** — mobilda yon panel surilib chiqadi, keng ekranda
+  (≥960px) doim ochiq turadi; matn va suhbat maydoni oʻqishga qulay
+  kenglikda markazlashadi. Boʻlimlar, tugmalar va imkoniyatlar aynan bir xil.
+- **PWA** — brauzerdan «oʻrnatish» mumkin, oʻz ikonkasi bilan alohida oyna
+  boʻlib ochiladi (Sozlamalar → «Ilovani qurilmaga oʻrnatish»).
+- **Oflayn** — service worker ilova qobigʻini keshlaydi, internet uzilsa ham
+  ochiladi va mahalliy maʼlumot bilan ishlayveradi.
+
+```bash
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # natija: dist/ — istalgan statik hostingga
+```
+
+`main` ga push qilinganda GitHub Pages ga avtomatik nashr qilinadi
+(`.github/workflows/web.yml`). Bulut kerak boʻlsa repo secret'lariga
+`VITE_SUPABASE_URL` va `VITE_SUPABASE_ANON_KEY` ni qoʻshing.
+
+## Daho Cloud — obuna va nazorat
+
+Bulut yoqilganda ilovada uchta yangi narsa paydo boʻladi.
+
+**Hisob** (yuqori navbardagi ☁ tugmasi)
+- Reja, qolgan kredit, bugungi va oylik sarf
+- Rejada ochiq modellar va ularning token narxi
+- Sinxronizatsiya holati
+- Rejalar roʻyxati va obuna soʻrovi
+
+**Fon vazifalari** — obuna ochsa. Vazifani navbatga qoʻyasiz
+(matn, qidiruv, reja, rasm), ilovani yopsangiz ham server bajaradi,
+natija tayyor boʻlishi bilan qurilmangizga tushadi va konspektga saqlanadi.
+
+**Admin panel** (faqat administratorlar)
+- *Umumiy* — foydalanuvchi soni, pullik obunalar, oylik daromad, token va
+  kredit sarfi, modellar boʻyicha taqsimot
+- *Odamlar* — qidiruv, reja berish (muddat bilan), kredit qoʻshish,
+  bloklash, admin qilish
+- *Rejalar* — narx, oylik kredit, kunlik chegara, fon limitlari va
+  **har bir model uchun token narxi** (1M kirish / 1M chiqish / chaqiruv)
+- *Soʻrovlar* — obuna soʻrovlarini tasdiqlash yoki rad etish
+- *Sozlama* — gateway'ni toʻxtatish, roʻyxatni yopish, zaxira narx,
+  admin pochtalari
+
+Ishlash tartibi: obunachi soʻrovi `ai-gateway` edge funksiyasi orqali
+oʻtadi — u rejani va kreditni tekshiradi, javob oqimini uzatib turib
+tokenni sanaydi va kreditdan yechadi. Oʻz kalitini kiritganlar esa
+avvalgidek toʻgʻridan-toʻgʻri Google'ga chiqadi (Sozlamalar → «AI qayerdan
+ishlaydi»).
+
 ## APK ni olish
 
 Har bir push'dan soʻng GitHub Actions APK yigʻadi:
@@ -179,7 +241,12 @@ Kerak: Node.js 20+, JDK 17, Android SDK (compileSdk 34).
 - Gemini `streamGenerateContent` (SSE) + function calling
 - Ovoz: `@capacitor-community/text-to-speech` va
   `@capacitor-community/speech-recognition` — qurilmaning oʻz xizmatlari
-- Saqlash: `localStorage`, zaxira nusxa JSON fayl sifatida chiqariladi
+- Saqlash: `localStorage` (asosiy manba), zaxira nusxa JSON fayl sifatida
+- Bulut: Supabase (Postgres + RLS + Auth + Edge Functions/Deno).
+  Sinxronizatsiya elementma-element ishlaydi: har bir suhbat/konspekt/vazifa
+  alohida satr, oxirgi yozgan qoladi. Maxfiy sozlamalar (API kalit, GitHub
+  tokeni) hech qachon yuborilmaydi.
+- PWA: `public/manifest.webmanifest` + `public/sw.js` (ilova qobigʻi keshi)
 
 ### Ovoz haqida eslatma
 

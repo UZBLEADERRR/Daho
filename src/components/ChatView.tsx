@@ -11,6 +11,7 @@ import {
 import { probeApp } from '../lib/probe';
 import { generateImage } from '../lib/gemini';
 import { speak } from '../lib/speech';
+import { aiAvailable } from '../lib/route';
 import { getState, setState, useStore } from '../lib/store';
 import type { Artifact, Attachment, Message } from '../lib/types';
 import { uid } from '../lib/utils';
@@ -178,8 +179,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
   };
 
   const onSend = async (text: string, attachments: Attachment[]) => {
-    if (!settings.apiKey) {
-      toast('Avval Sozlamalarda Gemini API kalitini kiriting');
+    if (!aiAvailable(settings.apiKey)) {
+      toast('Avval Gemini API kalitini kiriting yoki Daho Cloud hisobiga kiring');
       return;
     }
     // Ish ketayotgan boʻlsa — yangi soʻrov emas, qoʻshimcha koʻrsatma.

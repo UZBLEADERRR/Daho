@@ -3,6 +3,7 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { blobToWavBytes, bytesToB64, playWavBase64, stopPlayback, ttsToWavBase64 } from './audio';
 import { generateSpeech, transcribeAudio } from './gemini';
+import { aiAvailable } from './route';
 import { getState } from './store';
 
 const isNative = () => Capacitor.isNativePlatform();
@@ -169,7 +170,7 @@ export async function speak(text: string): Promise<void> {
 
   await stopSpeaking();
 
-  if (settings.ttsEngine === 'qurilma' || !settings.apiKey) {
+  if (settings.ttsEngine === 'qurilma' || !aiAvailable(settings.apiKey)) {
     await speakOnDevice(clean);
     return;
   }
@@ -240,8 +241,8 @@ function pickRecorderMime(): string {
  */
 async function listenViaGemini(cb: ListenCallbacks): Promise<ListenHandle | null> {
   const { settings } = getState();
-  if (!settings.apiKey) {
-    cb.onError('Avval Sozlamalarda API kalitni kiriting.');
+  if (!aiAvailable(settings.apiKey)) {
+    cb.onError('Avval Sozlamalarda API kalitni kiriting yoki obunaga kiring.');
     return null;
   }
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {

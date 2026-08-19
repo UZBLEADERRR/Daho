@@ -1,13 +1,18 @@
 import { createChat, deleteChat } from '../lib/agent';
+import { cloudEnabled, useCloud } from '../lib/cloud';
 import { setState, useStore } from '../lib/store';
 import { relativeTime } from '../lib/utils';
 import type { AgentSection } from './agent/sections';
 import { AGENT_SECTIONS, SECTION_EMOJI, SECTION_LABEL } from './agent/sections';
-import { Close, Plus, Settings as SettingsIcon, Trash } from './Icons';
+import { Close, Cloud, Plus, Settings as SettingsIcon, Shield, Trash } from './Icons';
 
 interface Props {
   onClose: () => void;
   onOpenSettings: () => void;
+  onOpenAccount: () => void;
+  onOpenAdmin: () => void;
+  /** Keng ekranda yon panel doim ochiq turadi */
+  pinned?: boolean;
   onGoChat: () => void;
   onGoCode: () => void;
   onGoAgent: (section: AgentSection) => void;
@@ -18,26 +23,32 @@ interface Props {
 export function Sidebar({
   onClose,
   onOpenSettings,
+  onOpenAccount,
+  onOpenAdmin,
   onGoChat,
   onGoCode,
   onGoAgent,
   activeSection,
   tab,
+  pinned = false,
 }: Props) {
   const chats = useStore((s) => s.chats);
   const activeChatId = useStore((s) => s.activeChatId);
+  const cloud = useCloud();
 
   return (
     <>
-      <div className="scrim" onClick={onClose} />
-      <aside className="sidebar">
+      {!pinned && <div className="scrim" onClick={onClose} />}
+      <aside className={pinned ? 'sidebar pinned' : 'sidebar'}>
         <div className="sidebar-head">
           <div className="brand">
             Da<span>ho</span>
           </div>
-          <button className="icon-btn" onClick={onClose} aria-label="Yopish">
-            <Close />
-          </button>
+          {!pinned && (
+            <button className="icon-btn" onClick={onClose} aria-label="Yopish">
+              <Close />
+            </button>
+          )}
         </div>
 
         <div className="sidebar-body">
@@ -115,6 +126,34 @@ export function Sidebar({
         </div>
 
         <div className="sidebar-foot">
+          {cloudEnabled && (
+            <button
+              className="side-link"
+              onClick={() => {
+                onOpenAccount();
+                onClose();
+              }}
+            >
+              <Cloud size={17} />
+              {cloud.account?.plan?.name
+                ? `Daho Cloud · ${cloud.account.plan.name}`
+                : 'Daho Cloud'}
+            </button>
+          )}
+
+          {cloud.account?.is_admin && (
+            <button
+              className="side-link"
+              onClick={() => {
+                onOpenAdmin();
+                onClose();
+              }}
+            >
+              <Shield size={17} />
+              Admin panel
+            </button>
+          )}
+
           <button
             className="side-link"
             onClick={() => {

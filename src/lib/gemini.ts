@@ -1,6 +1,5 @@
+import { AiRouteError, aiAvailable, aiFetch } from './route';
 import type { Attachment } from './types';
-
-const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 export interface GeminiPart {
   text?: string;
@@ -55,6 +54,8 @@ function humanError(status: number, body: string): string {
       return `API kalit qabul qilinmadi. Sozlamalardan kalitni tekshiring. (${detail})`;
     case 404:
       return `Bu model endi mavjud emas. Sozlamalar → «Modellarni yangilash» tugmasini bosing. (${detail})`;
+    case 402:
+      return detail || 'Obuna limiti tugadi. Hisobingizni toʻldiring yoki oʻz API kalitingizni kiriting.';
     case 429:
       return 'Limit tugadi — biroz kutib qayta urining (bepul reja daqiqalik cheklovga ega).';
     case 500:
@@ -63,6 +64,21 @@ function humanError(status: number, body: string): string {
     default:
       return detail || `Xato (HTTP ${status})`;
   }
+}
+
+/** Kalit ham, obuna ham yo'q bo'lsa — tushunarli xato. */
+function ensureAccess(apiKey: string): void {
+  if (aiAvailable(apiKey)) return;
+  throw new GeminiError(
+    'API kalit kiritilmagan. Sozlamalarga oʻting yoki Daho Cloud obunasiga kiring.',
+    0,
+  );
+}
+
+/** Yo'naltirish xatosini umumiy xato turiga keltiradi. */
+function asGeminiError(err: unknown): never {
+  if (err instanceof AiRouteError) throw new GeminiError(err.message, err.status);
+  throw err;
 }
 
 async function assertOk(res: Response): Promise<void> {
@@ -145,7 +161,7 @@ export interface StreamResult {
  * yakunda to'liq matn va model so'ragan funksiya chaqiruvlarini qaytaradi.
  */
 export async function streamGenerate(opts: StreamOptions): Promise<StreamResult> {
-  if (!opts.apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
+  ensureAccess(opts.apiKey);
 
   const body: Record<string, unknown> = {
     contents: opts.contents,
@@ -170,20 +186,14 @@ export async function streamGenerate(opts: StreamOptions): Promise<StreamResult>
   const res = await withRetry(async () => {
     let response: Response;
     try {
-      response = await fetch(
-        `${BASE}/models/${encodeURIComponent(opts.model)}:streamGenerateContent?alt=sse`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': opts.apiKey,
-          },
-          body: JSON.stringify(body),
-          signal: opts.signal,
-        },
+      response = await aiFetch(
+        opts.apiKey,
+        `/models/${encodeURIComponent(opts.model)}:streamGenerateContent`,
+        { body: JSON.stringify(body), signal: opts.signal, query: { alt: 'sse' } },
       );
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') throw err;
+      if (err instanceof AiRouteError) asGeminiError(err);
       throw new GeminiError(
         'Internetga ulanib boʻlmadi. Aloqani tekshiring va qayta urining.',
         0,
@@ -274,15 +284,13 @@ export async function generateText(
     ...files.map((f) => ({ inlineData: { mimeType: f.mimeType, data: f.data } })),
     { text: prompt },
   ];
-  const res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+  const res = await aiFetch(apiKey, `/models/${encodeURIComponent(model)}:generateContent`, {
     body: JSON.stringify({
       contents: [{ role: 'user', parts }],
       generationConfig: { temperature: 0.4 },
     }),
     signal,
-  });
+  }).catch(asGeminiError);
   await assertOk(res);
   const data = await res.json();
   const out: GeminiPart[] = data?.candidates?.[0]?.content?.parts ?? [];
@@ -302,22 +310,20 @@ export async function generateImage(
   refs: Attachment[] = [],
   signal?: AbortSignal,
 ): Promise<ImageResult> {
-  if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
+  ensureAccess(apiKey);
   const parts: GeminiPart[] = [
     ...refs.map((r) => ({ inlineData: { mimeType: r.mimeType, data: r.data } })),
     { text: prompt },
   ];
 
   const res = await withRetry(async () => {
-    const r = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    const r = await aiFetch(apiKey, `/models/${encodeURIComponent(model)}:generateContent`, {
       body: JSON.stringify({
         contents: [{ role: 'user', parts }],
         generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
       }),
       signal,
-    });
+    }).catch(asGeminiError);
     await assertOk(r);
     return r;
   }, signal);
@@ -351,12 +357,10 @@ export async function generateJson<T>(
   schema: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T> {
-  if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
+  ensureAccess(apiKey);
 
   const res = await withRetry(async () => {
-    const r = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    const r = await aiFetch(apiKey, `/models/${encodeURIComponent(model)}:generateContent`, {
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
@@ -366,7 +370,7 @@ export async function generateJson<T>(
         },
       }),
       signal,
-    });
+    }).catch(asGeminiError);
     await assertOk(r);
     return r;
   }, signal);
@@ -400,22 +404,18 @@ export async function searchAnswer(
   question: string,
   signal?: AbortSignal,
 ): Promise<GroundedAnswer> {
-  if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
+  ensureAccess(apiKey);
 
-  const ask = async (tool: Record<string, unknown>) => {
-    const r = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+  const ask = (tool: Record<string, unknown>) =>
+    aiFetch(apiKey, `/models/${encodeURIComponent(model)}:generateContent`, {
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: question }] }],
         tools: [tool],
       }),
       signal,
-    });
-    return r;
-  };
+    }).catch(asGeminiError);
 
-  let res = await withRetry(async () => {
+  const res = await withRetry(async () => {
     const r = await ask({ google_search: {} });
     // Eski modellar boshqa nom kutadi.
     if (r.status === 400) {
@@ -453,19 +453,19 @@ export interface RemoteModel {
 
 /** Hisobga ochiq boʻlgan barcha modellar roʻyxati. */
 export async function listModels(apiKey: string): Promise<RemoteModel[]> {
-  if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
+  ensureAccess(apiKey);
   const out: RemoteModel[] = [];
   let pageToken = '';
 
   for (let page = 0; page < 5; page += 1) {
-    const url = new URL(`${BASE}/models`);
-    url.searchParams.set('pageSize', '200');
-    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    const query: Record<string, string> = { pageSize: '200' };
+    if (pageToken) query.pageToken = pageToken;
 
     let res: Response;
     try {
-      res = await fetch(url.toString(), { headers: { 'x-goog-api-key': apiKey } });
-    } catch {
+      res = await aiFetch(apiKey, '/models', { method: 'GET', query });
+    } catch (err) {
+      if (err instanceof AiRouteError) asGeminiError(err);
       throw new GeminiError('Internetga ulanib boʻlmadi.', 0);
     }
     await assertOk(res);
@@ -489,13 +489,11 @@ export async function generateSpeech(
   styleHint?: string,
   signal?: AbortSignal,
 ): Promise<{ data: string; mimeType: string }> {
-  if (!apiKey) throw new GeminiError('API kalit kiritilmagan. Sozlamalarga oʻting.', 0);
+  ensureAccess(apiKey);
 
   const prompt = styleHint ? `${styleHint}\n\n${text}` : text;
   const res = await withRetry(async () => {
-    const r = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    const r = await aiFetch(apiKey, `/models/${encodeURIComponent(model)}:generateContent`, {
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
@@ -506,7 +504,7 @@ export async function generateSpeech(
         },
       }),
       signal,
-    });
+    }).catch(asGeminiError);
     await assertOk(r);
     return r;
   }, signal);
@@ -532,9 +530,7 @@ export async function transcribeAudio(
     { 'uz-UZ': 'oʻzbek', 'ru-RU': 'rus', 'en-US': 'ingliz', 'tr-TR': 'turk' }[lang] ?? 'oʻzbek';
 
   const res = await withRetry(async () => {
-    const r = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    const r = await aiFetch(apiKey, `/models/${encodeURIComponent(model)}:generateContent`, {
       body: JSON.stringify({
         contents: [
           {
@@ -553,7 +549,7 @@ export async function transcribeAudio(
         generationConfig: { temperature: 0 },
       }),
       signal,
-    });
+    }).catch(asGeminiError);
     await assertOk(r);
     return r;
   }, signal);

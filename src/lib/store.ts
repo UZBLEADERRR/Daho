@@ -25,6 +25,8 @@ export const DEFAULT_SETTINGS: Settings = {
   sttLang: 'uz-UZ',
   githubToken: '',
   publishDomain: '',
+  aiSource: 'auto',
+  cloudBackup: true,
   userName: '',
   university: '',
   customInstructions: '',
@@ -103,6 +105,11 @@ export function setState(
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** Holat o'zgarishini kuzatish (React'dan tashqarida — masalan sinxronizatsiya). */
+export function subscribeState(listener: () => void): () => void {
+  return subscribe(listener);
 }
 
 export function useStore<T>(selector: (s: AppState) => T): T {

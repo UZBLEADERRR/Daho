@@ -175,3 +175,23 @@ export const Back = ({ size = 20, className }: IconProps) => (
     <path d="M15 5l-7 7 7 7" />
   </svg>
 );
+
+export const Cloud = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M17.5 19a4.5 4.5 0 0 0 .6-8.96 6 6 0 0 0-11.6-1.3A4 4 0 0 0 7 19z" />
+  </svg>
+);
+
+export const User = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <circle cx="12" cy="8" r="3.4" />
+    <path d="M4.8 20a7.2 7.2 0 0 1 14.4 0" />
+  </svg>
+);
+
+export const Shield = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M12 3.2 19 6v5.4c0 4.2-2.8 7.6-7 9.4-4.2-1.8-7-5.2-7-9.4V6z" />
+    <path d="m9.2 12 2 2 3.6-3.8" />
+  </svg>
+);

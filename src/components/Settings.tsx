@@ -4,7 +4,12 @@ import { applyAppLook } from '../lib/applook';
 import { saveBackup } from '../lib/exporter';
 import { getRepo, whoAmI } from '../lib/github';
 import { transcribeAudio } from '../lib/gemini';
+import { cloudEnabled, useCloud } from '../lib/cloud';
+import { applyBackupSetting } from '../lib/cloud';
 import { byRole, cachedModels, getModels, pickModel, type ModelInfo } from '../lib/models';
+import { useInstallPrompt } from '../lib/pwa';
+import { aiAvailable, resolveSource } from '../lib/route';
+import type { AiSource } from '../lib/types';
 import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
 import { exportState, getState, importState, resetState, updateSettings, useStore } from '../lib/store';
 import { Refresh } from './Icons';
@@ -28,8 +33,15 @@ const TTS_LANGS = [
   { id: 'tr-TR', label: 'Turkcha' },
 ];
 
-export function Settings({ onClose }: { onClose: () => void }) {
+interface SettingsProps {
+  onClose: () => void;
+  onOpenAccount: () => void;
+}
+
+export function Settings({ onClose, onOpenAccount }: SettingsProps) {
   const settings = useStore((s) => s.settings);
+  const cloud = useCloud();
+  const install = useInstallPrompt();
   const [models, setModels] = useState<ModelInfo[]>(cachedModels());
   const [loadingModels, setLoadingModels] = useState(false);
   const [deviceVoices, setDeviceVoices] = useState<DeviceVoice[]>([]);
@@ -43,8 +55,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
   }, []);
 
   const refreshModels = async (force = true) => {
-    if (!settings.apiKey) {
-      toast('Avval API kalitni kiriting');
+    if (!aiAvailable(settings.apiKey)) {
+      toast('Avval API kalitni kiriting yoki Daho Cloud hisobiga kiring');
       return;
     }
     setLoadingModels(true);
@@ -112,6 +124,59 @@ export function Settings({ onClose }: { onClose: () => void }) {
 
   return (
     <Sheet title="Sozlamalar" onClose={onClose}>
+      {install.available && (
+        <button
+          className="btn wide"
+          style={{ marginBottom: 14 }}
+          onClick={() => void install.install()}
+        >
+          Ilovani qurilmaga oʻrnatish
+        </button>
+      )}
+
+      {cloudEnabled && (
+        <>
+          <div className="section-label" style={{ padding: '0 0 6px' }}>
+            Daho Cloud
+          </div>
+
+          <button className="btn ghost wide" onClick={onOpenAccount}>
+            {cloud.status === 'kirgan'
+              ? `Hisobim · ${cloud.account?.plan?.name ?? 'rejasiz'}`
+              : 'Kirish yoki roʻyxatdan oʻtish'}
+          </button>
+
+          <div className="field" style={{ marginTop: 12 }}>
+            <label>AI qayerdan ishlaydi</label>
+            <select
+              value={settings.aiSource}
+              onChange={(e) => updateSettings({ aiSource: e.target.value as AiSource })}
+            >
+              <option value="auto">Avtomatik — kalit boʻlsa oʻzimniki, boʻlmasa obuna</option>
+              <option value="byok">Faqat oʻz API kalitim</option>
+              <option value="cloud">Faqat Daho Cloud obunasi</option>
+            </select>
+            <div className="tiny" style={{ marginTop: 6 }}>
+              Hozir ishlatilmoqda:{' '}
+              <b>{resolveSource(settings.apiKey) === 'cloud' ? 'Daho Cloud' : 'oʻz kalitingiz'}</b>
+              {cloud.account ? ` · qolgan kredit: ${Math.round(cloud.account.balance)}` : ''}
+            </div>
+          </div>
+
+          <Switch
+            on={settings.cloudBackup}
+            onChange={(value) => {
+              updateSettings({ cloudBackup: value });
+              applyBackupSetting(value);
+            }}
+            label="Bulutga sinxronlash"
+            hint="Suhbat, konspekt, vazifa va loyihalar barcha qurilmalarda bir xil boʻladi. API kalit va GitHub tokeni hech qachon yuborilmaydi."
+          />
+
+          <div className="divider" />
+        </>
+      )}
+
       <div className="section-label" style={{ padding: '0 0 6px' }}>
         Gemini
       </div>
@@ -705,8 +770,8 @@ function MicCheck() {
       if (!data) return;
 
       const { settings } = getState();
-      if (!settings.apiKey) {
-        say('⚠️ API kalit yoʻq — matnga oʻgirib boʻlmaydi.');
+      if (!aiAvailable(settings.apiKey)) {
+        say('⚠️ Kalit ham, obuna ham yoʻq — matnga oʻgirib boʻlmaydi.');
         return;
       }
       say('⏳ Matnga oʻgirilmoqda…');

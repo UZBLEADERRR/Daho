@@ -1,6 +1,11 @@
 node_modules/
 dist/
 *.local
+
+# Muhit sozlamalari — kalitlar repozitoriyga tushmasin
+.env
+.env.*
+!.env.example
 .DS_Store
 .vscode/
 .idea/

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
@@ -6,13 +6,16 @@ import { AgentView } from './components/AgentView';
 import { ArtifactViewer } from './components/ArtifactView';
 import { ChatView } from './components/ChatView';
 import { CodeView } from './components/CodeView';
-import { Menu, Settings as SettingsIcon } from './components/Icons';
+import { Cloud, Menu, Settings as SettingsIcon } from './components/Icons';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { VideoStudio } from './components/VideoStudio';
+import { AccountSheet } from './components/cloud/AccountSheet';
+import { AdminPanel } from './components/cloud/AdminPanel';
 import type { AgentSection } from './components/agent/sections';
 import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
+import { cloudEnabled, initCloud, useCloud } from './lib/cloud';
 import { getModels, pickModel } from './lib/models';
 import { installSandboxStore } from './lib/sandbox';
 import { getState, updateSettings, useStore } from './lib/store';
@@ -20,17 +23,37 @@ import type { Artifact } from './lib/types';
 
 type Tab = 'chat' | 'agent' | 'kod';
 
+/** Keng ekranmi — desktop koʻrinishi uchun (yon panel doim ochiq). */
+function useWideScreen(): boolean {
+  const [wide, setWide] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 960px)').matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 960px)');
+    const onChange = () => setWide(media.matches);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+  return wide;
+}
+
 export default function App() {
   const theme = useStore((s) => s.settings.theme);
   const accent = useStore((s) => s.settings.accent);
   const fontScale = useStore((s) => s.settings.fontScale);
   const hasKey = useStore((s) => Boolean(s.settings.apiKey));
+  const cloud = useCloud();
+  const wide = useWideScreen();
+
   const [tab, setTab] = useState<Tab>('chat');
   const [section, setSection] = useState<AgentSection>('bugun');
   const [sidebar, setSidebar] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(!hasKey);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
+  const greeted = useRef(false);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', accent);
@@ -39,6 +62,17 @@ export default function App() {
 
   // Qumboxdagi ilovalar saqlagan maʼlumotni qabul qilamiz.
   useEffect(() => installSandboxStore(), []);
+
+  // Bulut: sessiya, hisob va sinxronizatsiya.
+  useEffect(() => initCloud(), []);
+
+  // Na kalit, na obuna boʻlsa — bir marta sozlamalarni ochamiz.
+  useEffect(() => {
+    if (greeted.current || hasKey) return;
+    if (cloudEnabled && (cloud.status === 'yuklanmoqda' || cloud.status === 'kirgan')) return;
+    greeted.current = true;
+    setSettingsOpen(true);
+  }, [hasKey, cloud.status]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -52,9 +86,10 @@ export default function App() {
     }
   }, [theme]);
 
-  // Kalit bor bo'lsa — modellar ro'yxatini yangilab, eng yangisiga o'tamiz.
+  // Kalit yoki obuna bor bo'lsa — modellar ro'yxatini yangilab, eng yangisiga o'tamiz.
+  const canQuery = hasKey || cloud.status === 'kirgan';
   useEffect(() => {
-    if (!hasKey) return;
+    if (!canQuery) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -73,7 +108,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [hasKey]);
+  }, [canQuery]);
 
   // Androidning "orqaga" tugmasi: avval ochiq oynalarni yopadi.
   useEffect(() => {
@@ -81,6 +116,8 @@ export default function App() {
     const handle = CapApp.addListener('backButton', ({ canGoBack }) => {
       if (artifact) setArtifact(null);
       else if (videoId) setVideoId(null);
+      else if (adminOpen) setAdminOpen(false);
+      else if (accountOpen) setAccountOpen(false);
       else if (settingsOpen) setSettingsOpen(false);
       else if (sidebar) setSidebar(false);
       else if (tab === 'agent' && section !== 'bugun') setSection('bugun');
@@ -91,59 +128,21 @@ export default function App() {
     return () => {
       void handle.then((h) => h.remove());
     };
-  }, [artifact, videoId, settingsOpen, sidebar, tab, section]);
+  }, [artifact, videoId, settingsOpen, accountOpen, adminOpen, sidebar, tab, section]);
+
+  const showSidebar = wide || sidebar;
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <button className="icon-btn" onClick={() => setSidebar(true)} aria-label="Menyu">
-          <Menu />
-        </button>
-
-        <div className="tabs">
-          <button className={tab === 'chat' ? 'tab on' : 'tab'} onClick={() => setTab('chat')}>
-            Chat
-          </button>
-          <button className={tab === 'agent' ? 'tab on' : 'tab'} onClick={() => setTab('agent')}>
-            Agent
-          </button>
-          <button className={tab === 'kod' ? 'tab on' : 'tab'} onClick={() => setTab('kod')}>
-            Code
-          </button>
-        </div>
-
-        <button
-          className="icon-btn"
-          onClick={() => setSettingsOpen(true)}
-          aria-label="Sozlamalar"
-        >
-          <SettingsIcon size={20} />
-        </button>
-      </header>
-
-      <TaskBar />
-
-      <main className="main">
-        {tab === 'chat' && (
-          <ChatView onOpenArtifact={setArtifact} onOpenVideo={setVideoId} />
-        )}
-        {tab === 'agent' && (
-          <AgentView
-            section={section}
-            onSection={setSection}
-            onOpenArtifact={setArtifact}
-            onOpenVideo={setVideoId}
-          />
-        )}
-        {tab === 'kod' && <CodeView />}
-      </main>
-
-      {sidebar && (
+    <div className={wide ? 'shell wide' : 'shell'}>
+      {showSidebar && (
         <Sidebar
           tab={tab}
+          pinned={wide}
           activeSection={section}
           onClose={() => setSidebar(false)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAccount={() => setAccountOpen(true)}
+          onOpenAdmin={() => setAdminOpen(true)}
           onGoChat={() => setTab('chat')}
           onGoCode={() => setTab('kod')}
           onGoAgent={(s) => {
@@ -153,7 +152,75 @@ export default function App() {
         />
       )}
 
-      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      <div className="app">
+        <header className="topbar">
+          {!wide && (
+            <button className="icon-btn" onClick={() => setSidebar(true)} aria-label="Menyu">
+              <Menu />
+            </button>
+          )}
+
+          <div className="tabs">
+            <button className={tab === 'chat' ? 'tab on' : 'tab'} onClick={() => setTab('chat')}>
+              Chat
+            </button>
+            <button className={tab === 'agent' ? 'tab on' : 'tab'} onClick={() => setTab('agent')}>
+              Agent
+            </button>
+            <button className={tab === 'kod' ? 'tab on' : 'tab'} onClick={() => setTab('kod')}>
+              Code
+            </button>
+          </div>
+
+          {cloudEnabled && (
+            <button
+              className={cloud.status === 'kirgan' ? 'icon-btn on' : 'icon-btn'}
+              onClick={() => setAccountOpen(true)}
+              aria-label="Daho Cloud"
+              title={cloud.account?.plan?.name ?? 'Daho Cloud'}
+            >
+              <Cloud size={19} />
+            </button>
+          )}
+
+          <button
+            className="icon-btn"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Sozlamalar"
+          >
+            <SettingsIcon size={20} />
+          </button>
+        </header>
+
+        <TaskBar />
+
+        <main className="main">
+          {tab === 'chat' && (
+            <ChatView onOpenArtifact={setArtifact} onOpenVideo={setVideoId} />
+          )}
+          {tab === 'agent' && (
+            <AgentView
+              section={section}
+              onSection={setSection}
+              onOpenArtifact={setArtifact}
+              onOpenVideo={setVideoId}
+            />
+          )}
+          {tab === 'kod' && <CodeView />}
+        </main>
+      </div>
+
+      {settingsOpen && (
+        <Settings
+          onClose={() => setSettingsOpen(false)}
+          onOpenAccount={() => {
+            setSettingsOpen(false);
+            setAccountOpen(true);
+          }}
+        />
+      )}
+      {accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} />}
+      {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       {videoId && <VideoStudio projectId={videoId} onClose={() => setVideoId(null)} />}
       {artifact && <ArtifactViewer artifact={artifact} onClose={() => setArtifact(null)} />}
 

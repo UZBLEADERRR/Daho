@@ -118,6 +118,8 @@ export type ThemeName = 'tun' | 'kun';
 
 export type Engine = 'gemini' | 'qurilma';
 
+export type AiSource = 'auto' | 'byok' | 'cloud';
+
 export interface Settings {
   apiKey: string;
   model: string;
@@ -142,6 +144,15 @@ export interface Settings {
   githubToken: string;
   /** Nashr uchun oʻz domeningiz (ixtiyoriy) */
   publishDomain: string;
+  /**
+   * AI qayerdan ishlaydi:
+   *   'auto'  — kalit boʻlsa oʻzinikidan, boʻlmasa obunadan
+   *   'byok'  — faqat oʻz API kaliti
+   *   'cloud' — faqat Daho Cloud obunasi
+   */
+  aiSource: AiSource;
+  /** Maʼlumotlar bulutga sinxronlansinmi */
+  cloudBackup: boolean;
   userName: string;
   university: string;
   customInstructions: string;

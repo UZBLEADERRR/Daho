@@ -1,0 +1,8 @@
+# Supabase CLI sozlamasi (supabase link --project-ref <ref> dan keyin ishlatiladi).
+project_id = "daho"
+
+[functions.ai-gateway]
+verify_jwt = false   # JWT ni funksiyaning o'zi tekshiradi (aniqroq xato matni uchun)
+
+[functions.jobs-worker]
+verify_jwt = false   # x-worker-secret bilan himoyalangan
