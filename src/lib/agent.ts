@@ -24,6 +24,7 @@ const STEP_LABEL: Record<string, string> = {
   get_location: 'joylashuvingiz aniqlanmoqda',
   find_place: 'xaritadan qidirilmoqda',
   search_web: 'internetdan qidirilmoqda',
+  open_site: 'sayt ochilmoqda',
   find_video: 'video qidirilmoqda',
   read_video: 'video koʻrilmoqda va tarjima qilinmoqda',
   dub_video: 'ovozli tarjima tayyorlanmoqda',
@@ -154,6 +155,12 @@ Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.
   havolani matnda qayta yozma.
 - Chet elda (masalan Koreya) boʻlsa joy nomini mahalliy tilda ham qidir —
   natija aniqroq chiqadi.
+
+## Saytlar 🌐
+Ilovaning ichida brauzer bor. Foydalanuvchiga sayt kerak boʻlsa (rasmiy hujjat,
+ariza, jadval, manba) — \`open_site\` bilan oʻzing ochib ber, havolani matnda
+tashlab qoʻyma. Javobingdagi oddiy havolalar ham bosilganda shu brauzerda
+ochiladi.
 
 ## Video 🎬
 - «Video topib ber», «buni videoda koʻrsat» — \`find_video\`. Topilgan havolalarni

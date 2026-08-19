@@ -22,6 +22,7 @@ import {
   type Spot,
   type TravelMode,
 } from './place';
+import { openSite } from './browserbus';
 import { synthesize } from './speech';
 import { getState, setState } from './store';
 import { DAYS } from './types';
@@ -291,6 +292,20 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'open_site',
+    description:
+      'Saytni ilovaning ichki brauzerida ochib beradi. Foydalanuvchi «shu saytni och», ' +
+      '«hujjatini koʻrsat», «ro‘yxatdan o‘tkaz» desa yoki javobda muhim manba boʻlsa ishlat.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'Toʻliq manzil' },
+        why: { type: 'STRING', description: 'Nima uchun ochilyapti — bir jumla' },
+      },
+      required: ['url'],
     },
   },
   {
@@ -675,6 +690,20 @@ export async function executeTool(
           payload: { error: String((err as Error)?.message ?? err) },
         };
       }
+    }
+
+    case 'open_site': {
+      const url = str(args.url);
+      if (!url) return { ok: false, summary: 'Manzil berilmadi', payload: { error: 'url_yoq' } };
+      openSite(url);
+      return {
+        ok: true,
+        summary: `Ochildi: ${url.replace(/^https?:\/\//, '').slice(0, 40)}`,
+        payload: {
+          ochildi: url,
+          koʻrsatma: 'Sayt foydalanuvchining ekranida ochildi — havolani qayta yozma.',
+        },
+      };
     }
 
     case 'find_video': {

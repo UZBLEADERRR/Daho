@@ -301,6 +301,11 @@ export interface CodeProject {
   updatedAt: number;
 }
 
+export interface BrowserVisit {
+  url: string;
+  at: number;
+}
+
 export interface AppState {
   version: number;
   settings: Settings;
@@ -317,6 +322,8 @@ export interface AppState {
   videos: VideoProject[];
   code: CodeProject[];
   routes: RoutePlan[];
+  /** Ilova ichidagi brauzer tarixi */
+  browserHistory: BrowserVisit[];
 }
 
 export const DAYS = [

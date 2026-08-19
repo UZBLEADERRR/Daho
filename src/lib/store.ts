@@ -48,6 +48,7 @@ const EMPTY_STATE: AppState = {
   videos: [],
   code: [],
   routes: [],
+  browserHistory: [],
 };
 
 /** Eski saqlangan holatdagi ishlamay qolgan model nomlarini tozalaydi. */

@@ -11,6 +11,7 @@ interface Props {
   onOpenSettings: () => void;
   onOpenAccount: () => void;
   onOpenAdmin: () => void;
+  onOpenBrowser: () => void;
   /** Keng ekranda yon panel doim ochiq turadi */
   pinned?: boolean;
   onGoChat: () => void;
@@ -25,6 +26,7 @@ export function Sidebar({
   onOpenSettings,
   onOpenAccount,
   onOpenAdmin,
+  onOpenBrowser,
   onGoChat,
   onGoCode,
   onGoAgent,
@@ -73,6 +75,17 @@ export function Sidebar({
           >
             <span className="side-emoji">⌨️</span>
             Daho Code
+          </button>
+
+          <button
+            className="side-link"
+            onClick={() => {
+              onOpenBrowser();
+              onClose();
+            }}
+          >
+            <span className="side-emoji">🌐</span>
+            Brauzer
           </button>
 
           <div className="section-label">Agent</div>

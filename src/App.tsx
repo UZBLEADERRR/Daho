@@ -10,11 +10,13 @@ import { Cloud, Menu, Settings as SettingsIcon } from './components/Icons';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { VideoStudio } from './components/VideoStudio';
+import { Browser } from './components/Browser';
 import { AccountSheet } from './components/cloud/AccountSheet';
 import { AdminPanel } from './components/cloud/AdminPanel';
 import type { AgentSection } from './components/agent/sections';
 import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
+import { onOpenSite } from './lib/browserbus';
 import { cloudEnabled, initCloud, useCloud } from './lib/cloud';
 import { getModels, pickModel } from './lib/models';
 import { installDeviceBridge } from './lib/devicebridge';
@@ -54,6 +56,7 @@ export default function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
+  const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const greeted = useRef(false);
 
   useEffect(() => {
@@ -66,6 +69,9 @@ export default function App() {
 
   // Kamera, mikrofon va joylashuvni qumboxdagi ilovalarga uzatamiz.
   useEffect(() => installDeviceBridge(), []);
+
+  // Havolalar ilovaning ichki brauzerida ochiladi.
+  useEffect(() => onOpenSite((url) => setBrowserUrl(url)), []);
 
   // Bulut: sessiya, hisob va sinxronizatsiya.
   useEffect(() => initCloud(), []);
@@ -119,6 +125,7 @@ export default function App() {
     if (!Capacitor.isNativePlatform()) return;
     const handle = CapApp.addListener('backButton', ({ canGoBack }) => {
       if (artifact) setArtifact(null);
+      else if (browserUrl !== null) setBrowserUrl(null);
       else if (videoId) setVideoId(null);
       else if (adminOpen) setAdminOpen(false);
       else if (accountOpen) setAccountOpen(false);
@@ -132,7 +139,7 @@ export default function App() {
     return () => {
       void handle.then((h) => h.remove());
     };
-  }, [artifact, videoId, settingsOpen, accountOpen, adminOpen, sidebar, tab, section]);
+  }, [artifact, videoId, browserUrl, settingsOpen, accountOpen, adminOpen, sidebar, tab, section]);
 
   const showSidebar = wide || sidebar;
 
@@ -147,6 +154,7 @@ export default function App() {
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenAccount={() => setAccountOpen(true)}
           onOpenAdmin={() => setAdminOpen(true)}
+          onOpenBrowser={() => setBrowserUrl('')}
           onGoChat={() => setTab('chat')}
           onGoCode={() => setTab('kod')}
           onGoAgent={(s) => {
@@ -225,6 +233,9 @@ export default function App() {
       )}
       {accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} />}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
+      {browserUrl !== null && (
+        <Browser initialUrl={browserUrl} onClose={() => setBrowserUrl(null)} />
+      )}
       {videoId && <VideoStudio projectId={videoId} onClose={() => setVideoId(null)} />}
       {artifact && <ArtifactViewer artifact={artifact} onClose={() => setArtifact(null)} />}
 

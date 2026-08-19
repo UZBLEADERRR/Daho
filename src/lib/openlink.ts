@@ -1,3 +1,6 @@
+import { Browser } from '@capacitor/browser';
+import { Capacitor } from '@capacitor/core';
+
 /**
  * Tashqi havolalar.
  *
@@ -50,11 +53,28 @@ export function blocksEmbedding(url: string): boolean {
 }
 
 /**
- * Havolani telefonning brauzerida ochadi.
- * Capacitor WebView tashqi manzilga oʻtishni tizim brauzeriga uzatadi.
+ * Havolani ochadi.
+ *
+ * Android’da Capacitor Browser plagini orqali — sahifa ilovaning USTIDA,
+ * «Custom Tab» boʻlib ochiladi: foydalanuvchi ilovadan chiqib ketmaydi,
+ * orqaga tugmasi bilan darhol qaytadi. Vebda esa yangi ilova oynasi.
  */
 export function openExternal(url: string): boolean {
   const target = normalizeUrl(url);
+
+  if (Capacitor.isNativePlatform()) {
+    void Browser.open({
+      url: target,
+      presentationStyle: 'popover',
+      toolbarColor: getComputedStyle(document.documentElement)
+        .getPropertyValue('--bg')
+        .trim() || '#09090b',
+    }).catch(() => {
+      // Plagin ishlamasa — pastdagi oddiy yoʻl.
+      window.open(target, '_blank');
+    });
+    return true;
+  }
   try {
     // Diqqat: 'noopener' berilsa window.open HAR DOIM null qaytaradi va
     // pastdagi zaxira yoʻl ham ishlab, oyna ikki marta ochilib ketadi.

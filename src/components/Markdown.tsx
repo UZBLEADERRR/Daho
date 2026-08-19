@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { openSite } from '../lib/browserbus';
 import { renderMarkdown } from '../lib/markdown';
 import { Close } from './Icons';
 
@@ -66,6 +67,18 @@ export function Markdown({ text, className = 'md' }: { text: string; className?:
 
       image.addEventListener('click', () => {
         setZoom({ src: image.currentSrc || image.src, alt: image.alt });
+      });
+    });
+
+    // Havolalar ilovaning ichki brauzerida ochilsin — foydalanuvchi
+    // ilovadan chiqib ketmasin.
+    root.querySelectorAll('a[href]').forEach((node) => {
+      const link = node as HTMLAnchorElement;
+      const href = link.getAttribute('href') ?? '';
+      if (!/^https?:/i.test(href)) return;
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        openSite(href);
       });
     });
   }, [html]);
