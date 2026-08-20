@@ -29,6 +29,7 @@ import {
   useStore,
 } from '../lib/store';
 import { requestPersistentStorage, storageEstimate } from '../lib/storage';
+import { serverHealth } from '../lib/cloud/server';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
 import { UsagePanel } from './UsagePanel';
 import { Copy, Refresh } from './Icons';
@@ -293,6 +294,17 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         />
       </div>
 
+        </>
+      ),
+    },
+    {
+      id: 'server',
+      icon: '🖥',
+      title: 'Daho serveri',
+      hint: 'Fon ishlari va haqiqiy terminal',
+      body: (
+        <>
+          <ServerPanel />
         </>
       ),
     },
@@ -1172,6 +1184,94 @@ function StoragePanel() {
           : 'Maʼlumot vaqtinchalik omborda. Qurilmada joy tugasa tizim uni tozalab '
             + 'yuborishi mumkin — muhim narsalarni zaxira nusxaga oling.'}
       </div>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Daho serveri                                                       */
+/* ------------------------------------------------------------------ */
+
+function ServerPanel() {
+  const settings = useStore((s) => s.settings);
+  const [checking, setChecking] = useState(false);
+  const [health, setHealth] = useState<string>('');
+
+  const check = async () => {
+    setChecking(true);
+    setHealth('');
+    try {
+      const info = await serverHealth();
+      const worker = info.worker;
+      setHealth(
+        [
+          info.ok ? '✅ Server tayyor' : '⚠️ Server sozlanmagan',
+          info.yetishmayapti?.length ? `Yetishmayapti: ${info.yetishmayapti.join(', ')}` : '',
+          worker ? `Navbat: ${worker.polling ? 'kuzatilmoqda' : 'toʻxtagan'}` : '',
+          worker ? `Bajarildi: ${worker.done} · xato: ${worker.failed}` : '',
+          worker?.lastError ? `Oxirgi xato: ${worker.lastError}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      );
+    } catch (err) {
+      setHealth(`❌ Ulanib boʻlmadi: ${String((err as Error)?.message ?? err)}`);
+    }
+    setChecking(false);
+  };
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0, lineHeight: 1.6 }}>
+        Server ulansa fon vazifalari <b>telefoningiz oʻchiq boʻlsa ham</b> bajariladi:
+        kitob boblari yozilaveradi, jadval boʻyicha topshiriqlar ishlaydi. Daho Code
+        esa haqiqiy terminalga ega boʻladi — <code>npm</code>, <code>node</code>,{' '}
+        <code>python3</code>, <code>git</code>.
+      </p>
+
+      <div className="field">
+        <label>Server manzili</label>
+        <input
+          value={settings.serverUrl}
+          onChange={(e) => updateSettings({ serverUrl: e.target.value.trim() })}
+          placeholder="https://daho-server.up.railway.app"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+        <div className="tiny" style={{ marginTop: 6 }}>
+          Railway’da qanday koʻtarish — <code>server/README.md</code> da yozilgan.
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Maxfiy soʻz (WORKER_SECRET)</label>
+        <input
+          type="password"
+          value={settings.serverSecret}
+          onChange={(e) => updateSettings({ serverSecret: e.target.value.trim() })}
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+        <div className="tiny" style={{ marginTop: 6 }}>
+          Serverdagi qiymat bilan bir xil boʻlsin. Faqat shu qurilmada saqlanadi —
+          bulutga yuborilmaydi.
+        </div>
+      </div>
+
+      <button
+        className="btn ghost wide"
+        disabled={checking || !settings.serverUrl}
+        onClick={() => void check()}
+      >
+        {checking ? 'Tekshirilmoqda…' : 'Ulanishni tekshirish'}
+      </button>
+
+      {health && (
+        <pre className="conn-result" style={{ marginTop: 12 }}>
+          {health}
+        </pre>
+      )}
     </>
   );
 }

@@ -22,3 +22,5 @@ android/app/src/main/assets/capacitor.plugins.json
 *.iml
 *.keystore
 *.jks
+
+server/node_modules

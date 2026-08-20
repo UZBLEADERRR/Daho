@@ -201,6 +201,10 @@ export interface Settings {
   roleModels: RoleModels;
   /** Boshqa ilovalar bilan ulanishlar — kalitlari bulutga chiqmaydi */
   connectors: Connector[];
+  /** Daho serveri (Railway) manzili — fon ishlari va terminal uchun */
+  serverUrl: string;
+  /** Server maxfiy soʻzi (WORKER_SECRET) — faqat shu qurilmada qoladi */
+  serverSecret: string;
   /** Kuchsiz model javobni kesib qoʻysa — avtomatik davom ettirish */
   autoContinue: boolean;
   /** Bitta javob uchun koʻpi bilan nechta davom ettirish */

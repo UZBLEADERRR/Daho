@@ -45,6 +45,7 @@ import {
 } from './codeproject';
 import { describeDiff, restore, snapshot } from './checkpoint';
 import { runJs } from './jsrun';
+import { runOnServer, serverReady } from './cloud/server';
 import { globFiles, grepFiles, sliceLines, type GrepHit } from './search';
 import { describeProbe, probeApp } from './probe';
 import { saveZip } from './exporter';
@@ -196,6 +197,25 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
         },
       },
       required: ['code'],
+    },
+  },
+  {
+    name: 'run_cmd',
+    description:
+      'SERVERDA haqiqiy buyruq bajaradi: npm install, node, python3, git, '
+      + 'testlar, qurish — hammasi. `run_js` dan farqi: bu toʻliq Linux '
+      + 'muhiti, kutubxona oʻrnatsa ham boʻladi va fayllar chaqiruvlar '
+      + 'orasida saqlanadi.\n'
+      + 'Faqat foydalanuvchi Daho serverini ulagan boʻlsa ishlaydi '
+      + '(Sozlamalar → Daho serveri). Ishlamasa `run_js` bilan davom et.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        command: { type: 'STRING', description: 'Bajariladigan buyruq' },
+        cwd: { type: 'STRING', description: 'Qaysi papkada (ixtiyoriy)' },
+        timeout: { type: 'NUMBER', description: 'Millisekundda chegara' },
+      },
+      required: ['command'],
     },
   },
   {
@@ -995,6 +1015,50 @@ async function runTool(
             }
           : { chiqish: res.output, xato: res.error },
       };
+    }
+
+    case 'run_cmd': {
+      const command = str(args.command);
+      if (!command) return { ok: false, summary: 'Buyruq boʻsh', payload: { error: 'command kerak' } };
+      if (!serverReady()) {
+        return {
+          ok: false,
+          summary: 'Daho serveri ulanmagan',
+          payload: {
+            error: 'server_yoq',
+            izoh:
+              'Haqiqiy buyruq uchun server kerak. Foydalanuvchiga Sozlamalar → '
+              + 'Daho serveri boʻlimidan Railway manzilini kiritishni ayt. '
+              + 'Hozircha oddiy hisob uchun `run_js` ishlatsang boʻladi.',
+          },
+        };
+      }
+      try {
+        const res = await runOnServer(command, {
+          cwd: str(args.cwd) || undefined,
+          timeout: num(args.timeout, 0) || undefined,
+          signal,
+        });
+        return {
+          ok: res.ok,
+          summary: res.ok
+            ? `$ ${command.slice(0, 50)} — tayyor`
+            : `$ ${command.slice(0, 50)} — xato (${res.code})`,
+          payload: {
+            kod: res.code,
+            chiqish: res.stdout.slice(-6000) || '(chiqish yoʻq)',
+            ...(res.stderr ? { xato: res.stderr.slice(-3000) } : {}),
+            ...(res.dir ? { papka: res.dir } : {}),
+          },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'Serverga ulanib boʻlmadi',
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
     }
 
     case 'fetch_url': {

@@ -38,6 +38,8 @@ export const DEFAULT_SETTINGS: Settings = {
   favoriteModels: [],
   roleModels: { bosh: '', dizayn: '', kod: '', tekshir: '', matn: '' },
   connectors: [],
+  serverUrl: '',
+  serverSecret: '',
   autoContinue: true,
   maxContinues: 6,
   agentRounds: 60,
