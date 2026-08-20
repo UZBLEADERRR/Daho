@@ -43,7 +43,9 @@ import {
   patchCodeProject,
   writeProjectFile,
 } from './codeproject';
-import { snapshot } from './checkpoint';
+import { describeDiff, restore, snapshot } from './checkpoint';
+import { runJs } from './jsrun';
+import { globFiles, grepFiles, sliceLines, type GrepHit } from './search';
 import { describeProbe, probeApp } from './probe';
 import { saveZip } from './exporter';
 import {
@@ -73,6 +75,7 @@ import { templateById } from './templates';
 import type {
   Artifact,
   Attachment,
+  CodeFile,
   CodeProject,
   Message,
   ProjectStep,
@@ -132,11 +135,166 @@ const STEP_LABEL: Record<string, string> = {
 export const CODE_TOOLS: FunctionDeclaration[] = [
   {
     name: 'read_file',
-    description: 'Loyihadagi faylning toʻliq matnini oʻqiydi.',
+    description:
+      'Loyihadagi faylni oʻqiydi. Katta fayl boʻlsa `offset` va `limit` bilan '
+      + 'faqat kerakli qismini ol — butun faylni oʻqish token yeydi.',
     parameters: {
       type: 'OBJECT',
-      properties: { path: { type: 'STRING', description: 'Fayl yoʻli, masalan "src/app.js"' } },
+      properties: {
+        path: { type: 'STRING', description: 'Fayl yoʻli, masalan "src/app.js"' },
+        offset: { type: 'NUMBER', description: 'Nechanchi qatordan boshlab (0 dan)' },
+        limit: { type: 'NUMBER', description: 'Nechta qator oʻqilsin' },
+      },
       required: ['path'],
+    },
+  },
+  {
+    name: 'grep',
+    description:
+      'Loyiha fayllari ICHIDAN matn yoki muntazam ifoda qidiradi va qaysi faylning '
+      + 'qaysi qatorida borligini qaytaradi. Fayllarni bittalab ochib chiqishdan '
+      + 'ancha tez va arzon.\n'
+      + 'Misollar: "useState" — qayerda ishlatilgan; "TODO|FIXME" — bajarilmagan ishlar; '
+      + '"function\\s+\\w+" — funksiyalar.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        pattern: { type: 'STRING', description: 'Qidiriladigan matn yoki muntazam ifoda' },
+        glob: { type: 'STRING', description: 'Faqat shu fayllarda, masalan "src/**/*.ts"' },
+        ignore_case: { type: 'BOOLEAN', description: 'Katta-kichik harfni farqlamaslik' },
+        context: { type: 'NUMBER', description: 'Har topilma atrofidan nechta qator (0-6)' },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'find_files',
+    description:
+      'Naqsh boʻyicha fayllarni topadi: "*.ts", "src/**/*.tsx", "**/test_*.py". '
+      + 'Loyiha katta boʻlsa list_files oʻrniga shuni ishlat.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { pattern: { type: 'STRING', description: 'Fayl naqshi' } },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'run_js',
+    description:
+      'JavaScript kodini BAJARADI va natijani qaytaradi. Bu senga «terminal» '
+      + 'oʻrnini bosadi: hisob-kitob, maʼlumotni qayta ishlash, yozgan '
+      + 'funksiyangni sinab koʻrish, algoritmni tekshirish.\n'
+      + 'console.log chiqishi va oxirgi `return` qiymati qaytadi. Kod alohida '
+      + 'muhitda ishlaydi — DOM va loyiha fayllariga tegolmaydi, 5 soniyadan '
+      + 'oshsa toʻxtatiladi. Taxmin qilish oʻrniga SHUNI ishlatib tekshir.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        code: {
+          type: 'STRING',
+          description: 'Bajariladigan JavaScript. Natijani `return` bilan qaytar.',
+        },
+      },
+      required: ['code'],
+    },
+  },
+  {
+    name: 'fetch_url',
+    description:
+      'Havoladagi sahifa yoki API javobini oʻqiydi (matn holida). Hujjatlarni '
+      + 'oʻqish, API namunasini koʻrish, kutubxona versiyasini tekshirish uchun.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'Toʻliq havola' },
+        limit: { type: 'NUMBER', description: 'Koʻpi bilan nechta belgi (standart 8000)' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'move_file',
+    description: 'Faylni koʻchiradi yoki nomini oʻzgartiradi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        from: { type: 'STRING', description: 'Hozirgi yoʻl' },
+        to: { type: 'STRING', description: 'Yangi yoʻl' },
+      },
+      required: ['from', 'to'],
+    },
+  },
+  {
+    name: 'write_files',
+    description:
+      'Bir nechta faylni BITTA chaqiruvda yozadi. Yangi loyiha yaratayotganda '
+      + 'yoki bir necha faylni birga oʻzgartirayotganda tezroq.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        files: {
+          type: 'ARRAY',
+          description: 'Fayllar roʻyxati',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              path: { type: 'STRING' },
+              content: { type: 'STRING' },
+            },
+            required: ['path', 'content'],
+          },
+        },
+      },
+      required: ['files'],
+    },
+  },
+  {
+    name: 'checkpoint',
+    description:
+      'Loyihaning hozirgi holatini saqlab qoʻyadi. Katta oʻzgarishdan OLDIN '
+      + 'chaqir — xato qilsang `undo` bilan qaytasan.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { label: { type: 'STRING', description: 'Nima qilmoqchisan' } },
+      required: ['label'],
+    },
+  },
+  {
+    name: 'undo',
+    description:
+      'Saqlangan nusxaga qaytaradi. Nusxa nomi berilmasa — eng oxirgisiga. '
+      + 'Qaytarishdan oldin hozirgi holat ham saqlanadi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { snapshot: { type: 'STRING', description: 'Nusxa id si (ixtiyoriy)' } },
+    },
+  },
+  {
+    name: 'changes',
+    description:
+      'Oxirgi nusxadan beri qaysi fayllar oʻzgarganini koʻrsatadi. Ishni '
+      + 'yakunlashdan oldin oʻzingni tekshirish uchun.',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'todo',
+    description:
+      'Bajariladigan ishlar roʻyxatini yuritadi — foydalanuvchi buni ekranda '
+      + 'koʻradi. Koʻp qadamli ishda BOSHIDA roʻyxat tuz, har qadamdan keyin '
+      + 'bajarilganini belgila. Kichik ishga kerak emas.\n'
+      + 'action: "set" (yangi roʻyxat), "done" (bajarildi deb belgilash), "list".',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'set | done | list' },
+        items: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: '«set» uchun: ishlar roʻyxati',
+        },
+        item: { type: 'STRING', description: '«done» uchun: qaysi ish bajarildi' },
+      },
+      required: ['action'],
     },
   },
   {
@@ -702,6 +860,10 @@ async function runTool(
 ): Promise<ToolResult> {
   const str = (v: unknown, fallback = '') =>
     typeof v === 'string' && v.trim() ? v.trim() : fallback;
+  const num = (v: unknown, fallback = 0) => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
   const token = getState().settings.githubToken;
   const project = getCodeProject(projectId);
   if (!project) return { ok: false, summary: 'Loyiha topilmadi', payload: { error: 'no_project' } };
@@ -761,7 +923,239 @@ async function runTool(
           payload: { error: 'topilmadi', mavjud: project.files.map((f) => f.path) },
         };
       }
-      return { ok: true, summary: `Oʻqildi: ${path}`, payload: { content: file.content } };
+      const offset = Math.max(0, num(args.offset, 0));
+      const limit = Math.max(0, num(args.limit, 0));
+      if (!offset && !limit) {
+        return { ok: true, summary: `Oʻqildi: ${path}`, payload: { content: file.content } };
+      }
+      const part = sliceLines(file.content, offset, limit);
+      return {
+        ok: true,
+        summary: `Oʻqildi: ${path} (${part.from}-${part.to} / ${part.total} qator)`,
+        payload: { content: part.text, qator: `${part.from}-${part.to}`, jami: part.total },
+      };
+    }
+
+    case 'grep': {
+      const pattern = str(args.pattern);
+      if (!pattern) return { ok: false, summary: 'Naqsh boʻsh', payload: { error: 'pattern kerak' } };
+      const res = grepFiles(project.files, pattern, {
+        glob: str(args.glob) || undefined,
+        ignoreCase: args.ignore_case === true || str(args.ignore_case) === 'true',
+        context: num(args.context, 0),
+      });
+      if (!res.hits.length) {
+        return {
+          ok: true,
+          summary: `«${pattern}» topilmadi`,
+          payload: { topilma: [], koʻrilgan_fayl: res.scanned },
+        };
+      }
+      return {
+        ok: true,
+        summary: `«${pattern}» — ${res.hits.length} ta topilma${res.truncated ? ' (kesildi)' : ''}`,
+        payload: {
+          topilma: res.hits.map((h: GrepHit) => ({
+            fayl: h.path,
+            qator: h.line,
+            matn: h.text,
+            ...(h.before?.length ? { oldin: h.before } : {}),
+            ...(h.after?.length ? { keyin: h.after } : {}),
+          })),
+          koʻrilgan_fayl: res.scanned,
+          kesildi: res.truncated,
+        },
+      };
+    }
+
+    case 'find_files': {
+      const pattern = str(args.pattern);
+      const found = globFiles(project.files, pattern).map((f: CodeFile) => f.path);
+      return {
+        ok: true,
+        summary: found.length ? `${found.length} ta fayl topildi` : `«${pattern}» ga mos fayl yoʻq`,
+        payload: { fayllar: found },
+      };
+    }
+
+    case 'run_js': {
+      const code = str(args.code);
+      if (!code) return { ok: false, summary: 'Kod boʻsh', payload: { error: 'code kerak' } };
+      const res = await runJs(code);
+      return {
+        ok: res.ok,
+        summary: res.ok
+          ? `Kod bajarildi (${res.ms} ms)`
+          : `Kod xato berdi: ${(res.error ?? '').slice(0, 60)}`,
+        payload: res.ok
+          ? {
+              chiqish: res.output || '(chiqish yoʻq)',
+              ...(res.value !== undefined ? { natija: res.value } : {}),
+              ms: res.ms,
+            }
+          : { chiqish: res.output, xato: res.error },
+      };
+    }
+
+    case 'fetch_url': {
+      const url = str(args.url);
+      if (!/^https?:\/\//i.test(url)) {
+        return { ok: false, summary: 'Havola notoʻgʻri', payload: { error: 'http(s) havola kerak' } };
+      }
+      const cap = Math.max(500, Math.min(40_000, num(args.limit, 8000)));
+      try {
+        const res = await fetch(url, { signal });
+        const text = await res.text();
+        // HTML boʻlsa teglarni tashlab, oʻqiladigan matn qoldiramiz.
+        const clean = /<html|<body|<!doctype/i.test(text.slice(0, 500))
+          ? text
+              .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+              .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/&nbsp;/g, ' ')
+              .replace(/\s{2,}/g, ' ')
+          : text;
+        return {
+          ok: res.ok,
+          summary: `${url} — ${res.status}`,
+          payload: { holat: res.status, matn: clean.trim().slice(0, cap) },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'Havola ochilmadi',
+          payload: {
+            error: String((err as Error)?.message ?? err),
+            izoh: 'Sayt boshqa manbadan soʻrovni taqiqlagan boʻlishi mumkin (CORS).',
+          },
+        };
+      }
+    }
+
+    case 'move_file': {
+      const from = str(args.from);
+      const to = str(args.to);
+      const file = project.files.find((f) => f.path === from);
+      if (!file) {
+        return { ok: false, summary: `Fayl yoʻq: ${from}`, payload: { error: 'topilmadi' } };
+      }
+      if (!to || to === from) {
+        return { ok: false, summary: 'Yangi yoʻl notoʻgʻri', payload: { error: 'to kerak' } };
+      }
+      writeProjectFile(projectId, to, file.content);
+      deleteProjectFile(projectId, from);
+      return { ok: true, summary: `${from} → ${to}`, payload: { from, to } };
+    }
+
+    case 'write_files': {
+      const list = Array.isArray(args.files) ? args.files : [];
+      if (!list.length) {
+        return { ok: false, summary: 'Fayl berilmadi', payload: { error: 'files kerak' } };
+      }
+      const written: string[] = [];
+      for (const item of list) {
+        const entry = item as { path?: unknown; content?: unknown };
+        const path = str(entry.path);
+        if (!path) continue;
+        writeProjectFile(projectId, path, str(entry.content));
+        written.push(path);
+      }
+      return {
+        ok: written.length > 0,
+        summary: `${written.length} ta fayl yozildi`,
+        payload: { fayllar: written },
+      };
+    }
+
+    case 'checkpoint': {
+      const entry = snapshot(projectId, str(args.label, 'oʻzgarishdan oldin'));
+      return {
+        ok: true,
+        summary: entry ? `Nusxa olindi: ${entry.label}` : 'Oʻzgarish yoʻq — nusxa kerak emas',
+        payload: entry ? { id: entry.id, nom: entry.label } : { izoh: 'oxirgi nusxadan farq yoʻq' },
+      };
+    }
+
+    case 'undo': {
+      const history = getCodeProject(projectId)?.history ?? [];
+      if (!history.length) {
+        return { ok: false, summary: 'Nusxa yoʻq', payload: { error: 'saqlangan nusxa topilmadi' } };
+      }
+      const target = str(args.snapshot) || history[0].id;
+      const ok = restore(projectId, target);
+      return {
+        ok,
+        summary: ok ? 'Oldingi holatga qaytarildi' : 'Qaytarib boʻlmadi',
+        payload: ok
+          ? { nusxa: target, fayllar: getCodeProject(projectId)?.files.length ?? 0 }
+          : { error: 'nusxa topilmadi' },
+      };
+    }
+
+    case 'changes': {
+      const history = getCodeProject(projectId)?.history ?? [];
+      if (!history.length) {
+        return {
+          ok: true,
+          summary: 'Solishtirish uchun nusxa yoʻq',
+          payload: { izoh: 'Avval `checkpoint` chaqir.' },
+        };
+      }
+      return {
+        ok: true,
+        summary: 'Oxirgi nusxadan beri oʻzgarishlar',
+        payload: { oʻzgarish: describeDiff(projectId, history[0].id) },
+      };
+    }
+
+    case 'todo': {
+      const action = str(args.action, 'list');
+      const current = getCodeProject(projectId)?.plan ?? [];
+
+      if (action === 'set') {
+        const items = Array.isArray(args.items) ? args.items.map(String) : [];
+        if (!items.length) {
+          return { ok: false, summary: 'Roʻyxat boʻsh', payload: { error: 'items kerak' } };
+        }
+        const plan: ProjectStep[] = items.slice(0, 20).map((title, i) => ({
+          id: `todo_${Date.now().toString(36)}_${i}`,
+          title: title.slice(0, 120),
+          done: false,
+        }));
+        patchCodeProject(projectId, { plan });
+        return {
+          ok: true,
+          summary: `${plan.length} ta ish belgilandi`,
+          payload: { ishlar: plan.map((p) => p.title) },
+        };
+      }
+
+      if (action === 'done') {
+        const needle = str(args.item).toLowerCase();
+        // Nomi berilmasa — birinchi bajarilmaganini yopamiz.
+        const target = needle
+          ? current.find((p) => p.title.toLowerCase().includes(needle))
+          : current.find((p) => !p.done);
+        if (!target) {
+          return { ok: false, summary: 'Bunday ish yoʻq', payload: { ishlar: current.map((p) => p.title) } };
+        }
+        patchCodeProject(projectId, {
+          plan: current.map((p) => (p.id === target.id ? { ...p, done: true } : p)),
+        });
+        const left = current.filter((p) => !p.done && p.id !== target.id).length;
+        return {
+          ok: true,
+          summary: `✓ ${target.title}${left ? ` · ${left} ta qoldi` : ' · hammasi tayyor'}`,
+          payload: { bajarildi: target.title, qoldi: left },
+        };
+      }
+
+      return {
+        ok: true,
+        summary: current.length ? `${current.filter((p) => p.done).length}/${current.length} bajarildi` : 'Roʻyxat boʻsh',
+        payload: { ishlar: current.map((p) => ({ ish: p.title, bajarildi: p.done })) },
+      };
     }
 
     case 'write_file': {
@@ -1964,16 +2358,30 @@ olib boradigan agentsan. Topshiriq berilganda:
   tugat, yoki \`ask_user\` bilan aniq savol ber va javobni kut.
 
 ## Qanday ishlaysan
-1. Avval kerakli fayllarni \`read_file\` bilan oʻqi — koʻrmasdan yozma.
-2. Ishni mayda qadamlarga boʻl. Har bir qadamda bitta faylni oʻzgartir.
-3. Kichik tuzatishga \`edit_file\`, katta oʻzgarish yoki yangi faylga \`write_file\`.
-4. Ish tugagach qisqacha xulosa yoz: nima oʻzgardi va qanday sinash kerak.
-5. Foydalanuvchi "chiqar", "nashr qil", "linkga qoʻy" desa — \`publish\` ni chaqir.
-6. "GitHub’ga yubor" desa — \`github_push\`.
-7. APK, test yoki deploy kerak boʻlsa: \`write_workflow\` → \`github_push\` →
+1. **Avval TOP, keyin oʻqi.** Katta loyihada \`grep\` bilan kerakli joyni qidir
+   («useState qayerda ishlatilgan», «TODO|FIXME»), \`find_files\` bilan fayl
+   naqshini top. Faqat topilgan faylni \`read_file\` qil — kerak boʻlsa
+   \`offset\`/\`limit\` bilan bir qismini. Fayllarni bittalab ochib chiqma.
+2. **Taxmin qilma — bajarib koʻr.** Hisob, formula, algoritm, maʼlumotni
+   qayta ishlash — \`run_js\` bilan haqiqatan ishga tushirib tekshir. Yozgan
+   funksiyangni shu yerda sinab koʻr, keyin faylga yoz.
+3. **Katta oʻzgarishdan oldin \`checkpoint\`.** Xato qilsang \`undo\` bilan
+   qaytasan, \`changes\` bilan nima oʻzgarganini koʻrasan.
+4. **Koʻp qadamli ishda \`todo\` roʻyxatini yurit** — foydalanuvchi qayerdaligingni
+   koʻrib turadi. Boshida \`set\`, har qadamdan keyin \`done\`.
+5. Bir necha faylni birga yozayotganda \`write_files\` bilan bitta chaqiruvda yoz.
+6. Hujjat yoki API namunasi kerak boʻlsa — \`fetch_url\` bilan oʻqi, xotirangdagi
+   eskirgan maʼlumotga tayanma.
+7. Avval kerakli fayllarni \`read_file\` bilan oʻqi — koʻrmasdan yozma.
+8. Ishni mayda qadamlarga boʻl. Har bir qadamda bitta faylni oʻzgartir.
+9. Kichik tuzatishga \`edit_file\`, katta oʻzgarish yoki yangi faylga \`write_file\`.
+10. Ish tugagach qisqacha xulosa yoz: nima oʻzgardi va qanday sinash kerak.
+11. Foydalanuvchi "chiqar", "nashr qil", "linkga qoʻy" desa — \`publish\` ni chaqir.
+12. "GitHub’ga yubor" desa — \`github_push\`.
+13. APK, test yoki deploy kerak boʻlsa: \`write_workflow\` → \`github_push\` →
    \`run_workflow\` → soʻng \`check_workflow\` bilan natijani tekshir. Yiqilsa
    sababini oʻqib, kodni tuzat va qaytadan yubor.
-8. **Tayyor faylni foydalanuvchiga BER.** Yigʻish muvaffaqiyatli boʻlgach
+14. **Tayyor faylni foydalanuvchiga BER.** Yigʻish muvaffaqiyatli boʻlgach
    \`send_file\` ni chaqir — APK telefonga saqlanadi va ulashish oynasi ochiladi.
    «GitHub’dan yuklab oling» deb qoʻyish YETARLI EMAS: foydalanuvchi faylni
    ilovaning oʻzidan olishi kerak.
