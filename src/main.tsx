@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { finishGoogleAuth } from './lib/google';
 import { hydrate } from './lib/store';
 import { registerPwa } from './lib/pwa';
 import './styles.css';
@@ -20,10 +21,18 @@ const ready = Promise.race([
   new Promise<void>((resolve) => setTimeout(resolve, 5000)),
 ]);
 
-void ready.then(() => {
-  root.render(
-    <StrictMode>
-      <App />
-    </StrictMode>,
-  );
-});
+void ready
+  .then(() =>
+    // Google OAuth dan qaytgan boʻlsak — manzildagi `code` ni tokenga
+    // almashtiramiz. Kod boʻlmasa hech narsa qilinmaydi.
+    finishGoogleAuth().catch((err) => {
+      console.warn('Google ulanishi tugallanmadi:', err);
+    }),
+  )
+  .then(() => {
+    root.render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+  });

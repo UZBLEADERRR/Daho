@@ -203,6 +203,10 @@ export interface Settings {
   connectors: Connector[];
   /** Supabase Management tokeni — agent oʻzi loyiha ocha olishi uchun */
   supabaseToken: string;
+  /** Google OAuth mijoz ID si (PKCE — maxfiy soʻz kerak emas) */
+  googleClientId: string;
+  /** Google tokenlari — faqat shu qurilmada */
+  googleAuth?: GoogleAuth;
   /** Daho serveri (Railway) manzili — fon ishlari va terminal uchun */
   serverUrl: string;
   /** Server maxfiy soʻzi (WORKER_SECRET) — faqat shu qurilmada qoladi */
@@ -290,6 +294,16 @@ export interface Course {
 }
 
 /* ---------- Video ---------- */
+
+/* ---------- Google xizmatlari ---------- */
+
+export interface GoogleAuth {
+  accessToken: string;
+  refreshToken: string;
+  /** Access token qachon tugaydi (ms) */
+  expiresAt: number;
+  email?: string;
+}
 
 /* ---------- Ulanishlar (boshqa ilovalar bilan) ---------- */
 

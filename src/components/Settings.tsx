@@ -31,6 +31,7 @@ import {
 import { requestPersistentStorage, storageEstimate } from '../lib/storage';
 import { serverHealth } from '../lib/cloud/server';
 import { listProjects } from '../lib/sbadmin';
+import { disconnectGoogle, redirectUri, startGoogleAuth } from '../lib/google';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
 import { UsagePanel } from './UsagePanel';
 import { Copy, Refresh } from './Icons';
@@ -295,6 +296,17 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         />
       </div>
 
+        </>
+      ),
+    },
+    {
+      id: 'google',
+      icon: '🔗',
+      title: 'Google hisobi',
+      hint: 'Gmail, Drive va Kalendar',
+      body: (
+        <>
+          <GooglePanel />
         </>
       ),
     },
@@ -1331,6 +1343,105 @@ function ServerPanel() {
       {health && (
         <pre className="conn-result" style={{ marginTop: 12 }}>
           {health}
+        </pre>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Google hisobi                                                      */
+/* ------------------------------------------------------------------ */
+
+function GooglePanel() {
+  const settings = useStore((s) => s.settings);
+  const connected = Boolean(settings.googleAuth?.accessToken);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+
+  const connect = async () => {
+    setBusy(true);
+    setNote('');
+    try {
+      await startGoogleAuth();
+    } catch (err) {
+      setNote(`❌ ${String((err as Error)?.message ?? err)}`);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0, lineHeight: 1.6 }}>
+        Ulansa Daho pochtangizni oʻqiy va yubora oladi, Drive’dagi hujjatlarni
+        ochadi, kalendaringizga voqea qoʻshadi. «Dekanatdan kelgan xatlarni
+        koʻrsat», «bu hujjatni konspekt qil», «imtihonni kalendarga yoz» —
+        shunday ishlaydi.
+      </p>
+
+      {connected ? (
+        <>
+          <div className="conn-row" style={{ marginBottom: 12 }}>
+            <span className="conn-icon">✅</span>
+            <span className="grow">
+              <b>Ulangan</b>
+              <div className="tiny" style={{ marginTop: 2 }}>
+                Gmail · Drive · Kalendar
+              </div>
+            </span>
+            <span className="conn-dot" data-on="true" />
+          </div>
+          <button
+            className="btn ghost wide"
+            style={{ color: 'var(--danger)' }}
+            onClick={() => {
+              disconnectGoogle();
+              setNote('Ulanish uzildi.');
+            }}
+          >
+            Hisobni uzish
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="field">
+            <label>Google mijoz ID si</label>
+            <input
+              value={settings.googleClientId}
+              onChange={(e) => updateSettings({ googleClientId: e.target.value.trim() })}
+              placeholder="…apps.googleusercontent.com"
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+            <div className="tiny" style={{ marginTop: 6, lineHeight: 1.55 }}>
+              console.cloud.google.com → APIs &amp; Services → Credentials →
+              <b> OAuth client ID</b> → <b>Web application</b>. Maxfiy soʻz
+              kerak emas (PKCE).
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Ruxsat etilgan qaytish manzili</label>
+            <input value={redirectUri()} readOnly onFocus={(e) => e.target.select()} />
+            <div className="tiny" style={{ marginTop: 6 }}>
+              Shu manzilni Google Console’da «Authorized redirect URIs» ga
+              aynan koʻchiring — aks holda ulanish rad etiladi.
+            </div>
+          </div>
+
+          <button
+            className="btn wide"
+            disabled={busy || !settings.googleClientId}
+            onClick={() => void connect()}
+          >
+            {busy ? 'Google ochilmoqda…' : 'Google hisobini ulash'}
+          </button>
+        </>
+      )}
+
+      {note && (
+        <pre className="conn-result" style={{ marginTop: 12 }}>
+          {note}
         </pre>
       )}
     </>

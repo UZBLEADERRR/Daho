@@ -3,6 +3,16 @@ import { b64ToBytes } from './audio';
 import { createBook, writeBook } from './book';
 import { activeConnectors, callConnector, findAction, findConnector } from './connectors';
 import { helperRole, runHelper } from './helper';
+import {
+  addEvent,
+  googleReady,
+  listDrive,
+  listEvents,
+  readDrive,
+  readMail,
+  searchMail,
+  sendMail,
+} from './google';
 import { fetchImageData, searchImages } from './imagesearch';
 import { geminiModel } from './models';
 import { canSearchWeb, imageAny } from './providers';
@@ -530,6 +540,39 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'google',
+    description:
+      'Foydalanuvchining Google hisobi bilan ishlaydi — Gmail, Drive, Kalendar.\n'
+      + 'Amallar:\n'
+      + '- `mail_search` — xat qidirish (`query`: Gmail sintaksisi, masalan '
+      + '"from:dekanat is:unread" yoki "subject:imtihon")\n'
+      + '- `mail_read` — xatning toʻliq matni (`id`)\n'
+      + '- `mail_send` — xat yuborish (`to`, `subject`, `body`)\n'
+      + '- `drive_list` — fayllar (`query` — nom boʻyicha)\n'
+      + '- `drive_read` — fayl matni (`id`); Google Docs ham oʻqiladi\n'
+      + '- `calendar_list` — yaqin kunlardagi voqealar (`days`)\n'
+      + '- `calendar_add` — voqea qoʻshish (`summary`, `start`, `end` — ISO vaqt)\n'
+      + 'Xat yuborishdan OLDIN foydalanuvchiga matnini koʻrsatib tasdiqlat — '
+      + 'yuborilgan xatni qaytarib boʻlmaydi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'mail_search | mail_read | mail_send | drive_list | drive_read | calendar_list | calendar_add' },
+        query: { type: 'STRING' },
+        id: { type: 'STRING' },
+        to: { type: 'STRING' },
+        subject: { type: 'STRING' },
+        body: { type: 'STRING' },
+        summary: { type: 'STRING' },
+        start: { type: 'STRING', description: 'ISO vaqt, masalan 2026-08-25T14:00:00+05:00' },
+        end: { type: 'STRING' },
+        days: { type: 'NUMBER' },
+        limit: { type: 'NUMBER' },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'connect_app',
     description:
       'BOSHQA ILOVAGA soʻrov yuboradi — foydalanuvchi ulab qoʻygan xizmatlar: '
@@ -636,6 +679,123 @@ export async function executeTool(
           ok: false,
           summary: 'Yordamchi ishlamadi',
           payload: { xato: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'google': {
+      if (!googleReady()) {
+        return {
+          ok: false,
+          summary: 'Google hisobi ulanmagan',
+          payload: {
+            error: 'ulanmagan',
+            izoh:
+              'Foydalanuvchiga ayt: Sozlamalar → Google boʻlimidan hisobini ulasin. '
+              + 'Bir marta ulansa pochta, Drive va kalendar ochiladi.',
+          },
+        };
+      }
+
+      const action = str(args.action);
+      const limit = Math.max(1, Math.min(25, Number(args.limit) || 10));
+
+      try {
+        if (action === 'mail_search') {
+          const mails = await searchMail(str(args.query, 'is:unread'), limit);
+          return {
+            ok: true,
+            summary: `${mails.length} ta xat`,
+            payload: {
+              xatlar: mails.map((m) => ({
+                id: m.id,
+                kimdan: m.from,
+                mavzu: m.subject,
+                sana: m.date,
+                boshlanishi: m.snippet,
+              })),
+            },
+          };
+        }
+
+        if (action === 'mail_read') {
+          const id = str(args.id);
+          if (!id) return { ok: false, summary: 'id kerak', payload: { error: 'id' } };
+          const text = await readMail(id);
+          return { ok: true, summary: 'Xat oʻqildi', payload: { matn: text } };
+        }
+
+        if (action === 'mail_send') {
+          const to = str(args.to);
+          const subject = str(args.subject);
+          const body = str(args.body);
+          if (!to || !body) {
+            return { ok: false, summary: 'to va body kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const id = await sendMail(to, subject, body);
+          return { ok: true, summary: `Xat yuborildi: ${to}`, payload: { id } };
+        }
+
+        if (action === 'drive_list') {
+          const files = await listDrive(str(args.query), limit);
+          return {
+            ok: true,
+            summary: `${files.length} ta fayl`,
+            payload: {
+              fayllar: files.map((f) => ({
+                id: f.id,
+                nom: f.name,
+                turi: f.mimeType,
+                oʻzgargan: f.modifiedTime,
+              })),
+            },
+          };
+        }
+
+        if (action === 'drive_read') {
+          const id = str(args.id);
+          if (!id) return { ok: false, summary: 'id kerak', payload: { error: 'id' } };
+          return { ok: true, summary: 'Fayl oʻqildi', payload: { matn: await readDrive(id) } };
+        }
+
+        if (action === 'calendar_list') {
+          const events = await listEvents(Math.max(1, Math.min(60, Number(args.days) || 7)));
+          return {
+            ok: true,
+            summary: `${events.length} ta voqea`,
+            payload: {
+              voqealar: events.map((e) => ({
+                nom: e.summary,
+                boshlanish: e.start,
+                tugash: e.end,
+                joy: e.location,
+              })),
+            },
+          };
+        }
+
+        if (action === 'calendar_add') {
+          const summary = str(args.summary);
+          const start = str(args.start);
+          const end = str(args.end);
+          if (!summary || !start || !end) {
+            return {
+              ok: false,
+              summary: 'summary, start va end kerak',
+              payload: { error: 'toʻliqmas' },
+            };
+          }
+          const link = await addEvent(summary, start, end, str(args.body));
+          return { ok: true, summary: `«${summary}» qoʻshildi`, payload: { havola: link } };
+        }
+
+        return { ok: false, summary: `Nomaʼlum amal: ${action}`, payload: { error: 'amal' } };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'Google xatosi',
+          payload: { error: String((err as Error)?.message ?? err) },
         };
       }
     }

@@ -39,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   roleModels: { bosh: '', dizayn: '', kod: '', tekshir: '', matn: '' },
   connectors: [],
   supabaseToken: '',
+  googleClientId: '',
   serverUrl: '',
   serverSecret: '',
   autoContinue: true,
