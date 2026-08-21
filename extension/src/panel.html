@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Daho</title>
+<link rel="stylesheet" href="panel.css" />
+<body>
+  <header>
+    <b>Daho</b>
+    <span id="source" class="chip">sahifa</span>
+    <button id="settings" class="icon" title="Sozlamalar">⚙</button>
+  </header>
+
+  <section id="setup" hidden>
+    <p class="hint">
+      Ishlashi uchun Gemini kaliti kerak. Kalit faqat shu brauzerda saqlanadi.
+    </p>
+    <input id="key" type="password" placeholder="AIza…" autocomplete="off" />
+    <button id="save" class="primary">Saqlash</button>
+    <p class="hint">Kalitni aistudio.google.com/apikey dan bepul olasiz.</p>
+  </section>
+
+  <section id="main">
+    <div class="quick">
+      <button data-ask="Shu sahifadagi asosiy fikrlarni 5 ta band qilib ayt.">Qisqacha</button>
+      <button data-ask="Izohlar kayfiyatini tahlil qil: nechta ijobiy, nechta salbiy, nima deyishyapti.">Izohlar</button>
+      <button data-ask="Bu materialdan konspekt tuz — sarlavhalar va asosiy tezislar bilan.">Konspekt</button>
+      <button data-ask="Bu sahifa nima haqida va menga foydali joyi bormi? Rostini ayt.">Foydalimi</button>
+    </div>
+
+    <textarea id="ask" rows="3" placeholder="Yoki oʻzingiz soʻrang…"></textarea>
+    <button id="run" class="primary">Tahlil qilish</button>
+
+    <div id="out" class="out"></div>
+  </section>
+
+  <script type="module" src="panel.js"></script>
+</body>
