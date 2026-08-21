@@ -255,6 +255,40 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'list_attachments',
+    description:
+      'Foydalanuvchi shu suhbatda yuborgan fayl va rasmlar roʻyxati. '
+      + 'Foydalanuvchi «shu rasmni ishlat», «logotipni qoʻy» desa avval '
+      + 'shuni chaqir — qanday fayllar borligini bilib olasan.',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'add_asset',
+    description:
+      'Foydalanuvchi yuborgan rasm/shrift/audio faylni LOYIHAGA qoʻshadi — '
+      + 'haqiqiy fayl boʻlib saqlanadi, koʻrinishda ham, GitHubʼda ham '
+      + 'ishlaydi.\n'
+      + 'Foydalanuvchi «bu rasmni saytga qoʻy» desa: avval `list_attachments`, '
+      + 'keyin shu vosita bilan loyihaga sol, soʻng HTML/CSS da odatdagidek '
+      + 'havola qil: <img src="assets/logo.png">.\n'
+      + 'Rasmni oʻzing chizishga urinma — foydalanuvchi aynan shu faylni '
+      + 'ishlatishini kutayapti.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        attachment: {
+          type: 'STRING',
+          description: 'Fayl nomi yoki tartib raqami (list_attachments dan)',
+        },
+        path: {
+          type: 'STRING',
+          description: 'Loyihadagi yoʻl, masalan "assets/logo.png"',
+        },
+      },
+      required: ['attachment', 'path'],
+    },
+  },
+  {
     name: 'apply_patch',
     description:
       'Faylga unified diff qoʻllaydi — KATTA faylni arzon tahrirlash yoʻli. '
@@ -911,6 +945,24 @@ function requireRepo(projectId: string): { owner: string; repo: string; branch: 
   return link;
 }
 
+/**
+ * Foydalanuvchi shu loyihada yuborgan barcha fayllar — yangisi birinchi.
+ * Bir xil fayl bir necha marta yuborilgan boʻlsa ham bir marta qaytadi.
+ */
+function projectAttachments(project: CodeProject): Attachment[] {
+  const out: Attachment[] = [];
+  const seen = new Set<string>();
+  for (let i = project.messages.length - 1; i >= 0; i -= 1) {
+    for (const att of project.messages[i].attachments ?? []) {
+      const key = `${att.name ?? ''}:${att.data.length}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(att);
+    }
+  }
+  return out;
+}
+
 async function runTool(
   projectId: string,
   name: string,
@@ -1136,6 +1188,71 @@ async function runTool(
           },
         };
       }
+    }
+
+    case 'list_attachments': {
+      const list = projectAttachments(project);
+      if (!list.length) {
+        return {
+          ok: true,
+          summary: 'Yuborilgan fayl yoʻq',
+          payload: {
+            fayllar: [],
+            izoh: 'Foydalanuvchi hali fayl yubormagan. Kerak boʻlsa soʻra.',
+          },
+        };
+      }
+      return {
+        ok: true,
+        summary: `${list.length} ta yuborilgan fayl`,
+        payload: {
+          fayllar: list.map((a, i) => ({
+            raqam: i + 1,
+            nom: a.name ?? `fayl-${i + 1}`,
+            turi: a.mimeType,
+            hajm_kb: Math.round((a.data.length * 0.75) / 1024),
+          })),
+        },
+      };
+    }
+
+    case 'add_asset': {
+      const list = projectAttachments(project);
+      if (!list.length) {
+        return {
+          ok: false,
+          summary: 'Yuborilgan fayl yoʻq',
+          payload: { error: 'Foydalanuvchi hali fayl yubormagan.' },
+        };
+      }
+
+      const wanted = str(args.attachment);
+      const byIndex = Number(wanted);
+      const picked =
+        Number.isFinite(byIndex) && byIndex >= 1 && byIndex <= list.length
+          ? list[byIndex - 1]
+          : (list.find((a) => (a.name ?? '').toLowerCase() === wanted.toLowerCase()) ??
+            list.find((a) => (a.name ?? '').toLowerCase().includes(wanted.toLowerCase())));
+
+      if (!picked) {
+        return {
+          ok: false,
+          summary: `«${wanted}» topilmadi`,
+          payload: { bor: list.map((a, i) => `${i + 1}. ${a.name ?? a.mimeType}`) },
+        };
+      }
+
+      const path = str(args.path) || `assets/${picked.name ?? 'fayl'}`;
+      writeProjectFile(projectId, path, picked.data, { mimeType: picked.mimeType });
+      return {
+        ok: true,
+        summary: `${picked.name ?? picked.mimeType} → ${path}`,
+        payload: {
+          yoʻl: path,
+          turi: picked.mimeType,
+          izoh: `HTML da shunday havola qil: src="${path}"`,
+        },
+      };
     }
 
     case 'apply_patch': {

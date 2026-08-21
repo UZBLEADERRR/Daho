@@ -774,14 +774,36 @@ function Files({ project }: { project: CodeProject }) {
             <Check size={19} />
           </button>
         </div>
-        <textarea
-          className="code-editor"
-          value={draft}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          onChange={(e) => setDraft(e.target.value)}
-        />
+        {file.base64 ? (
+          // Ikkilik fayl — matn muharriri bilan koʻrsatib boʻlmaydi.
+          <div className="pad" style={{ textAlign: 'center' }}>
+            {file.mimeType?.startsWith('image/') ? (
+              <img
+                src={`data:${file.mimeType};base64,${file.content}`}
+                alt={file.path}
+                style={{ maxWidth: '100%', borderRadius: 12 }}
+              />
+            ) : (
+              <div className="empty">
+                <b>{file.mimeType ?? 'Ikkilik fayl'}</b>
+                Bu fayl matn emas — tahrirlab boʻlmaydi.
+              </div>
+            )}
+            <div className="tiny" style={{ marginTop: 10 }}>
+              {Math.round((file.content.length * 0.75) / 1024)} KB ·{' '}
+              {file.mimeType ?? 'nomaʼlum tur'}
+            </div>
+          </div>
+        ) : (
+          <textarea
+            className="code-editor"
+            value={draft}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            onChange={(e) => setDraft(e.target.value)}
+          />
+        )}
       </>
     );
   }

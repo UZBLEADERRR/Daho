@@ -396,6 +396,13 @@ export interface VideoProject {
 export interface CodeFile {
   path: string;
   content: string;
+  /**
+   * `content` base64 boʻlsa true — rasm, shrift, audio kabi ikkilik
+   * fayllar uchun. Matn fayllarda boʻlmaydi.
+   */
+  base64?: boolean;
+  /** Ikkilik fayl turi, masalan `image/png` */
+  mimeType?: string;
 }
 
 /** Loyihaning saqlangan holati — orqaga qaytarish uchun. */

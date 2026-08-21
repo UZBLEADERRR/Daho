@@ -41,8 +41,15 @@ export function deleteCodeProject(id: string): void {
   setState((s) => ({ code: s.code.filter((p) => p.id !== id) }));
 }
 
-export function writeProjectFile(id: string, path: string, content: string): void {
+export function writeProjectFile(
+  id: string,
+  path: string,
+  content: string,
+  /** Rasm/shrift kabi ikkilik fayl boʻlsa turi va base64 bayrogʻi */
+  binary?: { mimeType: string },
+): void {
   const clean = path.replace(/^\.?\//, '').trim();
+  const extra = binary ? { base64: true as const, mimeType: binary.mimeType } : {};
   setState((s) => ({
     code: s.code.map((p) => {
       if (p.id !== id) return p;
@@ -51,8 +58,13 @@ export function writeProjectFile(id: string, path: string, content: string): voi
         ...p,
         updatedAt: Date.now(),
         files: exists
-          ? p.files.map((f) => (f.path === clean ? { ...f, content } : f))
-          : [...p.files, { path: clean, content }],
+          ? p.files.map((f) =>
+              f.path === clean
+                ? // Matn faylga aylantirilsa eski ikkilik bayroq qolib ketmasin
+                  { path: clean, content, ...extra }
+                : f,
+            )
+          : [...p.files, { path: clean, content, ...extra }],
       };
     }),
   }));
@@ -106,13 +118,42 @@ export function bundlePreview(project: CodeProject, entry = 'index.html'): strin
 
   let html = index.content;
 
+  /*
+   * Loyihadagi ikkilik fayllar (rasm, shrift, audio) koʻrinishda alohida
+   * fayl boʻlib ochilmaydi — qumbox ularni topa olmaydi. Shuning uchun
+   * havolalarni data URI ga aylantiramiz.
+   *
+   * Bu yordamchilar pastdagi almashtirishlardan OLDIN eʼlon qilinishi
+   * kerak: CSS inline qilish ularni darhol chaqiradi.
+   */
+  const asset = (ref: string): string | null => {
+    if (/^(https?:|data:|#)/i.test(ref)) return null;
+    const file = findFile(files, ref);
+    if (!file?.base64) return null;
+    return `data:${file.mimeType ?? 'application/octet-stream'};base64,${file.content}`;
+  };
+
+  const inlineCssUrls = (css: string): string =>
+    css.replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (match: string, ref: string) => {
+      const uri = asset(ref.trim());
+      return uri ? `url("${uri}")` : match;
+    });
+
+  html = html.replace(
+    /(<(?:img|source|audio|video)[^>]*\ssrc=)["']([^"']+)["']/gi,
+    (match: string, head: string, ref: string) => {
+      const uri = asset(ref);
+      return uri ? `${head}"${uri}"` : match;
+    },
+  );
+
   // <link rel="stylesheet" href="style.css"> → <style>…</style>
   html = html.replace(
     /<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi,
     (match: string, href: string) => {
       if (/^https?:/i.test(href)) return match;
       const file = findFile(files, href);
-      return file ? `<style>\n${file.content}\n</style>` : '';
+      return file ? `<style>\n${inlineCssUrls(file.content)}\n</style>` : '';
     },
   );
   html = html.replace(
@@ -120,7 +161,7 @@ export function bundlePreview(project: CodeProject, entry = 'index.html'): strin
     (match: string, href: string) => {
       if (/^https?:/i.test(href)) return match;
       const file = findFile(files, href);
-      return file ? `<style>\n${file.content}\n</style>` : match;
+      return file ? `<style>\n${inlineCssUrls(file.content)}\n</style>` : match;
     },
   );
 
