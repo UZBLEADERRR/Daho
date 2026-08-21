@@ -1,6 +1,6 @@
-# Yigʻish konteksti — repozitoriy ildizi, lekin serverga faqat
-# `server/` papkasi kerak. Qolganini yubormaymiz: yigʻish tezlashadi
-# va obraz kichik qoladi.
+# Yigʻish konteksti — repozitoriy ildizi. Veb ilova ham shu yerdan
+# yigʻilgani uchun `src/`, `public/`, `index.html` KERAK. Faqat ogʻir
+# va keraksiz narsalarni tashlaymiz.
 .git
 .github
 node_modules
@@ -9,14 +9,7 @@ dist
 build
 android
 extension
-public
-src
 supabase
 docs
-scripts
 *.md
-*.png
-*.jpg
-*.jpeg
-*.svg
 *.apk

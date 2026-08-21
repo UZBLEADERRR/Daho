@@ -1,4 +1,22 @@
-# Daho fon serveri.
+# ------------------------------------------------------------------
+#  1-bosqich — veb ilovani yigʻamiz
+# ------------------------------------------------------------------
+# Shu sababli server nafaqat fon ishchisi, balki Daho’ning oʻzini ham
+# beradi: Railway manzilini ochgan odam ilovani koʻradi, JSON emas.
+FROM node:20-slim AS web
+WORKDIR /build
+
+# Kontekst — repozitoriy ildizi (railway.json: dockerfilePath=server/Dockerfile).
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY index.html vite.config.ts tsconfig.json ./
+COPY src ./src
+COPY public ./public
+RUN npm run build
+
+# ------------------------------------------------------------------
+#  2-bosqich — server
+# ------------------------------------------------------------------
 # Terminal imkoniyati uchun git va python ham qoʻshiladi.
 FROM node:20-slim
 
@@ -10,14 +28,13 @@ RUN apt-get update \
        git python3 python3-pip python3-venv ffmpeg ca-certificates curl unzip \
   && rm -rf /var/lib/apt/lists/*
 
-# Diqqat: Railway yigʻish konteksti — repozitoriy ILDIZI (railway.json
-# dagi `dockerfilePath: server/Dockerfile`). Shuning uchun yoʻllar
-# `server/` bilan boshlanadi, aks holda ildizdagi React loyihasi
-# koʻchirilib qolardi.
 WORKDIR /app
 COPY server/package.json ./
 RUN npm install --omit=dev
 COPY server/src ./src
+
+# Yigʻilgan veb ilova — Express shu papkadan beradi.
+COPY --from=web /build/dist ./public
 
 ENV NODE_ENV=production
 ENV WORK_DIR=/tmp/daho-work

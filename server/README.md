@@ -45,6 +45,22 @@ Bu server esa **doim ishlab turadi**:
 `service_role` kaliti RLS ni chetlab oʻtadi — uni faqat serverda saqlang,
 ilovaga yoki repozitoriyga hech qachon qoʻymang.
 
+## Veb ilova ham shu yerda
+
+Obraz yigʻilayotganda veb ilova ham yigʻiladi va `public/` ga qoʻyiladi,
+shuning uchun Railway manzilining **oʻzi Daho** — telefonsiz, oddiy
+brauzerdan ham kirsa boʻladi:
+
+| Yoʻl | Nima |
+|---|---|
+| `/` | Daho ilovasi (veb versiya) |
+| `/api` | Server haqida qisqa maʼlumot |
+
+Google ulanishini veb versiyada ham ishlatmoqchi boʻlsangiz, Google
+Console’dagi «Authorized redirect URIs» ga sahifaning oʻzini ham
+qoʻshing (`https://<sizniki>.up.railway.app/`), telefon uchun
+`/oauth/callback` bilan birga.
+
 ## Manzillar
 
 | Yoʻl | Nima qiladi |
@@ -54,6 +70,8 @@ ilovaga yoki repozitoriyga hech qachon qoʻymang.
 | `POST /jobs` | Vazifa qoʻshish (foydalanuvchi tokeni bilan) |
 | `GET /jobs/:id` | Vazifa holati |
 | `POST /run` | Buyruq bajarish — terminal |
+| `GET /oauth/callback` | Google kodini ilovaga qaytarish (telefon uchun) |
+| `GET /*` | Veb ilova (SPA) |
 
 ## Server nima uchun EMAS
 

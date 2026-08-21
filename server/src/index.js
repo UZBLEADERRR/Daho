@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import express from 'express';
 import { env, missing } from './env.js';
 import { allowedHosts, proxyRequest } from './proxy.js';
@@ -29,14 +31,18 @@ async function authorize(req) {
   return user ? { kind: 'user', id: user.id, email: user.email } : null;
 }
 
-app.get('/', (_req, res) => {
+/** Server haqida qisqa maʼlumot. Ildizni veb ilova egallagani uchun `/api` da. */
+function serviceInfo(_req, res) {
   res.json({
     service: 'Daho server',
     holat: missing().length ? 'sozlanmagan' : 'tayyor',
     yetishmayapti: missing(),
     terminal: env.shellEnabled,
+    veb: hasWeb ? 'ildizda' : 'yigʻilmagan',
   });
-});
+}
+
+app.get('/api', serviceInfo);
 
 app.get('/health', (_req, res) => {
   res.json({
@@ -174,6 +180,36 @@ app.post('/run', async (req, res) => {
   const result = await runCommand(who.id, command, { cwd, timeoutMs: timeout });
   res.json(result);
 });
+
+/* ------------------------------------------------------------------ */
+/*  Veb ilova                                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Dockerfile veb ilovani yigʻib `public/` ga qoʻyadi. Shunda Railway
+ * manzili — Daho’ning oʻzi: telefonsiz, brauzerdan ham kirsa boʻladi.
+ * Papka boʻlmasa (mahalliy ishga tushirishda) server oddiy JSON qaytaradi.
+ *
+ * Diqqat: bu barcha API yoʻllaridan KEYIN turadi, aks holda `*` ular
+ * ustidan oʻtib ketardi.
+ */
+const WEB_DIR = path.join(process.cwd(), 'public');
+const hasWeb = existsSync(path.join(WEB_DIR, 'index.html'));
+
+/** API yoʻllari — bularga SPA javobi berilmasin, 404 chiqsin. */
+const API_PATHS = /^\/(api|health|tick|jobs|proxy|run|oauth)(\/|$)/;
+
+if (hasWeb) {
+  app.use(express.static(WEB_DIR, { maxAge: '1h' }));
+
+  // Ilova ichidagi yoʻllar (masalan /agent) ham index.html ni olsin.
+  app.get('*', (req, res, next) => {
+    if (API_PATHS.test(req.path)) return next();
+    res.sendFile(path.join(WEB_DIR, 'index.html'));
+  });
+} else {
+  app.get('/', serviceInfo);
+}
 
 const gaps = missing();
 if (gaps.length) {
