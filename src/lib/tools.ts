@@ -13,6 +13,19 @@ import {
   searchMail,
   sendMail,
 } from './google';
+import {
+  igComments,
+  igConversations,
+  igHide,
+  igMedia,
+  igMessages,
+  igReady,
+  igReply,
+  igSend,
+  ytComments,
+  ytReply,
+  ytVideos,
+} from './social';
 import { fetchImageData, searchImages } from './imagesearch';
 import { geminiModel } from './models';
 import { canSearchWeb, imageAny } from './providers';
@@ -573,6 +586,60 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'instagram',
+    description:
+      'Instagram Business/Creator hisobi bilan ishlaydi — RASMIY Graph API '
+      + 'orqali. Minglab izoh va DM ga javob berish uchun aynan shu yoʻl.\n'
+      + 'Amallar:\n'
+      + '- `media` — oxirgi postlar (id, izohlar soni)\n'
+      + '- `comments` — postdagi izohlar (`media_id`); javob berilganlari belgilanadi\n'
+      + '- `reply` — izohga javob (`comment_id`, `message`)\n'
+      + '- `hide` — izohni yashirish (`comment_id`) — spam yoki haqorat uchun\n'
+      + '- `chats` — Direct suhbatlar roʻyxati\n'
+      + '- `messages` — suhbatdagi xabarlar (`conversation_id`)\n'
+      + '- `send` — Direct xabar yuborish (`user_id`, `message`)\n'
+      + 'MUHIM: Instagram faqat odam SIZGA yozgan boʻlsa va oxirgi xabardan '
+      + '24 soat oʻtmagan boʻlsa javob berishga ruxsat beradi. Bu Meta ning '
+      + 'qoidasi, chetlab oʻtib boʻlmaydi.\n'
+      + 'Koʻp odamga javob berayotganda har biriga ALOHIDA, savoliga mos '
+      + 'javob yoz — bir xil matnni koʻchirma, buni Instagram spam deb '
+      + 'belgilaydi va odamlar ham sezadi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'media | comments | reply | hide | chats | messages | send' },
+        media_id: { type: 'STRING' },
+        comment_id: { type: 'STRING' },
+        conversation_id: { type: 'STRING' },
+        user_id: { type: 'STRING' },
+        message: { type: 'STRING' },
+        limit: { type: 'NUMBER' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'youtube_manage',
+    description:
+      'Oʻz YouTube kanalingizni boshqaradi (Google ulanishi kerak).\n'
+      + '- `videos` — oxirgi videolar (koʻrishlar, izohlar soni)\n'
+      + '- `comments` — videodagi izohlar (`video_id`)\n'
+      + '- `reply` — izohga javob (`comment_id`, `message`)\n'
+      + 'Izohlarni tahlil qilib, koʻp takrorlanadigan savollarni topsang — '
+      + 'foydalanuvchiga qoʻllanma yozishni taklif qil.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'videos | comments | reply' },
+        video_id: { type: 'STRING' },
+        comment_id: { type: 'STRING' },
+        message: { type: 'STRING' },
+        limit: { type: 'NUMBER' },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'connect_app',
     description:
       'BOSHQA ILOVAGA soʻrov yuboradi — foydalanuvchi ulab qoʻygan xizmatlar: '
@@ -795,6 +862,197 @@ export async function executeTool(
         return {
           ok: false,
           summary: 'Google xatosi',
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'instagram': {
+      if (!igReady()) {
+        return {
+          ok: false,
+          summary: 'Instagram ulanmagan',
+          payload: {
+            error: 'ulanmagan',
+            izoh:
+              'Sozlamalar → Instagram boʻlimiga Graph API tokeni va Business '
+              + 'hisob ID sini qoʻyish kerak. Hisob Business yoki Creator '
+              + 'boʻlishi va Facebook sahifasiga ulangan boʻlishi shart.',
+          },
+        };
+      }
+
+      const action = str(args.action);
+      const limit = Math.max(1, Math.min(100, Number(args.limit) || 25));
+
+      try {
+        if (action === 'media') {
+          const list = await igMedia(limit, ctx.signal);
+          return {
+            ok: true,
+            summary: `${list.length} ta post`,
+            payload: {
+              postlar: list.map((m) => ({
+                id: m.id,
+                matn: (m.caption ?? '').slice(0, 120),
+                turi: m.media_type,
+                izohlar: m.comments_count,
+                yoqtirishlar: m.like_count,
+                sana: m.timestamp,
+                havola: m.permalink,
+              })),
+            },
+          };
+        }
+
+        if (action === 'comments') {
+          const id = str(args.media_id);
+          if (!id) return { ok: false, summary: 'media_id kerak', payload: { error: 'id' } };
+          const list = await igComments(id, limit, ctx.signal);
+          const pending = list.filter((c) => !c.replied);
+          return {
+            ok: true,
+            summary: `${list.length} ta izoh, ${pending.length} tasiga javob berilmagan`,
+            payload: {
+              izohlar: list.map((c) => ({
+                id: c.id,
+                kim: c.username,
+                matn: c.text,
+                sana: c.timestamp,
+                javob_berilgan: c.replied,
+              })),
+            },
+          };
+        }
+
+        if (action === 'reply') {
+          const id = str(args.comment_id);
+          const message = str(args.message);
+          if (!id || !message) {
+            return { ok: false, summary: 'comment_id va message kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const replyId = await igReply(id, message, ctx.signal);
+          return { ok: true, summary: `Izohga javob berildi`, payload: { id: replyId } };
+        }
+
+        if (action === 'hide') {
+          const id = str(args.comment_id);
+          if (!id) return { ok: false, summary: 'comment_id kerak', payload: { error: 'id' } };
+          await igHide(id, true, ctx.signal);
+          return { ok: true, summary: 'Izoh yashirildi', payload: { id } };
+        }
+
+        if (action === 'chats') {
+          const list = await igConversations(limit, ctx.signal);
+          return {
+            ok: true,
+            summary: `${list.length} ta suhbat`,
+            payload: {
+              suhbatlar: list.map((c) => ({
+                id: c.id,
+                kim: c.username,
+                user_id: c.userId,
+                oxirgi_xabar: c.lastMessage,
+                vaqt: c.updatedAt,
+              })),
+            },
+          };
+        }
+
+        if (action === 'messages') {
+          const id = str(args.conversation_id);
+          if (!id) return { ok: false, summary: 'conversation_id kerak', payload: { error: 'id' } };
+          const list = await igMessages(id, limit, ctx.signal);
+          return { ok: true, summary: `${list.length} ta xabar`, payload: { xabarlar: list } };
+        }
+
+        if (action === 'send') {
+          const userId = str(args.user_id);
+          const message = str(args.message);
+          if (!userId || !message) {
+            return { ok: false, summary: 'user_id va message kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const id = await igSend(userId, message, ctx.signal);
+          return { ok: true, summary: 'Xabar yuborildi', payload: { id } };
+        }
+
+        return { ok: false, summary: `Nomaʼlum amal: ${action}`, payload: { error: 'amal' } };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'Instagram xatosi',
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'youtube_manage': {
+      if (!googleReady()) {
+        return {
+          ok: false,
+          summary: 'Google ulanmagan',
+          payload: { error: 'Sozlamalar → Google hisobi boʻlimidan ulang.' },
+        };
+      }
+
+      const action = str(args.action);
+      const limit = Math.max(1, Math.min(100, Number(args.limit) || 25));
+
+      try {
+        if (action === 'videos') {
+          const list = await ytVideos(limit, ctx.signal);
+          return {
+            ok: true,
+            summary: `${list.length} ta video`,
+            payload: {
+              videolar: list.map((v) => ({
+                id: v.id,
+                sarlavha: v.title,
+                korishlar: v.views,
+                izohlar: v.comments,
+                sana: v.publishedAt,
+              })),
+            },
+          };
+        }
+
+        if (action === 'comments') {
+          const id = str(args.video_id);
+          if (!id) return { ok: false, summary: 'video_id kerak', payload: { error: 'id' } };
+          const list = await ytComments(id, limit, ctx.signal);
+          return {
+            ok: true,
+            summary: `${list.length} ta izoh`,
+            payload: {
+              izohlar: list.map((c) => ({
+                id: c.id,
+                kim: c.author,
+                matn: c.text,
+                yoqtirish: c.likes,
+                javoblar: c.replyCount,
+                sana: c.publishedAt,
+              })),
+            },
+          };
+        }
+
+        if (action === 'reply') {
+          const id = str(args.comment_id);
+          const message = str(args.message);
+          if (!id || !message) {
+            return { ok: false, summary: 'comment_id va message kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const replyId = await ytReply(id, message, ctx.signal);
+          return { ok: true, summary: 'Izohga javob berildi', payload: { id: replyId } };
+        }
+
+        return { ok: false, summary: `Nomaʼlum amal: ${action}`, payload: { error: 'amal' } };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'YouTube xatosi',
           payload: { error: String((err as Error)?.message ?? err) },
         };
       }

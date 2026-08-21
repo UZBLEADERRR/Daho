@@ -205,6 +205,10 @@ export interface Settings {
   supabaseToken: string;
   /** Google OAuth mijoz ID si (PKCE — maxfiy soʻz kerak emas) */
   googleClientId: string;
+  /** Instagram Graph API tokeni (Business/Creator hisob uchun) */
+  igToken: string;
+  /** Instagram Business hisob ID si */
+  igUserId: string;
   /** Google tokenlari — faqat shu qurilmada */
   googleAuth?: GoogleAuth;
   /** Daho serveri (Railway) manzili — fon ishlari va terminal uchun */

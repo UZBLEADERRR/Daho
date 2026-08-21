@@ -40,6 +40,8 @@ export const DEFAULT_SETTINGS: Settings = {
   connectors: [],
   supabaseToken: '',
   googleClientId: '',
+  igToken: '',
+  igUserId: '',
   serverUrl: '',
   serverSecret: '',
   autoContinue: true,

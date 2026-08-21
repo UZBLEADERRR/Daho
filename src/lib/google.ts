@@ -21,8 +21,18 @@ export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/calendar',
+  // Oʻz kanalidagi izohlarni oʻqish va ularga javob berish uchun
+  'https://www.googleapis.com/auth/youtube.force-ssl',
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
+
+/** Google API ga umumiy chaqiruv — boshqa modullar ham ishlatadi. */
+export async function googleApi<T>(
+  url: string,
+  init: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+): Promise<T> {
+  return api<T>(url, init);
+}
 
 export interface GoogleAuth {
   accessToken: string;

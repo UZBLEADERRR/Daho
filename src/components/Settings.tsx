@@ -32,6 +32,7 @@ import { requestPersistentStorage, storageEstimate } from '../lib/storage';
 import { serverHealth } from '../lib/cloud/server';
 import { listProjects } from '../lib/sbadmin';
 import { disconnectGoogle, redirectUri, startGoogleAuth } from '../lib/google';
+import { igMedia } from '../lib/social';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
 import { UsagePanel } from './UsagePanel';
 import { Copy, Refresh } from './Icons';
@@ -296,6 +297,17 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         />
       </div>
 
+        </>
+      ),
+    },
+    {
+      id: 'instagram',
+      icon: '📸',
+      title: 'Instagram',
+      hint: 'Izoh va Direct’ga javob berish',
+      body: (
+        <>
+          <InstagramPanel />
         </>
       ),
     },
@@ -1444,6 +1456,110 @@ function GooglePanel() {
           {note}
         </pre>
       )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Instagram                                                          */
+/* ------------------------------------------------------------------ */
+
+function InstagramPanel() {
+  const settings = useStore((s) => s.settings);
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState('');
+
+  const check = async () => {
+    setChecking(true);
+    setResult('');
+    try {
+      const media = await igMedia(3);
+      setResult(
+        media.length
+          ? `✅ Ulandi — oxirgi ${media.length} ta post koʻrindi:\n` +
+              media
+                .map((m) => `· ${(m.caption ?? '(matnsiz)').slice(0, 40)} — ${m.comments_count ?? 0} izoh`)
+                .join('\n')
+          : '✅ Token ishlayapti, lekin post topilmadi.',
+      );
+    } catch (err) {
+      setResult(`❌ ${String((err as Error)?.message ?? err)}`);
+    }
+    setChecking(false);
+  };
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0, lineHeight: 1.6 }}>
+        Ulansa Daho postlaringizdagi izohlarni oʻqiydi va har biriga alohida
+        javob yozadi, Direct’dagi savollarga javob beradi. Kuniga minglab
+        xabar boʻlsa ham uddalaydi — bu rasmiy API, brauzerni bosib turish
+        emas.
+      </p>
+
+      <div className="field">
+        <label>Graph API tokeni</label>
+        <input
+          type="password"
+          value={settings.igToken}
+          onChange={(e) => updateSettings({ igToken: e.target.value.trim() })}
+          placeholder="EAAG…"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+      </div>
+
+      <div className="field">
+        <label>Instagram Business hisob ID si</label>
+        <input
+          value={settings.igUserId}
+          onChange={(e) => updateSettings({ igUserId: e.target.value.trim() })}
+          placeholder="17841…"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+      </div>
+
+      <button
+        className="btn ghost wide"
+        disabled={checking || !settings.igToken || !settings.igUserId}
+        onClick={() => void check()}
+      >
+        {checking ? 'Tekshirilmoqda…' : 'Ulanishni tekshirish'}
+      </button>
+
+      {result && (
+        <pre className="conn-result" style={{ marginTop: 12 }}>
+          {result}
+        </pre>
+      )}
+
+      <div className="section-label" style={{ padding: '18px 0 6px' }}>
+        Qanday olinadi
+      </div>
+      <div className="tiny" style={{ lineHeight: 1.7 }}>
+        1. Instagram hisobingiz <b>Business</b> yoki <b>Creator</b> boʻlsin
+        (Sozlamalar → Hisob turi).
+        <br />
+        2. Uni Facebook sahifasiga ulang.
+        <br />
+        3. developers.facebook.com da ilova oching → <b>Instagram Graph API</b>{' '}
+        va <b>Messenger API for Instagram</b> qoʻshing.
+        <br />
+        4. Graph API Explorer’dan token oling — ruxsatlar:{' '}
+        <code>instagram_basic</code>, <code>instagram_manage_comments</code>,{' '}
+        <code>instagram_manage_messages</code>,{' '}
+        <code>pages_show_list</code>.
+        <br />
+        5. Hisob ID sini shu soʻrov bilan olasiz:{' '}
+        <code>/me/accounts?fields=instagram_business_account</code>
+      </div>
+
+      <div className="tiny" style={{ marginTop: 12, color: 'var(--warn)', lineHeight: 1.6 }}>
+        ⚠️ Instagram faqat odam sizga yozgan boʻlsa va oxirgi xabardan 24 soat
+        oʻtmagan boʻlsa Direct’ga javob berishga ruxsat beradi. Bu Meta’ning
+        qoidasi — chetlab oʻtib boʻlmaydi.
+      </div>
     </>
   );
 }
