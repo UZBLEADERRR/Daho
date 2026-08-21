@@ -10,10 +10,14 @@ RUN apt-get update \
        git python3 python3-pip python3-venv ffmpeg ca-certificates curl unzip \
   && rm -rf /var/lib/apt/lists/*
 
+# Diqqat: Railway yigʻish konteksti — repozitoriy ILDIZI (railway.json
+# dagi `dockerfilePath: server/Dockerfile`). Shuning uchun yoʻllar
+# `server/` bilan boshlanadi, aks holda ildizdagi React loyihasi
+# koʻchirilib qolardi.
 WORKDIR /app
-COPY package.json ./
+COPY server/package.json ./
 RUN npm install --omit=dev
-COPY src ./src
+COPY server/src ./src
 
 ENV NODE_ENV=production
 ENV WORK_DIR=/tmp/daho-work

@@ -21,6 +21,10 @@ Bu server esa **doim ishlab turadi**:
 1. [railway.app](https://railway.app) ga kiring → **New Project** →
    **Deploy from GitHub repo** → shu repozitoriyni tanlang.
 2. Railway `railway.json` ni oʻqib, `server/Dockerfile` bilan yigʻadi.
+   **Root Directory ni oʻzgartirmang** — u `/` boʻlib qolsin. Yigʻish
+   konteksti repozitoriy ildizi, `Dockerfile` esa `server/` ichidan
+   nusxa oladi. Root Directory `server` qilinsa yoʻllar buziladi.
+   Tarmoq (branch) sifatida server kodi turgan tarmoqni tanlang.
 3. **Variables** boʻlimiga quyidagilarni qoʻying:
 
 | Oʻzgaruvchi | Nima |

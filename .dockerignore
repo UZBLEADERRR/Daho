@@ -1,0 +1,22 @@
+# Yigʻish konteksti — repozitoriy ildizi, lekin serverga faqat
+# `server/` papkasi kerak. Qolganini yubormaymiz: yigʻish tezlashadi
+# va obraz kichik qoladi.
+.git
+.github
+node_modules
+**/node_modules
+dist
+build
+android
+extension
+public
+src
+supabase
+docs
+scripts
+*.md
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.apk
