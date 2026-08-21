@@ -27,20 +27,33 @@ kompyuterda qiling (Android’da Kiwi Browser ishlaydi).
 Kalit brauzeringizning oʻz omborida qoladi va hech qayerga yuborilmaydi;
 soʻrov bevosita Google ga ketadi.
 
-## Agent rejimi
+## Boʻlimlar
 
-Panel endi shunchaki savol-javob emas — **agent**. Topshiriq berasiz, u
-oʻzi qadamlab bajaradi:
+Panel ilovadagi Daho bilan bir xil tuzilgan:
 
-- `read_page` — ochiq sahifani oʻqiydi
-- `open_tab` — kerakli havolani ochib, undan maʼlumot oladi
-- `save_note` — tayyor natijani saqlaydi (qoʻllanma, javob matnlari)
+| Boʻlim | Nima |
+|---|---|
+| **Suhbat** | Davomli suhbat — panel yopilsa ham saqlanadi |
+| **Kod** | Agent yozgan fayllar; nusxalash va yuklab olish |
+| **Vositalar** | Server holati, Telegram boti, saqlangan natijalar |
 
-Tayyor tugmalar: **Qisqacha**, **Izohlar** (mavzu boʻyicha guruhlash),
-**Qoʻllanma** (videodan bosqichma-bosqich qoʻllanma yozadi),
-**Javoblar** (har bir izohga alohida javob matni tayyorlaydi).
+Yuqori oʻngda **model tanlash** — roʻyxat kalitingiz bilan Google’dan
+olinadi va bir kun keshda turadi.
 
-Saqlangan natijalar panelning pastida turadi — bosib koʻrasiz.
+## Agent vositalari
+
+| Vosita | Nima qiladi |
+|---|---|
+| `read_page` | Ochiq sahifa — YouTube, Telegram, Instagram, maqola |
+| `open_tab` | Havolani ochib oʻqiydi, keyin varaqni yopadi |
+| `write_code` | Kod yozadi va «Kod» boʻlimiga qoʻyadi |
+| `save_note` | Uzun natijani saqlaydi |
+| `server_status` | Daho serverining holati — «serverda nima boʻlyapti» |
+| `http_get` | Ochiq havoladan JSON yoki matn |
+| `telegram` | Bot orqali xabar oʻqish va yuborish |
+
+Server va Telegram uchun sozlamalarga manzil va tokenni qoʻying
+(⚙ tugmasi).
 
 ## Nima qiladi
 

@@ -3,41 +3,107 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Daho</title>
 <link rel="stylesheet" href="panel.css" />
-<body>
-  <header>
-    <b>Daho</b>
-    <span id="source" class="chip">sahifa</span>
-    <button id="settings" class="icon" title="Sozlamalar">⚙</button>
-  </header>
 
-  <section id="setup" hidden>
+<header>
+  <span class="mark">Daho</span>
+  <span class="grow"></span>
+  <select id="model" class="model" title="Model"></select>
+  <button id="open-settings" class="icon" title="Sozlamalar">⚙</button>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button data-tab="chat" role="tab" aria-selected="true">Suhbat</button>
+  <button data-tab="code" role="tab" aria-selected="false">Kod</button>
+  <button data-tab="tools" role="tab" aria-selected="false">Vositalar</button>
+</nav>
+
+<main>
+  <!-- ------------------------------------------------ birinchi ochish -->
+  <section id="pane-setup" class="pane" hidden>
     <p class="hint">
-      Ishlashi uchun Gemini kaliti kerak. Kalit faqat shu brauzerda saqlanadi.
+      Ishlashi uchun Gemini kaliti kerak. Kalit faqat shu brauzerda
+      saqlanadi va hech qayerga yuborilmaydi — soʻrov bevosita Google’ga
+      ketadi.
     </p>
-    <input id="key" type="password" placeholder="AIza…" autocomplete="off" />
-    <button id="save" class="primary">Saqlash</button>
-    <p class="hint">Kalitni aistudio.google.com/apikey dan bepul olasiz.</p>
+    <div class="field">
+      <label for="key">Gemini kaliti</label>
+      <input id="key" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+    </div>
+    <button id="save-key" class="btn primary">Saqlash va boshlash</button>
+    <p class="hint">Kalitni <b>aistudio.google.com/apikey</b> dan bepul olasiz.</p>
   </section>
 
-  <section id="main">
-    <div class="quick">
-      <button data-ask="Shu sahifadagi asosiy fikrlarni 5 ta band qilib ayt.">Qisqacha</button>
-      <button data-ask="Izohlarni tahlil qil: mavzular boʻyicha guruhla, nechtadan ekanini ayt, koʻp takrorlanadigan savollarni alohida koʻrsat.">Izohlar</button>
-      <button data-ask="Bu videodan toʻliq qoʻllanma yoz — bosqichma-bosqich, sarlavhalar bilan. Tayyor boʻlgach save_note bilan saqla.">Qoʻllanma</button>
-      <button data-ask="Izohlardagi savollarga javob matnlarini tayyorla. Har biriga alohida, ismini ishlatib. Tayyor boʻlgach save_note bilan saqla.">Javoblar</button>
-    </div>
-
-    <textarea id="ask" rows="3" placeholder="Yoki topshiriq bering — agent oxirigacha bajaradi…"></textarea>
-    <button id="run" class="primary">Bajarish</button>
-
-    <div id="steps" class="steps"></div>
-    <div id="out" class="out"></div>
-
-    <div id="notes-wrap" hidden>
-      <div class="section">Saqlanganlar</div>
-      <div id="notes"></div>
-    </div>
+  <!-- ------------------------------------------------------- suhbat -->
+  <section id="pane-chat" class="pane">
+    <div id="thread"></div>
+    <div id="steps" class="steps" hidden><span class="dot"></span><span id="step-text"></span></div>
   </section>
 
-  <script type="module" src="panel.js"></script>
-</body>
+  <!-- ---------------------------------------------------------- kod -->
+  <section id="pane-code" class="pane" hidden>
+    <div id="code-list"></div>
+  </section>
+
+  <!-- ----------------------------------------------------- vositalar -->
+  <section id="pane-tools" class="pane" hidden>
+    <div class="section">Daho serveri</div>
+    <div id="server-state" class="card" style="cursor: default">
+      <b><span class="dot-ok dot-off"></span><span id="server-title">ulanmagan</span></b>
+      <i id="server-sub">Sozlamalarda manzilni kiriting</i>
+    </div>
+    <button id="server-check" class="btn">Holatni yangilash</button>
+
+    <div class="section">Telegram</div>
+    <div id="tg-state" class="card" style="cursor: default">
+      <b><span class="dot-ok dot-off"></span><span id="tg-title">ulanmagan</span></b>
+      <i id="tg-sub">Sozlamalarda bot tokenini kiriting</i>
+    </div>
+    <button id="tg-check" class="btn">Botni tekshirish</button>
+
+    <div class="section">Saqlanganlar</div>
+    <div id="notes"></div>
+  </section>
+
+  <!-- ---------------------------------------------------- sozlamalar -->
+  <section id="pane-settings" class="pane" hidden>
+    <div class="field">
+      <label for="key2">Gemini kaliti</label>
+      <input id="key2" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+    </div>
+
+    <div class="section">Daho serveri</div>
+    <p class="hint">
+      Ulansa kengaytma server holatini va vazifalarini koʻra oladi.
+      Masalan: <b>https://daho-production.up.railway.app</b>
+    </p>
+    <div class="field">
+      <label for="server-url">Server manzili</label>
+      <input id="server-url" placeholder="https://…up.railway.app" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="field">
+      <label for="server-secret">WORKER_SECRET</label>
+      <input id="server-secret" type="password" autocomplete="off" spellcheck="false" />
+    </div>
+
+    <div class="section">Telegram</div>
+    <p class="hint">@BotFather bergan token. Kengaytma shu bot orqali xabar yubora oladi.</p>
+    <div class="field">
+      <label for="tg-token">Bot tokeni</label>
+      <input id="tg-token" type="password" placeholder="123456789:AA…" autocomplete="off" spellcheck="false" />
+    </div>
+
+    <button id="save-settings" class="btn primary">Saqlash</button>
+    <button id="clear-chat" class="btn">Suhbatni tozalash</button>
+    <p id="settings-note" class="hint"></p>
+  </section>
+</main>
+
+<footer id="composer-wrap">
+  <div class="quick" id="quick"></div>
+  <div class="composer">
+    <textarea id="ask" rows="1" placeholder="Topshiriq bering…"></textarea>
+    <button id="send" class="send" title="Bajarish">↑</button>
+  </div>
+</footer>
+
+<script type="module" src="panel.js"></script>
