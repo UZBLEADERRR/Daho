@@ -25,7 +25,7 @@ FROM node:20-slim
 #   pip install --break-system-packages pandas matplotlib
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       git python3 python3-pip python3-venv ffmpeg ca-certificates curl unzip \
+       git python3 python3-pip python3-venv ffmpeg ca-certificates curl unzip zip \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -35,6 +35,11 @@ COPY server/src ./src
 
 # Yigʻilgan veb ilova — Express shu papkadan beradi.
 COPY --from=web /build/dist ./public
+
+# Brauzer kengaytmasi — tayyor arxiv qilib qoʻyamiz, foydalanuvchi
+# repozitoriyni klonlamasdan bitta havoladan yuklab oladi.
+COPY extension ./extension
+RUN cd extension && zip -qr ../public/daho-extension.zip . && cd .. && rm -rf extension
 
 ENV NODE_ENV=production
 ENV WORK_DIR=/tmp/daho-work

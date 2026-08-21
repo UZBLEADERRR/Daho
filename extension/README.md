@@ -5,11 +5,19 @@ Instagram posti yoki oddiy maqola.
 
 ## Oʻrnatish
 
+Eng oson yoʻl — Daho serveridagi tayyor arxiv:
+**`https://<sizniki>.up.railway.app/extension`** (u yerda yoʻriqnoma ham bor).
+
+Yoki shu papkadan bevosita:
+
 1. Chrome/Edge da `chrome://extensions` ni oching.
 2. Oʻng yuqorida **Developer mode** ni yoqing.
 3. **Load unpacked** → shu `extension/` papkasini tanlang.
 4. Panelni ochib Gemini kalitini bir marta kiriting
    (aistudio.google.com/apikey dan bepul olinadi).
+
+Telefondagi Chrome kengaytmalarni qoʻllab-quvvatlamaydi — buni
+kompyuterda qiling (Android’da Kiwi Browser ishlaydi).
 
 Kalit brauzeringizning oʻz omborida qoladi va hech qayerga yuborilmaydi;
 soʻrov bevosita Google ga ketadi.

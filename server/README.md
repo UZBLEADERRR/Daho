@@ -55,6 +55,7 @@ brauzerdan ham kirsa boʻladi:
 |---|---|
 | `/` | Daho ilovasi (veb versiya) |
 | `/api` | Server haqida qisqa maʼlumot |
+| `/extension` | Brauzer kengaytmasi — yoʻriqnoma va arxiv |
 
 Google ulanishini veb versiyada ham ishlatmoqchi boʻlsangiz, Google
 Console’dagi «Authorized redirect URIs» ga sahifaning oʻzini ham

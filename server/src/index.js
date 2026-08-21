@@ -182,6 +182,55 @@ app.post('/run', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Brauzer kengaytmasi                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Arxivning oʻzi `public/daho-extension.zip` da turadi va static orqali
+ * beriladi. Bu sahifa — oʻrnatish yoʻriqnomasi, chunki Chrome arxivni
+ * oʻzi oʻrnata olmaydi: avval ochib, keyin «Load unpacked» qilinadi.
+ */
+app.get('/extension', (_req, res) => {
+  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
+<html lang="uz"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daho kengaytmasi</title>
+<style>
+ :root{color-scheme:dark}
+ body{margin:0;padding:2rem 1.25rem;background:#09090b;color:#fafafa;
+      font:16px/1.65 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+ main{max-width:34rem;margin:0 auto}
+ h1{font-size:1.5rem;margin:0 0 .25rem}
+ p.sub{color:#a1a1aa;margin:0 0 2rem}
+ a.btn{display:block;padding:.9rem 1rem;border-radius:.75rem;background:#6366f1;
+       color:#fff;text-decoration:none;font-weight:600;text-align:center;margin-bottom:2rem}
+ ol{padding-left:1.25rem;margin:0 0 2rem}
+ li{margin-bottom:.85rem}
+ code{background:#18181b;padding:.15rem .4rem;border-radius:.3rem;font-size:.9em}
+ .note{border-left:3px solid #f59e0b;padding:.75rem 1rem;background:#18181b;
+       border-radius:.4rem;color:#d4d4d8;font-size:.9rem}
+</style></head><body><main>
+<h1>Daho kengaytmasi</h1>
+<p class="sub">Ochiq sahifani tahlil qiladi — YouTube, Telegram, Instagram va oddiy maqolalar.</p>
+
+<a class="btn" href="/daho-extension.zip" download>Arxivni yuklab olish</a>
+
+<ol>
+ <li>Arxivni yuklab oling va <b>papkaga chiqaring</b> (unzip).</li>
+ <li>Chrome yoki Edge’da <code>chrome://extensions</code> ni oching.</li>
+ <li>Oʻng yuqorida <b>Developer mode</b> ni yoqing.</li>
+ <li><b>Load unpacked</b> → chiqargan papkani tanlang.</li>
+ <li>Kengaytma belgisini bosing, panel ochiladi. Gemini kalitini bir marta
+     kiriting — <code>aistudio.google.com/apikey</code> dan bepul olinadi.</li>
+</ol>
+
+<p class="note"><b>Diqqat:</b> telefondagi Chrome kengaytmalarni
+qoʻllab-quvvatlamaydi. Buni kompyuterda qiling. Android’da xohlasangiz
+Kiwi Browser ishlaydi.</p>
+</main></body></html>`);
+});
+
+/* ------------------------------------------------------------------ */
 /*  Veb ilova                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -197,7 +246,7 @@ const WEB_DIR = path.join(process.cwd(), 'public');
 const hasWeb = existsSync(path.join(WEB_DIR, 'index.html'));
 
 /** API yoʻllari — bularga SPA javobi berilmasin, 404 chiqsin. */
-const API_PATHS = /^\/(api|health|tick|jobs|proxy|run|oauth)(\/|$)/;
+const API_PATHS = /^\/(api|health|tick|jobs|proxy|run|oauth|extension)(\/|$)/;
 
 if (hasWeb) {
   app.use(express.static(WEB_DIR, { maxAge: '1h' }));
