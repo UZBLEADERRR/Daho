@@ -5,10 +5,9 @@
  * soʻrov bevosita Google ga ketadi.
  */
 
-const $ = (id) => document.getElementById(id);
-const MODEL = 'gemini-flash-latest';
+import { runAgent, savedNotes } from './agent.js';
 
-let pageData = null;
+const $ = (id) => document.getElementById(id);
 
 /* ---------- kalit ---------- */
 
@@ -35,22 +34,14 @@ $('settings').addEventListener('click', async () => {
 
 /* ---------- sahifa ---------- */
 
-async function loadPage() {
+async function showSource() {
   const res = await chrome.runtime.sendMessage({ type: 'daho:page' });
-  if (!res?.ok) {
-    $('source').textContent = 'ochilmadi';
-    $('out').innerHTML = `<p class="err">${res?.error ?? 'Sahifa oʻqilmadi'}</p>`;
-    return null;
-  }
-  pageData = res.data;
-  $('source').textContent = pageData.manba;
-  return pageData;
+  $('source').textContent = res?.ok ? res.data.manba : 'ochilmadi';
 }
 
-/* ---------- model ---------- */
+/* ---------- chiqish ---------- */
 
 function render(text) {
-  // Oddiy markdown: sarlavha, roʻyxat, qalin matn.
   const html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -63,47 +54,46 @@ function render(text) {
   $('out').innerHTML = `<p>${html}</p>`;
 }
 
-async function analyze(question) {
+async function showNotes() {
+  const notes = await savedNotes();
+  $('notes-wrap').hidden = notes.length === 0;
+  $('notes').innerHTML = notes
+    .map(
+      (n, i) =>
+        `<div class="note" data-i="${i}"><b>${n.title.replace(/</g, '&lt;')}</b>` +
+        `<i>${new Date(n.at).toLocaleString()} · ${n.content.length} belgi</i></div>`,
+    )
+    .join('');
+
+  $('notes').querySelectorAll('.note').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const list = await savedNotes();
+      render(list[Number(el.dataset.i)].content);
+    });
+  });
+}
+
+/* ---------- agent ---------- */
+
+async function work(task) {
   const key = await getKey();
   if (!key) return showSetup(true);
 
-  if (!pageData) {
-    const loaded = await loadPage();
-    if (!loaded) return undefined;
-  }
-
   $('run').disabled = true;
-  $('out').textContent = 'Oʻqilmoqda…';
+  $('out').textContent = '';
+  $('steps').textContent = 'boshlandi…';
 
-  const prompt =
-    'Quyida foydalanuvchi ochib turgan sahifadan olingan maʼlumot bor. '
-    + 'Savolga oʻzbek tilida, qisqa va aniq javob ber. Markdown ishlat.\n\n'
-    + `Savol: ${question}\n\n`
-    + `Sahifa maʼlumoti:\n${JSON.stringify(pageData, null, 1).slice(0, 60000)}`;
+  const labels = { read_page: 'sahifa oʻqilmoqda', open_tab: 'havola ochilmoqda', save_note: 'saqlanmoqda' };
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.6 },
-        }),
-      },
-    );
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message ?? `Xato ${res.status}`);
-
-    const text = (data?.candidates?.[0]?.content?.parts ?? [])
-      .filter((p) => !p.thought)
-      .map((p) => p.text ?? '')
-      .join('')
-      .trim();
-
+    const text = await runAgent(task, key, (step) => {
+      $('steps').textContent = labels[step] ?? step;
+    });
+    $('steps').textContent = '';
     render(text || '(javob boʻsh)');
+    await showNotes();
   } catch (err) {
+    $('steps').textContent = '';
     $('out').innerHTML = `<p class="err">${String(err?.message ?? err)}</p>`;
   } finally {
     $('run').disabled = false;
@@ -113,12 +103,12 @@ async function analyze(question) {
 /* ---------- hodisalar ---------- */
 
 document.querySelectorAll('.quick button').forEach((btn) => {
-  btn.addEventListener('click', () => void analyze(btn.dataset.ask));
+  btn.addEventListener('click', () => void work(btn.dataset.ask));
 });
 
 $('run').addEventListener('click', () => {
   const q = $('ask').value.trim();
-  if (q) void analyze(q);
+  if (q) void work(q);
 });
 
 $('ask').addEventListener('keydown', (e) => {
@@ -127,5 +117,6 @@ $('ask').addEventListener('keydown', (e) => {
 
 (async () => {
   await showSetup(!(await getKey()));
-  await loadPage();
+  await showSource();
+  await showNotes();
 })();

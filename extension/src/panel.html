@@ -22,15 +22,21 @@
   <section id="main">
     <div class="quick">
       <button data-ask="Shu sahifadagi asosiy fikrlarni 5 ta band qilib ayt.">Qisqacha</button>
-      <button data-ask="Izohlar kayfiyatini tahlil qil: nechta ijobiy, nechta salbiy, nima deyishyapti.">Izohlar</button>
-      <button data-ask="Bu materialdan konspekt tuz — sarlavhalar va asosiy tezislar bilan.">Konspekt</button>
-      <button data-ask="Bu sahifa nima haqida va menga foydali joyi bormi? Rostini ayt.">Foydalimi</button>
+      <button data-ask="Izohlarni tahlil qil: mavzular boʻyicha guruhla, nechtadan ekanini ayt, koʻp takrorlanadigan savollarni alohida koʻrsat.">Izohlar</button>
+      <button data-ask="Bu videodan toʻliq qoʻllanma yoz — bosqichma-bosqich, sarlavhalar bilan. Tayyor boʻlgach save_note bilan saqla.">Qoʻllanma</button>
+      <button data-ask="Izohlardagi savollarga javob matnlarini tayyorla. Har biriga alohida, ismini ishlatib. Tayyor boʻlgach save_note bilan saqla.">Javoblar</button>
     </div>
 
-    <textarea id="ask" rows="3" placeholder="Yoki oʻzingiz soʻrang…"></textarea>
-    <button id="run" class="primary">Tahlil qilish</button>
+    <textarea id="ask" rows="3" placeholder="Yoki topshiriq bering — agent oxirigacha bajaradi…"></textarea>
+    <button id="run" class="primary">Bajarish</button>
 
+    <div id="steps" class="steps"></div>
     <div id="out" class="out"></div>
+
+    <div id="notes-wrap" hidden>
+      <div class="section">Saqlanganlar</div>
+      <div id="notes"></div>
+    </div>
   </section>
 
   <script type="module" src="panel.js"></script>

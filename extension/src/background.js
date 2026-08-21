@@ -20,6 +20,44 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   await chrome.sidePanel.open({ tabId: tab.id });
 });
 
+/**
+ * Havolani yangi varaqda ochib, undan maʼlumot oladi.
+ * Varaq ish tugagach yopiladi — foydalanuvchi ekrani toʻlib ketmasin.
+ */
+async function readUrl(url) {
+  const tab = await chrome.tabs.create({ url, active: false });
+  try {
+    // Sahifa yuklanishini kutamiz.
+    await new Promise((resolve) => {
+      const done = (id, info) => {
+        if (id === tab.id && info.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(done);
+          resolve();
+        }
+      };
+      chrome.tabs.onUpdated.addListener(done);
+      setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(done);
+        resolve();
+      }, 15000);
+    });
+    await new Promise((r) => setTimeout(r, 1200));
+
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['src/collect.js'] });
+    return await chrome.tabs.sendMessage(tab.id, { type: 'daho:collect' });
+  } finally {
+    await chrome.tabs.remove(tab.id).catch(() => undefined);
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg?.type !== 'daho:open') return undefined;
+  readUrl(msg.url)
+    .then(reply)
+    .catch((err) => reply({ ok: false, error: String(err?.message ?? err) }));
+  return true;
+});
+
 /** Panel soʻraganda sahifadan maʼlumot yigʻamiz. */
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type !== 'daho:page') return undefined;

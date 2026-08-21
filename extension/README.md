@@ -14,6 +14,21 @@ Instagram posti yoki oddiy maqola.
 Kalit brauzeringizning oʻz omborida qoladi va hech qayerga yuborilmaydi;
 soʻrov bevosita Google ga ketadi.
 
+## Agent rejimi
+
+Panel endi shunchaki savol-javob emas — **agent**. Topshiriq berasiz, u
+oʻzi qadamlab bajaradi:
+
+- `read_page` — ochiq sahifani oʻqiydi
+- `open_tab` — kerakli havolani ochib, undan maʼlumot oladi
+- `save_note` — tayyor natijani saqlaydi (qoʻllanma, javob matnlari)
+
+Tayyor tugmalar: **Qisqacha**, **Izohlar** (mavzu boʻyicha guruhlash),
+**Qoʻllanma** (videodan bosqichma-bosqich qoʻllanma yozadi),
+**Javoblar** (har bir izohga alohida javob matni tayyorlaydi).
+
+Saqlangan natijalar panelning pastida turadi — bosib koʻrasiz.
+
 ## Nima qiladi
 
 | Sayt | Nimani oʻqiydi |
@@ -26,18 +41,27 @@ soʻrov bevosita Google ga ketadi.
 Tayyor tugmalar: **Qisqacha**, **Izohlar** (kayfiyat tahlili),
 **Konspekt**, **Foydalimi**. Yoki oʻz savolingizni yozasiz.
 
-## Nimani ataylab qilmadim
+## Ish taqsimoti: kengaytma va ilova
 
-Kengaytma **faqat oʻqiydi**. U sizning nomingizdan xabar yubormaydi,
-tugma bosmaydi, obuna boʻlmaydi.
+Kengaytma sahifani **oʻqiydi va matn tayyorlaydi**. Haqiqiy yuborish
+ishlarini ilovaning oʻzi bajaradi:
 
-Sabab oddiy: Telegram va Instagram avtomatlashtirilgan harakatni
-aniqlaydi va hisobni bloklaydi. Ularning shartlarida ham bu taqiqlangan.
-Shuning uchun tahlil qilaman, javob matnini tayyorlab beraman — yuborishni
-oʻzingiz bosasiz.
+| Ish | Qayerda |
+|---|---|
+| Sahifani tahlil qilish, qoʻllanma yozish | Kengaytma |
+| Izohlarga javob matnini tayyorlash | Kengaytma |
+| Instagram izohiga JAVOB YUBORISH | Ilova (Graph API) |
+| Instagram Direct’ga javob | Ilova (Graph API) |
+| YouTube izohiga javob | Ilova (YouTube API) |
+| Telegram guruhini kuzatish | Ilova (Bot API) |
 
-Agar hisobingiz uchun rasman ruxsat berilgan yoʻl kerak boʻlsa — Telegram
-Bot API bor, uni ilovaning **Ulanishlar** boʻlimidan ulash mumkin.
+Sabab texnik: minglab xabarga javob berish kerak boʻlsa sahifani bosib
+turish ishlamaydi — soatiga 20-30 tada tiqiladi va selektorlar har
+yangilanishda buziladi. Rasmiy API larda bunday chegara yoʻq va ular
+aynan shu ish uchun qilingan.
+
+Ilovada Sozlamalar → **Instagram** va **Google hisobi** boʻlimlaridan
+ulanadi.
 
 ## Cheklovlar
 
