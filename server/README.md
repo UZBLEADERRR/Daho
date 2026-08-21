@@ -112,3 +112,29 @@ curl -X POST localhost:8099/run \
   -H 'x-worker-secret: sinov' \
   -d '{"command":"node -v"}'
 ```
+
+## Google ulanishi (telefon uchun)
+
+Telefondagi ilova `https://localhost` ichida ishlaydi va Google bunday
+manzilga qaytara olmaydi. Shuning uchun server `/oauth/callback` ni ochib
+beradi: Google kodni shu yerga qaytaradi, server esa uni
+`uz.daho.app://oauth?code=…` deep link bilan ilovaga uzatadi.
+
+Google Cloud Console → **Credentials** → OAuth client (**Web
+application**) → **Authorized redirect URIs**:
+
+| Qayerda ishlatasiz | Qaytish manzili |
+|---|---|
+| Telefon (APK) | `https://<sizniki>.up.railway.app/oauth/callback` |
+| Veb versiya | sahifaning oʻz manzili (masalan GitHub Pages havolasi) |
+
+Ikkalasini birdan qoʻshib qoʻysa ham boʻladi. Ilovada aynan qaysi manzil
+kerakligi **Sozlamalar → Google hisobi** boʻlimida tayyor holda turadi —
+uni koʻchirib qoʻying.
+
+Kod serverda saqlanmaydi: PKCE tufayli u `code_verifier` siz foydasiz,
+verifier esa faqat telefonning oʻzida turadi.
+
+Deep link sxemasini oʻzgartirmoqchi boʻlsangiz `APP_DEEP_LINK`
+oʻzgaruvchisini qoʻying (standart `uz.daho.app://oauth`) — u
+`AndroidManifest.xml` dagi `android:scheme` bilan bir xil boʻlishi kerak.

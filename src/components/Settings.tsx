@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { useEffect, useRef, useState } from 'react';
 import { blobToWavBytes, bytesToB64, playWavBase64 } from '../lib/audio';
 import { applyAppLook } from '../lib/applook';
@@ -1371,6 +1372,10 @@ function GooglePanel() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
 
+  // Telefonda qaytish manzili server orqali oʻtadi — u boʻlmasa ulanib
+  // boʻlmaydi, shuning uchun buni oldindan aytamiz.
+  const needsServer = Capacitor.isNativePlatform() && !(settings.serverUrl ?? '').trim();
+
   const connect = async () => {
     setBusy(true);
     setNote('');
@@ -1435,15 +1440,26 @@ function GooglePanel() {
           <div className="field">
             <label>Ruxsat etilgan qaytish manzili</label>
             <input value={redirectUri()} readOnly onFocus={(e) => e.target.select()} />
-            <div className="tiny" style={{ marginTop: 6 }}>
+            <div className="tiny" style={{ marginTop: 6, lineHeight: 1.55 }}>
               Shu manzilni Google Console’da «Authorized redirect URIs» ga
               aynan koʻchiring — aks holda ulanish rad etiladi.
+              {needsServer && (
+                <>
+                  {' '}
+                  <b style={{ color: 'var(--danger)' }}>
+                    Telefonda avval «Daho serveri» boʻlimiga Railway manzilini
+                    kiriting:
+                  </b>{' '}
+                  Google «localhost» ga qaytara olmaydi, shuning uchun kod
+                  server orqali ilovaga qaytariladi.
+                </>
+              )}
             </div>
           </div>
 
           <button
             className="btn wide"
-            disabled={busy || !settings.googleClientId}
+            disabled={busy || !settings.googleClientId || needsServer}
             onClick={() => void connect()}
           >
             {busy ? 'Google ochilmoqda…' : 'Google hisobini ulash'}

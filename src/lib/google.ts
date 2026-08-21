@@ -10,6 +10,9 @@
  * Access token bir soatda tugaydi; refresh token bilan oʻzi yangilanadi.
  */
 
+import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
+import { Capacitor } from '@capacitor/core';
 import { getState, updateSettings } from './store';
 import { serverReady } from './cloud/server';
 
@@ -64,13 +67,38 @@ async function challengeOf(verifier: string): Promise<string> {
   return base64Url(digest);
 }
 
-/** Ilovaning oʻz manzili — Google shu yerga qaytaradi. */
+const VERIFIER_KEY = 'daho.google.verifier';
+
+/** Ilova telefondagi APK ichida ishlayaptimi. */
+function isNative(): boolean {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
+/** Sozlamalardagi server manzili — oxiridagi slashlarsiz. */
+function serverBase(): string {
+  return (getState().settings.serverUrl ?? '').trim().replace(/\/+$/, '');
+}
+
+/**
+ * Google shu manzilga qaytaradi.
+ *
+ * Vebda bu sahifaning oʻz manzili. Telefonda esa ilova `https://localhost`
+ * ichida ishlaydi va Google bunday manzilni qabul qilmaydi. Shuning uchun
+ * Daho serveridagi `/oauth/callback` ishlatiladi: u kodni olib,
+ * `uz.daho.app://oauth?code=…` deep link bilan ilovaga qaytaradi.
+ */
 export function redirectUri(): string {
+  if (isNative()) {
+    const base = serverBase();
+    if (base) return `${base}/oauth/callback`;
+  }
   const { origin, pathname } = window.location;
   return `${origin}${pathname}`.replace(/\/index\.html$/, '/');
 }
-
-const VERIFIER_KEY = 'daho.google.verifier';
 
 /**
  * Ulanishni boshlaydi — Google sahifasiga oʻtkazadi.
@@ -80,8 +108,17 @@ export async function startGoogleAuth(): Promise<void> {
   const clientId = (getState().settings.googleClientId ?? '').trim();
   if (!clientId) throw new Error('Google mijoz ID si kiritilmagan.');
 
+  if (isNative() && !serverBase()) {
+    throw new Error(
+      'Telefonda Google ulanishi uchun avval Sozlamalar → Daho serveri '
+        + 'boʻlimida server manzilini kiriting: Google «localhost» ga qaytara olmaydi.',
+    );
+  }
+
   const verifier = randomString();
-  sessionStorage.setItem(VERIFIER_KEY, verifier);
+  // localStorage — telefonda Google tizim brauzerida ochiladi va ilova
+  // fonga tushadi; sessionStorage bunda yoʻqolib ketishi mumkin.
+  localStorage.setItem(VERIFIER_KEY, verifier);
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -95,7 +132,51 @@ export async function startGoogleAuth(): Promise<void> {
     prompt: 'consent',
   });
 
-  window.location.assign(`${AUTH_URL}?${params.toString()}`);
+  const url = `${AUTH_URL}?${params.toString()}`;
+
+  if (isNative()) {
+    // Google oʻrnatilgan WebView da OAuth ga ruxsat bermaydi
+    // («disallowed_useragent»), shuning uchun tizim brauzeri ochiladi.
+    await Browser.open({ url });
+    return;
+  }
+  window.location.assign(url);
+}
+
+/**
+ * Telefonda qaytishni kutadi.
+ *
+ * Server `uz.daho.app://oauth?code=…` deep link yuboradi; shu kelganda
+ * brauzer yopiladi va kod tokenga almashtiriladi.
+ */
+export function listenGoogleRedirect(
+  onDone?: (ok: boolean, error?: string) => void,
+): void {
+  if (!isNative()) return;
+
+  void CapApp.addListener('appUrlOpen', (event: { url: string }) => {
+    let code: string | null = null;
+    let error: string | null = null;
+    try {
+      const link = new URL(event.url);
+      code = link.searchParams.get('code');
+      error = link.searchParams.get('error');
+    } catch {
+      return; // Bizga tegishli boʻlmagan havola
+    }
+    if (!code && !error) return;
+
+    void Browser.close().catch(() => undefined);
+    if (error) {
+      onDone?.(false, error);
+      return;
+    }
+
+    void finishGoogleAuth(code ?? undefined).then(
+      (ok) => onDone?.(ok),
+      (err) => onDone?.(false, String((err as Error)?.message ?? err)),
+    );
+  });
 }
 
 /** Token almashinuvi — server bor boʻlsa oʻsha orqali. */
@@ -138,20 +219,26 @@ async function tokenRequest(body: URLSearchParams): Promise<Record<string, unkno
  * Google qaytargan `code` ni tokenga almashtiradi.
  * Manzilda `code` boʻlmasa hech narsa qilmaydi.
  */
-export async function finishGoogleAuth(): Promise<boolean> {
-  const url = new URL(window.location.href);
-  const code = url.searchParams.get('code');
+export async function finishGoogleAuth(codeFromLink?: string): Promise<boolean> {
+  let code = codeFromLink ?? null;
+
+  if (!code) {
+    const url = new URL(window.location.href);
+    code = url.searchParams.get('code');
+    if (code) {
+      // Manzilni tozalaymiz — kod bir marta ishlatiladi, tarixda qolmasin.
+      url.searchParams.delete('code');
+      url.searchParams.delete('scope');
+      url.searchParams.delete('authuser');
+      url.searchParams.delete('prompt');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }
   if (!code) return false;
 
-  const verifier = sessionStorage.getItem(VERIFIER_KEY);
-  // Manzilni tozalaymiz — kod bir marta ishlatiladi, tarixda qolmasin.
-  url.searchParams.delete('code');
-  url.searchParams.delete('scope');
-  url.searchParams.delete('authuser');
-  url.searchParams.delete('prompt');
-  window.history.replaceState({}, '', url.toString());
-
+  const verifier = localStorage.getItem(VERIFIER_KEY) ?? sessionStorage.getItem(VERIFIER_KEY);
   if (!verifier) return false;
+  localStorage.removeItem(VERIFIER_KEY);
   sessionStorage.removeItem(VERIFIER_KEY);
 
   const clientId = (getState().settings.googleClientId ?? '').trim();

@@ -95,6 +95,60 @@ app.get('/jobs/:id', async (req, res) => {
   res.json({ job: data });
 });
 
+/* ------------------------------------------------------------------ */
+/*  Google OAuth qaytish manzili — telefon uchun                       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Telefondagi ilova `https://localhost` ichida ishlaydi va Google bunday
+ * manzilga qaytara olmaydi. Shuning uchun Google shu yerga qaytadi, biz
+ * esa kodni deep link bilan ilovaga uzatamiz.
+ *
+ * Kod bu yerda SAQLANMAYDI va hech qayerga yozilmaydi — PKCE tufayli u
+ * verifier’siz foydasiz, verifier esa faqat telefonda turadi.
+ */
+const APP_LINK = process.env.APP_DEEP_LINK || 'uz.daho.app://oauth';
+
+function escapeHtml(text) {
+  return String(text).replace(
+    /[&<>"']/g,
+    (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch],
+  );
+}
+
+app.get('/oauth/callback', (req, res) => {
+  const code = String(req.query.code || '');
+  const error = String(req.query.error || '');
+  if (!code && !error) return res.status(400).send('Kod yoʻq.');
+
+  const link = `${APP_LINK}?${new URLSearchParams(code ? { code } : { error })}`;
+  const safeLink = escapeHtml(link);
+
+  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
+<html lang="uz"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daho — Google ulanishi</title>
+<style>
+ body{margin:0;min-height:100vh;display:grid;place-items:center;
+      background:#09090b;color:#fafafa;
+      font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+ .card{max-width:22rem;padding:2rem 1.5rem;text-align:center}
+ h1{font-size:1.25rem;margin:0 0 .5rem}
+ p{color:#a1a1aa;margin:0 0 1.5rem}
+ a.btn{display:block;padding:.85rem 1rem;border-radius:.75rem;
+       background:#6366f1;color:#fff;text-decoration:none;font-weight:600}
+ code{display:block;margin-top:1.5rem;padding:.75rem;border-radius:.5rem;
+      background:#18181b;color:#71717a;font-size:.75rem;word-break:break-all}
+</style></head><body><div class="card">
+ <h1>${error ? 'Ulanish bekor qilindi' : 'Daho’ga qaytmoqda…'}</h1>
+ <p>${error ? escapeHtml(error) : 'Bir soniya kutib turing.'}</p>
+ <a class="btn" href="${safeLink}">Daho’ni ochish</a>
+ ${error ? '' : '<code>Ilova ochilmasa yuqoridagi tugmani bosing.</code>'}
+</div>
+<script>setTimeout(function(){location.replace(${JSON.stringify(link)})},400)</script>
+</body></html>`);
+});
+
 /**
  * Tashqi API ga proxy — brauzer CORS tufayli bevosita chaqira olmaydigan
  * xizmatlar uchun (Supabase Management, Google API va h.k.).

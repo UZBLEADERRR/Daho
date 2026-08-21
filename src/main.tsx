@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
-import { finishGoogleAuth } from './lib/google';
+import { finishGoogleAuth, listenGoogleRedirect } from './lib/google';
 import { hydrate } from './lib/store';
 import { registerPwa } from './lib/pwa';
 import './styles.css';
@@ -20,6 +20,12 @@ const ready = Promise.race([
   hydrate(),
   new Promise<void>((resolve) => setTimeout(resolve, 5000)),
 ]);
+
+// Telefonda Google tizim brauzerida ochiladi va server deep link bilan
+// qaytaradi — shu havolani kutib turamiz.
+listenGoogleRedirect((ok, error) => {
+  if (!ok && error) console.warn('Google ulanishi tugallanmadi:', error);
+});
 
 void ready
   .then(() =>
