@@ -14,6 +14,8 @@ export const JOB_LABEL: Record<JobKind, string> = {
   json: 'Tuzilgan maʼlumot',
   image: 'Rasm chizish',
   plan: 'Reja tuzish',
+  kitob: 'Kitob yozish',
+  telegram: 'Telegram xabari',
 };
 
 /** Reja fon vazifalariga ruxsat beradimi? */
@@ -27,6 +29,8 @@ export async function enqueueJob(
   title: string,
   payload: Record<string, unknown>,
   model?: string,
+  /** Qachon bajarilsin — berilmasa darhol navbatga tushadi. */
+  scheduledAt?: Date,
 ): Promise<CloudJob> {
   const sb = supa();
   if (!sb) throw new Error('Bulut sozlanmagan');
@@ -35,6 +39,7 @@ export async function enqueueJob(
     p_title: title,
     p_payload: payload,
     p_model: model ?? null,
+    p_scheduled_at: (scheduledAt ?? new Date()).toISOString(),
   });
   if (error) throw new Error(error.message);
   scheduleAccountRefresh(1500);

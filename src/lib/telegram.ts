@@ -17,6 +17,8 @@
 import { idbGet, idbSet } from './storage';
 import { getState } from './store';
 import { serverReady } from './cloud/server';
+import { supa } from './cloud/client';
+import { enqueueJob } from './cloud/jobs';
 
 const API = 'https://api.telegram.org';
 
@@ -474,4 +476,58 @@ export async function tgSetCommands(
   signal?: AbortSignal,
 ): Promise<void> {
   await call('setMyCommands', { commands }, signal);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Rejalashtirish                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Tokenni bulutga saqlaydi.
+ *
+ * Rejalashtirilgan xabarni server yuboradi, demak token unga kerak.
+ * Alohida jadvalda turadi (RLS — faqat oʻzingiz koʻrasiz), vazifa
+ * ichida emas: vazifa natijasi koʻrsatiladi va tarixda qoladi.
+ */
+export async function tgSaveToken(): Promise<void> {
+  const sb = supa();
+  if (!sb) throw new Error('Bulut sozlanmagan — rejalashtirish ishlamaydi.');
+
+  const { data: auth } = await sb.auth.getUser();
+  if (!auth.user) throw new Error('Avval hisobingizga kiring.');
+
+  const { error } = await sb.from('bot_tokens').upsert({
+    user_id: auth.user.id,
+    provider: 'telegram',
+    token: tgToken(),
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Xabarni keyinga qoʻyadi — telefon oʻchiq boʻlsa ham yuboriladi.
+ * Vaqti kelganda Daho serveri bajaradi.
+ */
+export async function tgSchedule(
+  chatIds: Array<number | string>,
+  message: string,
+  at: Date,
+  format?: 'Markdown' | 'HTML',
+): Promise<string> {
+  if (!chatIds.length) throw new Error('Kimga yuborish koʻrsatilmagan.');
+  if (!message.trim()) throw new Error('Xabar matni boʻsh.');
+
+  // Token har safar yangilanadi — foydalanuvchi botni almashtirgan
+  // boʻlishi mumkin, eski token bilan yuborilib qolmasin.
+  await tgSaveToken();
+
+  const job = await enqueueJob(
+    'telegram',
+    `Telegram: ${message.slice(0, 60)}`,
+    { chat_ids: chatIds.map((c) => String(c)), message: message.slice(0, 4096), format },
+    undefined,
+    at,
+  );
+  return job.id;
 }

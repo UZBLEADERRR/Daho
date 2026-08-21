@@ -1,4 +1,5 @@
 import { DEFAULT_MODEL, callGemini, sourcesOf, textOf, usageOf } from './gemini.js';
+import { adminClient } from './supabase.js';
 
 /**
  * Bitta vazifani bajaradi.
@@ -10,6 +11,7 @@ export async function runJob(job, onNote) {
   const model = job.model || DEFAULT_MODEL[job.kind] || DEFAULT_MODEL.chat;
   const payload = job.payload ?? {};
 
+  if (job.kind === 'telegram') return runTelegram(job, onNote);
   if (job.kind === 'kitob') return runBook(job, model, onNote);
 
   const prompt = String(payload.prompt ?? payload.question ?? payload.goal ?? job.title ?? '');
@@ -175,5 +177,87 @@ async function runBook(job, model, onNote) {
     input,
     output,
     model,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Telegram                                                           */
+/* ------------------------------------------------------------------ */
+
+/** Telegram sekundiga ~30 xabar; xavfsiz oraliq. */
+const TG_GAP_MS = 60;
+
+/**
+ * Rejalashtirilgan Telegram xabarini yuboradi.
+ *
+ * Telefon oʻchiq boʻlsa ham ishlaydi — vazifa navbatda turadi va vaqti
+ * kelganda shu yerda bajariladi. Model ishlatilmaydi, shuning uchun
+ * kredit ham yechilmaydi (`bepul` bayrogʻi).
+ *
+ * Token vazifa ichida emas, `bot_tokens` jadvalida — vazifa natijasi
+ * foydalanuvchiga koʻrsatiladi va tarixda qoladi.
+ */
+async function runTelegram(job, onNote) {
+  const payload = job.payload ?? {};
+  const message = String(payload.message ?? '').slice(0, 4096);
+  if (!message) throw new Error('Xabar matni boʻsh.');
+
+  const targets = Array.isArray(payload.chat_ids) ? payload.chat_ids : [];
+  if (!targets.length) throw new Error('Kimga yuborish koʻrsatilmagan.');
+
+  const { data: row, error } = await adminClient()
+    .from('bot_tokens')
+    .select('token')
+    .eq('user_id', job.user_id)
+    .eq('provider', 'telegram')
+    .maybeSingle();
+
+  if (error) throw new Error(`Token oʻqilmadi: ${error.message}`);
+  if (!row?.token) {
+    throw new Error(
+      'Telegram tokeni saqlanmagan. Ilovada Sozlamalar → Telegram '
+      + 'boʻlimidan tokenni bir marta saqlang.',
+    );
+  }
+
+  const sent = [];
+  const failed = [];
+
+  for (let i = 0; i < targets.length; i += 1) {
+    const chatId = targets[i];
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${row.token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: message,
+          parse_mode: payload.format || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data.ok) throw new Error(data.description ?? `xato ${res.status}`);
+      sent.push(chatId);
+    } catch (err) {
+      failed.push({ chat_id: chatId, error: String(err?.message ?? err) });
+    }
+
+    onNote?.(`${i + 1}/${targets.length} yuborildi`);
+    if (i < targets.length - 1) {
+      await new Promise((r) => setTimeout(r, TG_GAP_MS));
+    }
+  }
+
+  if (!sent.length) {
+    throw new Error(`Hech kimga yetmadi: ${failed[0]?.error ?? 'nomaʼlum sabab'}`);
+  }
+
+  return {
+    result: { kind: 'telegram', yuborildi: sent.length, yetmadi: failed },
+    input: 0,
+    output: 0,
+    model: '',
+    // Model ishlatilmadi — hisobdan yechmaymiz.
+    bepul: true,
   };
 }

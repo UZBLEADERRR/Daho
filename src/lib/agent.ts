@@ -132,6 +132,9 @@ Odatiy ishlar:
   TASDIQ ol → \`broadcast\`
 - «Guruhga yoz» → \`chats\` → \`chat_info\` bilan bot admin ekanini
   tekshir → \`send\`
+- «Ertaga 9 da yubor», «har kuni eslat» → \`schedule\` (\`at\` — ISO
+  vaqt). Bu serverda turadi va telefon oʻchiq boʻlsa ham yuboriladi.
+  Vaqtni foydalanuvchi mintaqasiga qarab hisobla va tasdiqlat.
 
 \`broadcast\` — haqiqiy odamlarga haqiqiy xabar, orqaga qaytmaydi.
 Tasdiqsiz yuborma. Bir xil matnni hammaga tashlama: savoliga qarab

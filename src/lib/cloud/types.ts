@@ -50,7 +50,7 @@ export interface Account {
 export interface CloudJob {
   id: string;
   user_id: string;
-  kind: 'chat' | 'search' | 'json' | 'image' | 'plan';
+  kind: 'chat' | 'search' | 'json' | 'image' | 'plan' | 'kitob' | 'telegram';
   title: string;
   payload: Record<string, unknown>;
   model: string | null;

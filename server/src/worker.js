@@ -33,13 +33,18 @@ export async function tick(limit = env.batchSize) {
 
     for (const job of picked) {
       const model = job.model || DEFAULT_MODEL[job.kind] || DEFAULT_MODEL.chat;
+      // Baʼzi vazifalar modelsiz bajariladi (masalan Telegram xabari) —
+      // ularga model ruxsati ham, kredit ham kerak emas.
+      const usesModel = job.kind !== 'telegram';
       try {
-        // Rejasi shu modelga ruxsat beradimi va krediti yetadimi
-        const { data: check } = await admin.rpc('can_use_model', {
-          p_user: job.user_id,
-          p_model: model,
-        });
-        if (!check?.allowed) throw new Error(check?.reason ?? 'ruxsat yoʻq');
+        if (usesModel) {
+          // Rejasi shu modelga ruxsat beradimi va krediti yetadimi
+          const { data: check } = await admin.rpc('can_use_model', {
+            p_user: job.user_id,
+            p_model: model,
+          });
+          if (!check?.allowed) throw new Error(check?.reason ?? 'ruxsat yoʻq');
+        }
 
         // Uzoq ishda foydalanuvchi jarayonni koʻrib tursin.
         // supabase-js soʻrovi faqat `await`/`then` da yuboriladi — `void`
@@ -57,16 +62,19 @@ export async function tick(limit = env.batchSize) {
 
         const outcome = await runJob(job, note);
 
-        const { data: charged } = await admin.rpc('charge_usage', {
-          p_user: job.user_id,
-          p_model: outcome.model,
-          p_kind: 'job',
-          p_input: outcome.input,
-          p_output: outcome.output,
-          p_source: 'job',
-          p_job: job.id,
-          p_meta: { kind: job.kind, server: 'railway' },
-        });
+        let charged = null;
+        if (!outcome.bepul) {
+          ({ data: charged } = await admin.rpc('charge_usage', {
+            p_user: job.user_id,
+            p_model: outcome.model,
+            p_kind: 'job',
+            p_input: outcome.input,
+            p_output: outcome.output,
+            p_source: 'job',
+            p_job: job.id,
+            p_meta: { kind: job.kind, server: 'railway' },
+          }));
+        }
 
         await admin
           .from('jobs')

@@ -35,6 +35,7 @@ import {
   tgPin,
   tgReady,
   tgSend,
+  tgSchedule,
   tgSetCommands,
   tgSync,
 } from './telegram';
@@ -646,6 +647,10 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       + '- `broadcast` — koʻpga birdan (`chat_ids` yoki `hours`, `message`)\n'
       + '- `pin` — xabarni qadash (`chat_id`, `message_id`)\n'
       + '- `commands` — bot menyusidagi buyruqlarni belgilash (`commands`)\n'
+      + '- `schedule` — xabarni KEYINGA qoʻyish (`chat_ids` yoki `hours`, '
+      + '`message`, `at`). Telefon oʻchiq boʻlsa ham server yuboradi. '
+      + '`at` — ISO vaqt, masalan 2026-08-22T09:00:00Z. Buning uchun '
+      + 'hisobga kirgan va fon vazifalari ochiq reja kerak.\n'
       + 'Ish tartibi: avval `sync`, keyin `contacts`/`chats`. `sync` '
       + 'qilinmagan boʻlsa roʻyxat boʻsh chiqadi — Telegram xabarni faqat '
       + 'soʻralganda beradi.\n'
@@ -660,13 +665,16 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       properties: {
         action: {
           type: 'STRING',
-          description: 'bot | sync | contacts | chats | chat_info | send | broadcast | pin | commands',
+          description:
+            'bot | sync | contacts | chats | chat_info | send | broadcast | pin '
+            + '| commands | schedule',
         },
         chat_id: { type: 'STRING' },
         chat_ids: { type: 'ARRAY', items: { type: 'STRING' } },
         message: { type: 'STRING' },
         message_id: { type: 'NUMBER' },
         hours: { type: 'NUMBER', description: 'Necha soat ichida yozganlar (contacts/broadcast)' },
+        at: { type: 'STRING', description: 'schedule uchun: ISO vaqt (UTC)' },
         format: { type: 'STRING', description: 'Markdown yoki HTML' },
         commands: {
           type: 'ARRAY',
@@ -1102,6 +1110,47 @@ export async function executeTool(
               izoh: res.failed.length
                 ? 'Yetmaganlar odatda botni bloklagan yoki suhbatni oʻchirgan.'
                 : undefined,
+            },
+          };
+        }
+
+        if (action === 'schedule') {
+          const message = str(args.message);
+          const at = new Date(str(args.at));
+          if (!message) return { ok: false, summary: 'message kerak', payload: { error: 'matn' } };
+          if (Number.isNaN(at.getTime())) {
+            return {
+              ok: false,
+              summary: 'at notoʻgʻri',
+              payload: { error: 'vaqt', izoh: 'ISO koʻrinishida bering: 2026-08-22T09:00:00Z' },
+            };
+          }
+
+          let targets = Array.isArray(args.chat_ids)
+            ? (args.chat_ids as unknown[]).map((v) => String(v))
+            : [];
+          if (!targets.length) {
+            const list = await tgContacts(hours || 24);
+            targets = list.map((c) => String(c.id));
+          }
+          if (!targets.length) {
+            return { ok: false, summary: 'Kimga yuborish nomaʼlum', payload: { error: 'boʻsh' } };
+          }
+
+          const jobId = await tgSchedule(
+            targets,
+            message,
+            at,
+            (format || undefined) as 'Markdown' | 'HTML' | undefined,
+          );
+          return {
+            ok: true,
+            summary: `${targets.length} kishiga ${at.toLocaleString('uz')} da yuboriladi`,
+            payload: {
+              vazifa: jobId,
+              qachon: at.toISOString(),
+              kimga: targets.length,
+              izoh: 'Telefon oʻchiq boʻlsa ham server yuboradi.',
             },
           };
         }

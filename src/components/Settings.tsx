@@ -1600,6 +1600,11 @@ function TelegramPanel() {
         <br />
         Odam botga birinchi boʻlib yozishi kerak; shundan keyin unga
         istagancha yozish mumkin.
+        <br />
+        <br />
+        Xabarni keyinga qoʻymoqchi boʻlsangiz («ertaga soatt 9 da yubor»)
+        hisobingizga kirgan boʻling — server oʻsha paytda yuboradi,
+        telefon oʻchiq boʻlsa ham.
       </div>
     </>
   );
