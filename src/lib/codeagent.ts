@@ -45,6 +45,8 @@ import {
 } from './codeproject';
 import { describeDiff, restore, snapshot } from './checkpoint';
 import { runJs } from './jsrun';
+import { applyPatch } from './patch';
+import { compactContents, contextSize, createLoopGuard } from './compact';
 import { runOnServer, serverReady } from './cloud/server';
 import { globFiles, grepFiles, sliceLines, type GrepHit } from './search';
 import { describeProbe, probeApp } from './probe';
@@ -86,6 +88,26 @@ import { uid } from './utils';
 
 /** Bitta topshiriq uchun koʻpi bilan shuncha qadam (sozlamadan olinadi). */
 const DEFAULT_ROUNDS = 60;
+
+/**
+ * Hech narsani oʻzgartirmaydigan vositalar — bir turda bir nechtasi
+ * soʻralsa parallel bajarilishi mumkin.
+ */
+const READ_ONLY_TOOLS = new Set([
+  'read_file',
+  'list_files',
+  'grep',
+  'find_files',
+  'fetch_url',
+  'web_search',
+  'github_read',
+  'github_list_repos',
+  'github_search_code',
+  'github_history',
+  'list_models',
+  'changes',
+  'connect_list',
+]);
 const MAX_HISTORY = 30;
 /** Yordamchi agentga beriladigan qadamlar */
 const SUB_ROUNDS = 18;
@@ -230,6 +252,25 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
         limit: { type: 'NUMBER', description: 'Koʻpi bilan nechta belgi (standart 8000)' },
       },
       required: ['url'],
+    },
+  },
+  {
+    name: 'apply_patch',
+    description:
+      'Faylga unified diff qoʻllaydi — KATTA faylni arzon tahrirlash yoʻli. '
+      + '500 qatorli faylni `write_file` bilan qayta yozish 500 qator token '
+      + 'yeydi; diff bilan bu 10 qator.\n'
+      + 'Format: `@@` bilan boshlangan boʻlaklar, keyin ` ` kontekst, '
+      + '`-` oʻchirish, `+` qoʻshish. Har boʻlakka 2-3 qator kontekst qoʻsh — '
+      + 'joyni shunga qarab topamiz, qator raqamlari notoʻgʻri boʻlsa ham ishlaydi.\n'
+      + 'Misol:\n@@ -10,4 +10,4 @@\n function salom() {\n-  return 1;\n+  return 2;\n }',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        path: { type: 'STRING', description: 'Fayl yoʻli' },
+        diff: { type: 'STRING', description: 'Unified diff matni' },
+      },
+      required: ['path', 'diff'],
     },
   },
   {
@@ -1095,6 +1136,41 @@ async function runTool(
           },
         };
       }
+    }
+
+    case 'apply_patch': {
+      const path = str(args.path);
+      const diff = str(args.diff);
+      const file = project.files.find((f) => f.path === path);
+      if (!file) {
+        return {
+          ok: false,
+          summary: `Fayl yoʻq: ${path}`,
+          payload: { error: 'topilmadi', mavjud: project.files.map((f) => f.path).slice(0, 40) },
+        };
+      }
+      const res = applyPatch(file.content, diff);
+      if (!res.ok || !res.content) {
+        return {
+          ok: false,
+          summary: `Diff qoʻllanmadi: ${path}`,
+          payload: {
+            qoʻllandi: res.applied,
+            xatolar: res.failed,
+            izoh:
+              'Faylni qayta oʻqib, aynan hozirgi matnga mos diff yoz. '
+              + 'Kontekst qatorlari faylnikiga bir xil boʻlsin.',
+          },
+        };
+      }
+      writeProjectFile(projectId, path, res.content);
+      const wasLines = file.content.split('\n').length;
+      const nowLines = res.content.split('\n').length;
+      return {
+        ok: true,
+        summary: `${path} — ${res.applied} ta boʻlak qoʻllandi`,
+        payload: { qoʻllandi: res.applied, qator: `${wasLines} → ${nowLines}` },
+      };
     }
 
     case 'move_file': {
@@ -2558,6 +2634,35 @@ Bularni yozayotganda darhol toʻgʻri qil, keyin tekshiruvchiga ham berib chiq:
 - Yozgan har bir YAML’da action nomlari toʻliq boʻlsin
   (\`actions/setup-node@v4\`, \`actions/checkout@v4\`) — qisqartma ishlamaydi.
 
+## Tez va tejamkor ishla ⚡
+Har bir chaqiruv vaqt va token yeydi. Shuning uchun:
+
+- **Fayl qidirishda \`grep\` va \`find_files\`** ishlat — fayllarni bittalab
+  ochib chiqma. \`grep\` qaysi faylning qaysi qatorida ekanini darrov aytadi.
+- **Katta faylni \`offset\`/\`limit\` bilan** qism-qism oʻqi. Butun faylni
+  oʻqish faqat u kichik boʻlsa (200 qatorgacha) oʻrinli.
+- **Tahrirda \`apply_patch\` yoki \`edit_file\`** ishlat. \`write_file\` faqat
+  yangi fayl yoki butunlay qayta yozish uchun — katta faylni qayta yozish
+  oʻnlab barobar qimmat.
+- **Bir turda bir nechta oʻqish** soʻra (bir necha \`read_file\`, \`grep\`) —
+  ular parallel bajariladi va vaqt tejaydi.
+- **Bir xil narsani qayta oʻqima.** Oʻqiganingni yodda tut.
+- Bir vosita ayni argument bilan 2 marta xato bersa — **uchinchi marta
+  urinma**, boshqa yoʻl tanla.
+
+## Ishni tugatishdan oldin ✅
+«Tayyor» deyishdan oldin natijani OʻZING tekshir:
+
+1. \`changes\` bilan nima oʻzgarganini koʻr.
+2. Ilova boʻlsa — \`test_app\` yoki \`screenshot\` bilan haqiqatan
+   ishlayotganini koʻr.
+3. Server ulangan boʻlsa — \`run_cmd\` bilan qurish/testni ishga tushir
+   (\`npm run build\`, \`npm test\`). Yashil boʻlmasa tuzat.
+4. Server yoʻq boʻlsa — mantiqni \`run_js\` bilan tekshirib koʻr.
+
+Tekshirmasdan «tayyor» dema. Xato chiqsa — oʻzing tuzat, foydalanuvchiga
+buzuq kod yuborma.
+
 ## Oʻz ishingni SINAB koʻr — majburiy
 - \`test_app\` — JS xatolari, sahifa boʻsh chiqdimi, qaysi tugmalar bor.
 - \`screenshot\` — haqiqiy koʻrinish rasmi, sen uni koʻrasan.
@@ -2684,7 +2789,7 @@ export async function runCodeAgent(
     ),
   }));
 
-  const contents = toContents([...project.messages, userMsg]);
+  let contents = toContents([...project.messages, userMsg]);
   const toolCalls: ToolCallRecord[] = [];
   /** Foydalanuvchiga koʻrsatiladigan skrinshot artifactlari */
   const shotIds: string[] = [];
@@ -2713,7 +2818,25 @@ export async function runCodeAgent(
   try {
     // Sikl oxirigacha yetib borsa — ish tugamagan, qadamlar tugagan.
     let finished = false;
+    const guard = createLoopGuard();
+    let compacted = 0;
+
     for (let round = 0; round < maxRounds; round += 1) {
+      // Uzun ishda eski vosita natijalari kontekstni shishiradi. Ularni
+      // qisqartiramiz — model oxirgi qadamlar ustida ishlaydi, eskisi
+      // kerak boʻlsa vositani qayta chaqiradi.
+      if (round > 0 && round % 6 === 0) {
+        const before = contextSize(contents);
+        if (before > 120_000) {
+          const res = compactContents(contents);
+          if (res.saved > 0) {
+            contents = res.contents;
+            compacted += res.saved;
+            onStep?.(`kontekst siqildi — ${Math.round(res.saved / 1000)}k belgi tejaldi`);
+          }
+        }
+      }
+
       // Har turda tizim koʻrsatmasi yangilanadi — fayl roʻyxati oʻzgargan boʻlishi mumkin.
       const current = getCodeProject(projectId);
       if (!current) {
@@ -2782,18 +2905,51 @@ export async function runCodeAgent(
 
       const responses: GeminiPart[] = [];
       const shots: Attachment[] = [];
-      for (const call of result.functionCalls) {
+
+      // Bir turda bir nechta vosita soʻralsa, faqat OʻQIYDIGANLARINI
+      // parallel bajaramiz — ular bir-biriga xalal bermaydi. Fayl
+      // yozadiganlar navbat bilan qoladi, aks holda ikki yozuv
+      // bir-birining ustiga tushib ketishi mumkin.
+      const parallel = result.functionCalls.filter((c) => READ_ONLY_TOOLS.has(c.name));
+      const precomputed = new Map<number, ToolResult>();
+      if (parallel.length > 1) {
+        onStep?.(`${parallel.length} ta soʻrov parallel bajarilmoqda`);
+        const done = await Promise.all(
+          parallel.map(async (call) => {
+            try {
+              return await runTool(projectId, call.name, call.args, signal, onStep, 0);
+            } catch (err) {
+              if ((err as Error)?.name === 'AbortError') throw err;
+              return {
+                ok: false,
+                summary: `${call.name}: ${(err as Error).message}`,
+                payload: { error: (err as Error).message },
+              } as ToolResult;
+            }
+          }),
+        );
+        parallel.forEach((call, i) => {
+          precomputed.set(result.functionCalls.indexOf(call), done[i]);
+        });
+      }
+
+      for (const [index, call] of result.functionCalls.entries()) {
         onStep?.(STEP_LABEL[call.name] ?? call.name);
         let outcome: ToolResult;
-        try {
-          outcome = await runTool(projectId, call.name, call.args, signal, onStep, 0);
-        } catch (err) {
-          if ((err as Error)?.name === 'AbortError') throw err;
-          outcome = {
-            ok: false,
-            summary: `${call.name}: ${(err as Error).message}`,
-            payload: { error: (err as Error).message },
-          };
+        const ready = precomputed.get(index);
+        if (ready) {
+          outcome = ready;
+        } else {
+          try {
+            outcome = await runTool(projectId, call.name, call.args, signal, onStep, 0);
+          } catch (err) {
+            if ((err as Error)?.name === 'AbortError') throw err;
+            outcome = {
+              ok: false,
+              summary: `${call.name}: ${(err as Error).message}`,
+              payload: { error: (err as Error).message },
+            };
+          }
         }
         toolCalls.push({
           name: call.name,
@@ -2819,6 +2975,13 @@ export async function runCodeAgent(
           patchMessage(projectId, modelMsg.id, { artifactIds: [...shotIds] });
         }
         responses.push({ functionResponse: { name: call.name, response: outcome.payload } });
+
+        // Bir xil chaqiruv qayta-qayta xato bersa — agent tiqilib qolgan.
+        const warning = guard.note(call.name, call.args, outcome.ok);
+        if (warning) {
+          responses.push({ text: `⚠️ ${warning}` });
+          onStep?.('takroriy xato — boshqa yoʻl qidirilmoqda');
+        }
       }
       contents.push({ role: 'user', parts: responses });
 
