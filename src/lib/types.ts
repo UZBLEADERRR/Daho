@@ -211,6 +211,8 @@ export interface Settings {
    * sahifangiz yoki boshqa xosting boʻlsa shu yerga yozing.
    */
   googleRedirect: string;
+  /** Telegram bot tokeni (@BotFather bergan) */
+  tgToken: string;
   /** Instagram Graph API tokeni (Business/Creator hisob uchun) */
   igToken: string;
   /** Instagram Business hisob ID si */

@@ -30,7 +30,7 @@ const COLLECTIONS = [
 type Collection = (typeof COLLECTIONS)[number];
 
 /** Qurilmada qoladigan maxfiy sozlamalar — bulutga hech qachon ketmaydi. */
-const DEVICE_ONLY: Array<keyof Settings> = ['apiKey', 'githubToken', 'connectors', 'serverSecret', 'supabaseToken', 'googleAuth', 'googleRedirect', 'igToken'];
+const DEVICE_ONLY: Array<keyof Settings> = ['apiKey', 'githubToken', 'connectors', 'serverSecret', 'supabaseToken', 'googleAuth', 'googleRedirect', 'igToken', 'tgToken'];
 
 /** Bitta element uchun chegara — juda katta video/rasm bulutga chiqmaydi. */
 const MAX_ITEM_BYTES = 1_200_000;

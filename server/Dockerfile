@@ -12,7 +12,18 @@ RUN npm ci
 COPY index.html vite.config.ts tsconfig.json ./
 COPY src ./src
 COPY public ./public
-RUN npm run build
+
+# Bulut (roʻyxatdan oʻtish, obuna, sinxronizatsiya) build vaqtida
+# yoqiladi: Vite `import.meta.env` ni kodga singdiradi. Railway xizmat
+# oʻzgaruvchilarini build argument sifatida uzatadi — shu ikkitasi
+# boʻlmasa ilova avvalgidek faqat qurilmada ishlaydi.
+ARG VITE_SUPABASE_URL=""
+ARG VITE_SUPABASE_ANON_KEY=""
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
+RUN npm run build \
+  && node -e "console.log('[daho] bulut:', process.env.VITE_SUPABASE_URL ? 'yoqilgan' : 'oʻchiq')"
 
 # ------------------------------------------------------------------
 #  2-bosqich — server

@@ -26,6 +26,18 @@ import {
   ytReply,
   ytVideos,
 } from './social';
+import {
+  tgBroadcast,
+  tgChatInfo,
+  tgChats,
+  tgContacts,
+  tgMe,
+  tgPin,
+  tgReady,
+  tgSend,
+  tgSetCommands,
+  tgSync,
+} from './telegram';
 import { fetchImageData, searchImages } from './imagesearch';
 import { geminiModel } from './models';
 import { canSearchWeb, imageAny } from './providers';
@@ -619,6 +631,57 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'telegram',
+    description:
+      'Telegram boti bilan toʻliq ishlaydi — xabar oʻqish, javob berish, '
+      + 'guruh va kanal boshqarish, koʻp odamga birdan yuborish.\n'
+      + 'Amallar:\n'
+      + '- `bot` — bot haqida maʼlumot (ulanish tekshiruvi)\n'
+      + '- `sync` — yangi xabarlarni oʻqiydi va kim yozganini eslab qoladi\n'
+      + '- `contacts` — yozganlar roʻyxati; `hours` bilan cheklash mumkin '
+      + '(masalan 24 — sutkada yozganlar)\n'
+      + '- `chats` — bot aʼzo boʻlgan guruh va kanallar\n'
+      + '- `chat_info` — guruh haqida (`chat_id`): aʼzolar soni, bot admin mi\n'
+      + '- `send` — bitta odamga/guruhga xabar (`chat_id`, `message`)\n'
+      + '- `broadcast` — koʻpga birdan (`chat_ids` yoki `hours`, `message`)\n'
+      + '- `pin` — xabarni qadash (`chat_id`, `message_id`)\n'
+      + '- `commands` — bot menyusidagi buyruqlarni belgilash (`commands`)\n'
+      + 'Ish tartibi: avval `sync`, keyin `contacts`/`chats`. `sync` '
+      + 'qilinmagan boʻlsa roʻyxat boʻsh chiqadi — Telegram xabarni faqat '
+      + 'soʻralganda beradi.\n'
+      + 'MUHIM: `broadcast` — bu haqiqiy odamlarga haqiqiy xabar. Yuborishdan '
+      + 'oldin MATNNI va NECHTA odamga ketishini koʻrsatib, foydalanuvchidan '
+      + 'tasdiq ol. Bir xil matnni hammaga tashlama — odam oʻzi haqida '
+      + 'yozilmaganini sezadi; savoliga qarab guruhla.\n'
+      + 'Guruh yoki kanalga yozish uchun bot oʻsha yerda ADMIN boʻlishi kerak '
+      + '— `chat_info` bilan tekshir.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: {
+          type: 'STRING',
+          description: 'bot | sync | contacts | chats | chat_info | send | broadcast | pin | commands',
+        },
+        chat_id: { type: 'STRING' },
+        chat_ids: { type: 'ARRAY', items: { type: 'STRING' } },
+        message: { type: 'STRING' },
+        message_id: { type: 'NUMBER' },
+        hours: { type: 'NUMBER', description: 'Necha soat ichida yozganlar (contacts/broadcast)' },
+        format: { type: 'STRING', description: 'Markdown yoki HTML' },
+        commands: {
+          type: 'ARRAY',
+          description: 'Bot menyusi: [{command, description}]',
+          items: {
+            type: 'OBJECT',
+            properties: { command: { type: 'STRING' }, description: { type: 'STRING' } },
+          },
+        },
+        limit: { type: 'NUMBER' },
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'youtube_manage',
     description:
       'Oʻz YouTube kanalingizni boshqaradi (Google ulanishi kerak).\n'
@@ -862,6 +925,222 @@ export async function executeTool(
         return {
           ok: false,
           summary: 'Google xatosi',
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'telegram': {
+      if (!tgReady()) {
+        return {
+          ok: false,
+          summary: 'Telegram boti ulanmagan',
+          payload: {
+            error: 'ulanmagan',
+            izoh:
+              'Sozlamalar → Telegram boʻlimiga bot tokenini qoʻying. '
+              + 'Tokenni @BotFather dan olasiz: /newbot → nom → username. '
+              + 'Guruh yoki kanalni boshqarish uchun botni oʻsha yerga '
+              + 'ADMIN qilib qoʻshing.',
+          },
+        };
+      }
+
+      const action = str(args.action);
+      const limit = Math.max(1, Math.min(200, Number(args.limit) || 50));
+      const hours = Number(args.hours) || 0;
+      const format = str(args.format) as 'Markdown' | 'HTML' | '';
+
+      try {
+        if (action === 'bot') {
+          const me = await tgMe(ctx.signal);
+          return {
+            ok: true,
+            summary: `@${me.username}`,
+            payload: {
+              nomi: me.first_name,
+              username: `@${me.username}`,
+              guruhga_qoshiladi: me.can_join_groups !== false,
+              guruh_xabarlarini_oqiydi: me.can_read_all_group_messages === true,
+              izoh:
+                me.can_read_all_group_messages === false
+                  ? 'Bot guruhdagi HAMMA xabarni oʻqiy olmaydi. @BotFather → '
+                    + '/setprivacy → Disable qilsangiz hammasini koʻradi.'
+                  : undefined,
+            },
+          };
+        }
+
+        if (action === 'sync') {
+          const fresh = await tgSync(ctx.signal);
+          return {
+            ok: true,
+            summary: `${fresh.length} ta yangi xabar`,
+            payload: {
+              xabarlar: fresh.slice(0, limit).map((m) => ({
+                kim: m.from,
+                chat_id: m.chatId,
+                qayerda: m.chatType === 'private' ? 'shaxsiy' : m.chatTitle,
+                matn: m.text.slice(0, 400),
+                message_id: m.messageId,
+                sana: new Date(m.at).toISOString(),
+              })),
+            },
+          };
+        }
+
+        if (action === 'contacts') {
+          const list = await tgContacts(hours);
+          return {
+            ok: true,
+            summary: hours
+              ? `${list.length} kishi soʻnggi ${hours} soatda yozgan`
+              : `${list.length} kishi yozgan`,
+            payload: {
+              odamlar: list.slice(0, limit).map((c) => ({
+                chat_id: c.id,
+                ism: c.name,
+                username: c.username ? `@${c.username}` : undefined,
+                oxirgi_xabari: c.lastText.slice(0, 200),
+                oxirgi_marta: new Date(c.lastAt).toISOString(),
+                nechta_yozgan: c.count,
+              })),
+              izoh: list.length ? undefined : 'Avval `sync` qiling.',
+            },
+          };
+        }
+
+        if (action === 'chats') {
+          const list = await tgChats();
+          return {
+            ok: true,
+            summary: `${list.length} ta guruh/kanal`,
+            payload: {
+              chatlar: list.map((c) => ({
+                chat_id: c.id,
+                nomi: c.title,
+                turi: c.type,
+                username: c.username ? `@${c.username}` : undefined,
+              })),
+              izoh: list.length
+                ? undefined
+                : 'Bot hali hech qaysi guruhga qoʻshilmagan yoki `sync` qilinmagan.',
+            },
+          };
+        }
+
+        if (action === 'chat_info') {
+          const id = str(args.chat_id);
+          if (!id) return { ok: false, summary: 'chat_id kerak', payload: { error: 'id' } };
+          const info = await tgChatInfo(id, ctx.signal);
+          return {
+            ok: true,
+            summary: `${info.title}${info.botIsAdmin ? ' (bot admin)' : ''}`,
+            payload: {
+              nomi: info.title,
+              turi: info.type,
+              azolar: info.members,
+              tavsif: info.description,
+              bot_admin: info.botIsAdmin,
+              izoh: info.botIsAdmin
+                ? undefined
+                : 'Bot bu yerda admin emas — yozish va boshqarish ishlamaydi.',
+            },
+          };
+        }
+
+        if (action === 'send') {
+          const id = str(args.chat_id);
+          const message = str(args.message);
+          if (!id || !message) {
+            return { ok: false, summary: 'chat_id va message kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const mid = await tgSend(
+            id,
+            message,
+            { format: format || undefined },
+            ctx.signal,
+          );
+          return { ok: true, summary: 'Yuborildi', payload: { message_id: mid } };
+        }
+
+        if (action === 'broadcast') {
+          const message = str(args.message);
+          if (!message) {
+            return { ok: false, summary: 'message kerak', payload: { error: 'matn yoʻq' } };
+          }
+
+          let targets = Array.isArray(args.chat_ids)
+            ? (args.chat_ids as unknown[]).map((v) => String(v))
+            : [];
+
+          if (!targets.length) {
+            const list = await tgContacts(hours || 24);
+            targets = list.map((c) => String(c.id));
+          }
+          if (!targets.length) {
+            return {
+              ok: false,
+              summary: 'Kimga yuborish nomaʼlum',
+              payload: { error: 'boʻsh', izoh: 'Avval `sync`, keyin `contacts` qiling.' },
+            };
+          }
+
+          const res = await tgBroadcast(
+            targets,
+            message,
+            { format: format || undefined },
+            ctx.signal,
+          );
+          return {
+            ok: res.sent > 0,
+            summary: `${res.sent}/${targets.length} yuborildi`,
+            payload: {
+              yuborildi: res.sent,
+              yetmadi: res.failed.length,
+              xatolar: res.failed.slice(0, 10),
+              izoh: res.failed.length
+                ? 'Yetmaganlar odatda botni bloklagan yoki suhbatni oʻchirgan.'
+                : undefined,
+            },
+          };
+        }
+
+        if (action === 'pin') {
+          const id = str(args.chat_id);
+          const mid = Number(args.message_id);
+          if (!id || !mid) {
+            return { ok: false, summary: 'chat_id va message_id kerak', payload: { error: 'toʻliqmas' } };
+          }
+          await tgPin(id, mid, ctx.signal);
+          return { ok: true, summary: 'Qadaldi', payload: { chat_id: id, message_id: mid } };
+        }
+
+        if (action === 'commands') {
+          const raw = Array.isArray(args.commands) ? (args.commands as unknown[]) : [];
+          const commands = raw
+            .map((c) => c as { command?: unknown; description?: unknown })
+            .map((c) => ({
+              command: String(c.command ?? '').replace(/^\//, '').slice(0, 32),
+              description: String(c.description ?? '').slice(0, 256),
+            }))
+            .filter((c) => c.command && c.description);
+          if (!commands.length) {
+            return { ok: false, summary: 'commands kerak', payload: { error: 'boʻsh' } };
+          }
+          await tgSetCommands(commands, ctx.signal);
+          return {
+            ok: true,
+            summary: `${commands.length} ta buyruq belgilandi`,
+            payload: { buyruqlar: commands },
+          };
+        }
+
+        return { ok: false, summary: `Nomaʼlum amal: ${action}`, payload: { error: 'amal' } };
+      } catch (err) {
+        return {
+          ok: false,
+          summary: 'Telegram xatosi',
           payload: { error: String((err as Error)?.message ?? err) },
         };
       }

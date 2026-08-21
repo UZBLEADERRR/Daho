@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   supabaseToken: '',
   googleClientId: '',
   googleRedirect: '',
+  tgToken: '',
   igToken: '',
   igUserId: '',
   serverUrl: '',

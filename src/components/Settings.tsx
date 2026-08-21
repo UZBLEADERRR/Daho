@@ -33,6 +33,7 @@ import { requestPersistentStorage, storageEstimate } from '../lib/storage';
 import { serverHealth } from '../lib/cloud/server';
 import { listProjects } from '../lib/sbadmin';
 import { disconnectGoogle, redirectUri, startGoogleAuth } from '../lib/google';
+import { tgChats, tgContacts, tgMe, tgReady, tgSync } from '../lib/telegram';
 import { igMedia } from '../lib/social';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
 import { UsagePanel } from './UsagePanel';
@@ -300,6 +301,13 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
 
         </>
       ),
+    },
+    {
+      id: 'telegram',
+      icon: '✈️',
+      title: 'Telegram bot',
+      hint: 'Mijozlar, guruh va kanal boshqaruvi',
+      body: <TelegramPanel />,
     },
     {
       id: 'instagram',
@@ -1501,6 +1509,98 @@ function GooglePanel() {
           {note}
         </pre>
       )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Telegram                                                           */
+/* ------------------------------------------------------------------ */
+
+function TelegramPanel() {
+  const settings = useStore((s) => s.settings);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState('');
+
+  const check = async () => {
+    setBusy(true);
+    setResult('');
+    try {
+      const me = await tgMe();
+      // Ulanish tasdiqlangach darhol xabarlarni ham olib qoʻyamiz —
+      // aks holda roʻyxatlar boʻsh koʻrinib, ishlamayaptidek tuyuladi.
+      const fresh = await tgSync();
+      const people = await tgContacts();
+      const groups = await tgChats();
+
+      setResult(
+        `✅ @${me.username} ulandi\n`
+        + `· yangi xabar: ${fresh.length}\n`
+        + `· yozganlar: ${people.length}\n`
+        + `· guruh/kanal: ${groups.length}`
+        + (me.can_read_all_group_messages === false
+          ? '\n\n⚠️ Bot guruhdagi hamma xabarni oʻqiy olmaydi. '
+            + '@BotFather → /setprivacy → Disable qiling.'
+          : ''),
+      );
+    } catch (err) {
+      setResult(`❌ ${String((err as Error)?.message ?? err)}`);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0, lineHeight: 1.6 }}>
+        Bot ulansa Daho sizga yozgan odamlarni biladi, har biriga alohida
+        javob yozadi, guruh va kanalingizga eʼlon qoʻyadi, sutkalik
+        mijozlarga birdan xabar tarqatadi.
+      </p>
+
+      <div className="field">
+        <label>Bot tokeni</label>
+        <input
+          type="password"
+          value={settings.tgToken}
+          onChange={(e) => updateSettings({ tgToken: e.target.value.trim() })}
+          placeholder="123456789:AA…"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+      </div>
+
+      <button className="btn wide" disabled={busy || !tgReady()} onClick={() => void check()}>
+        {busy ? 'Tekshirilmoqda…' : 'Ulanishni tekshirish'}
+      </button>
+
+      {result && (
+        <pre className="conn-result" style={{ marginTop: 12 }}>
+          {result}
+        </pre>
+      )}
+
+      <div className="tiny" style={{ marginTop: 16, lineHeight: 1.7 }}>
+        <b>Bot qanday ochiladi</b>
+        <br />
+        1. Telegramda <b>@BotFather</b> ga <code>/newbot</code> yozing
+        <br />
+        2. Nom va username bering → token beradi, shuni yuqoriga qoʻying
+        <br />
+        3. Guruh yoki kanalni boshqarishi uchun botni oʻsha yerga qoʻshib{' '}
+        <b>admin</b> qiling
+        <br />
+        4. Guruhdagi hamma xabarni koʻrishi uchun: @BotFather →{' '}
+        <code>/setprivacy</code> → <b>Disable</b>
+      </div>
+
+      <div className="tiny" style={{ marginTop: 14, lineHeight: 1.7, opacity: 0.85 }}>
+        ⚠️ Telegram shaxsiy hisobdan avtomatik yozishni taqiqlaydi va buning
+        uchun hisobni bloklaydi. Shuning uchun bot ishlatiladi — u aynan shu
+        ish uchun qilingan va cheklovi yoʻq darajada katta.
+        <br />
+        Odam botga birinchi boʻlib yozishi kerak; shundan keyin unga
+        istagancha yozish mumkin.
+      </div>
     </>
   );
 }
