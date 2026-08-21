@@ -1,5 +1,6 @@
 import express from 'express';
 import { env, missing } from './env.js';
+import { allowedHosts, proxyRequest } from './proxy.js';
 import { runCommand } from './shell.js';
 import { adminClient, userFromToken } from './supabase.js';
 import { startPolling, tick, workerStats } from './worker.js';
@@ -87,6 +88,22 @@ app.get('/jobs/:id', async (req, res) => {
   if (error) return res.status(400).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'Topilmadi' });
   res.json({ job: data });
+});
+
+/**
+ * Tashqi API ga proxy — brauzer CORS tufayli bevosita chaqira olmaydigan
+ * xizmatlar uchun (Supabase Management, Google API va h.k.).
+ */
+app.post('/proxy', async (req, res) => {
+  const who = await authorize(req);
+  if (!who) return res.status(401).json({ error: 'Ruxsat yoʻq' });
+  res.json(await proxyRequest(req.body ?? {}));
+});
+
+app.get('/proxy/hosts', async (req, res) => {
+  const who = await authorize(req);
+  if (!who) return res.status(401).json({ error: 'Ruxsat yoʻq' });
+  res.json({ xostlar: allowedHosts() });
 });
 
 /** HAQIQIY terminal — Daho Code shu orqali npm/node/git ishlatadi. */

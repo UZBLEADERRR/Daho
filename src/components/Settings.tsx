@@ -30,6 +30,7 @@ import {
 } from '../lib/store';
 import { requestPersistentStorage, storageEstimate } from '../lib/storage';
 import { serverHealth } from '../lib/cloud/server';
+import { listProjects } from '../lib/sbadmin';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
 import { UsagePanel } from './UsagePanel';
 import { Copy, Refresh } from './Icons';
@@ -1077,6 +1078,28 @@ function SupabasePanel() {
   const settings = useStore((s) => s.settings);
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState('');
+  const [projects, setProjects] = useState('');
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
+  const checkToken = async () => {
+    setLoadingProjects(true);
+    setProjects('');
+    try {
+      const list = await listProjects();
+      setProjects(
+        list.length
+          ? `✅ ${list.length} ta loyiha koʻrindi:\n` +
+              list
+                .slice(0, 10)
+                .map((p) => `· ${p.name} (${p.status})`)
+                .join('\n')
+          : '✅ Token ishlayapti, lekin hali loyiha yoʻq.',
+      );
+    } catch (err) {
+      setProjects(`❌ ${String((err as Error)?.message ?? err)}`);
+    }
+    setLoadingProjects(false);
+  };
 
   const check = async () => {
     setChecking(true);
@@ -1092,6 +1115,44 @@ function SupabasePanel() {
 
   return (
     <>
+      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+        Agent oʻzi loyiha ochishi uchun
+      </div>
+      <p className="tiny" style={{ marginTop: 0, lineHeight: 1.6 }}>
+        Bu token bilan Daho sizning nomingizdan Supabase loyihasi ocha oladi,
+        jadval yarata oladi va kalitlarni oʻzi olib ilovaga yozadi — sizdan
+        SQL koʻchirib qoʻyish soʻralmaydi.
+      </p>
+      <div className="field">
+        <label>Management token</label>
+        <input
+          type="password"
+          value={settings.supabaseToken}
+          onChange={(e) => updateSettings({ supabaseToken: e.target.value.trim() })}
+          placeholder="sbp_…"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+        <div className="tiny" style={{ marginTop: 6 }}>
+          supabase.com/dashboard/account/tokens dan olinadi. Faqat shu
+          qurilmada saqlanadi. Brauzerda ishlashi uchun Daho serveri ulangan
+          boʻlishi kerak (CORS).
+        </div>
+      </div>
+      <button
+        className="btn ghost wide"
+        disabled={loadingProjects || !settings.supabaseToken}
+        onClick={() => void checkToken()}
+        style={{ marginBottom: 4 }}
+      >
+        {loadingProjects ? 'Tekshirilmoqda…' : 'Tokenni tekshirish'}
+      </button>
+      {projects && (
+        <pre className="conn-result" style={{ marginBottom: 14 }}>
+          {projects}
+        </pre>
+      )}
+
       <div className="section-label" style={{ padding: '14px 0 6px' }}>
         Supabase (maʼlumot bazasi)
       </div>

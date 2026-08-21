@@ -201,6 +201,8 @@ export interface Settings {
   roleModels: RoleModels;
   /** Boshqa ilovalar bilan ulanishlar — kalitlari bulutga chiqmaydi */
   connectors: Connector[];
+  /** Supabase Management tokeni — agent oʻzi loyiha ocha olishi uchun */
+  supabaseToken: string;
   /** Daho serveri (Railway) manzili — fon ishlari va terminal uchun */
   serverUrl: string;
   /** Server maxfiy soʻzi (WORKER_SECRET) — faqat shu qurilmada qoladi */

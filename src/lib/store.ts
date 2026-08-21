@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   favoriteModels: [],
   roleModels: { bosh: '', dizayn: '', kod: '', tekshir: '', matn: '' },
   connectors: [],
+  supabaseToken: '',
   serverUrl: '',
   serverSecret: '',
   autoContinue: true,

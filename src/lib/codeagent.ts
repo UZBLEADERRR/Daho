@@ -46,6 +46,7 @@ import {
 import { describeDiff, restore, snapshot } from './checkpoint';
 import { runJs } from './jsrun';
 import { applyPatch } from './patch';
+import { createProject, listProjects, projectKeys, projectUrl, runSql, sbAdminReady } from './sbadmin';
 import { compactContents, contextSize, createLoopGuard } from './compact';
 import { runOnServer, serverReady } from './cloud/server';
 import { globFiles, grepFiles, sliceLines, type GrepHit } from './search';
@@ -872,6 +873,34 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
             },
           },
         },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'sb_admin',
+    description:
+      'Supabase LOYIHASINI OʻZI boshqaradi — foydalanuvchi nomidan. Oddiy '
+      + '`supabase` vositasi anon kalit bilan ishlaydi va jadval yarata '
+      + 'olmaydi; bu esa hammasini qiladi.\n'
+      + 'Amallar:\n'
+      + '- `projects` — mavjud loyihalar roʻyxati\n'
+      + '- `create` — YANGI loyiha ochish (`name`; parol oʻzi yasaladi)\n'
+      + '- `sql` — loyihada SQL bajarish: CREATE TABLE, RLS, index — hammasi\n'
+      + '- `keys` — loyihaning anon/service kalitlari va manzili\n'
+      + 'Loyiha ochilgach `sql` bilan jadvallarni tuz, keyin `keys` bilan '
+      + 'kalitni olib ilova kodiga yoz. Foydalanuvchidan hech narsa '
+      + 'soʻrashing shart emas.\n'
+      + 'Yangi loyiha tayyor boʻlishi 1-2 daqiqa vaqt oladi — `projects` '
+      + 'bilan holatini tekshirib tur.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'projects | create | sql | keys' },
+        name: { type: 'STRING', description: 'create uchun loyiha nomi' },
+        ref: { type: 'STRING', description: 'sql/keys uchun loyiha ref si' },
+        query: { type: 'STRING', description: 'sql uchun SQL matni' },
+        region: { type: 'STRING', description: 'masalan eu-central-1' },
       },
       required: ['action'],
     },
@@ -2189,6 +2218,104 @@ async function runTool(
           eslatma: 'Foydalanuvchiga ulashish oynasi ochilgani va faylni saqlashi mumkinligini ayt.',
         },
       };
+    }
+
+    case 'sb_admin': {
+      if (!sbAdminReady()) {
+        return {
+          ok: false,
+          summary: 'Supabase tokeni yoʻq',
+          payload: {
+            error: 'token_yoq',
+            izoh:
+              'Foydalanuvchiga ayt: supabase.com/dashboard/account/tokens dan '
+              + 'Personal Access Token olib, Sozlamalar → Supabase boʻlimiga qoʻysin.',
+          },
+        };
+      }
+
+      const action = str(args.action, 'projects');
+      try {
+        if (action === 'projects') {
+          const list = await listProjects(signal);
+          return {
+            ok: true,
+            summary: `${list.length} ta loyiha`,
+            payload: {
+              loyihalar: list.map((p) => ({
+                nom: p.name,
+                ref: p.ref ?? p.id,
+                holat: p.status,
+                hudud: p.region,
+              })),
+            },
+          };
+        }
+
+        if (action === 'create') {
+          const name = str(args.name);
+          if (!name) {
+            return { ok: false, summary: 'Nom boʻsh', payload: { error: 'name kerak' } };
+          }
+          const { project, password } = await createProject(
+            name,
+            { region: str(args.region) || undefined },
+            signal,
+          );
+          const ref = project.ref ?? project.id;
+          return {
+            ok: true,
+            summary: `«${name}» loyihasi ochildi`,
+            payload: {
+              ref,
+              manzil: projectUrl(ref),
+              holat: project.status,
+              baza_paroli: password,
+              izoh:
+                'Loyiha 1-2 daqiqada tayyor boʻladi. Parolni foydalanuvchiga '
+                + 'koʻrsat — Supabase uni boshqa koʻrsatmaydi.',
+            },
+          };
+        }
+
+        if (action === 'sql') {
+          const ref = str(args.ref);
+          const query = str(args.query);
+          if (!ref || !query) {
+            return { ok: false, summary: 'ref va query kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const result = await runSql(ref, query, signal);
+          return {
+            ok: true,
+            summary: 'SQL bajarildi',
+            payload: { natija: JSON.stringify(result).slice(0, 3000) },
+          };
+        }
+
+        if (action === 'keys') {
+          const ref = str(args.ref);
+          if (!ref) return { ok: false, summary: 'ref kerak', payload: { error: 'ref' } };
+          const keys = await projectKeys(ref, signal);
+          return {
+            ok: true,
+            summary: 'Kalitlar olindi',
+            payload: {
+              manzil: projectUrl(ref),
+              kalitlar: keys.map((k) => ({ nom: k.name, kalit: k.api_key })),
+              izoh: 'service_role kalitini mijoz kodiga YOZMA — faqat anon kalitni ishlat.',
+            },
+          };
+        }
+
+        return { ok: false, summary: `Nomaʼlum amal: ${action}`, payload: { error: 'amal' } };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'Supabase xatosi',
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
     }
 
     case 'connect_list': {
