@@ -1593,6 +1593,22 @@ function TelegramPanel() {
         <code>/setprivacy</code> → <b>Disable</b>
       </div>
 
+      <div className="tiny" style={{ marginTop: 16, lineHeight: 1.7 }}>
+        <b>Oʻz nomingizdan ishlashi uchun</b> («secretary mode»)
+        <br />
+        Telegram → Sozlamalar → <b>Telegram Business</b> → <b>Chatbots</b> →
+        botni tanlang va ruxsatlarni yoqing. Telegram Premium kerak.
+        <br />
+        <br />
+        Shundan keyin Daho <b>sizning nomingizdan</b> yozadi, rasm va video
+        yuboradi, story joylaydi — odam bot bilan emas, siz bilan
+        gaplashayotgandek koʻradi.
+        <br />
+        Ruxsatlar alohida beriladi: yozish, oʻqilgan deb belgilash, story
+        boshqarish. Qaysi biri yoqilganini Daho’dan «shaxsiy hisob holati»
+        deb soʻrasangiz aytadi.
+      </div>
+
       <div className="tiny" style={{ marginTop: 14, lineHeight: 1.7, opacity: 0.85 }}>
         ⚠️ Telegram shaxsiy hisobdan avtomatik yozishni taqiqlaydi va buning
         uchun hisobni bloklaydi. Shuning uchun bot ishlatiladi — u aynan shu

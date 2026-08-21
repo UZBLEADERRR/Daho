@@ -50,11 +50,28 @@ export interface TgChat {
   lastAt: number;
 }
 
+/**
+ * Shaxsiy hisobga ulanish («secretary mode» / Telegram Business).
+ *
+ * Bot shaxsiy hisobingizga ulansa, u SIZNING nomingizdan yozadi —
+ * odam bot bilan emas, siz bilan gaplashayotgandek koʻradi.
+ */
+export interface TgBusiness {
+  /** business_connection_id — har bir soʻrovda kerak */
+  id: string;
+  user: string;
+  userChatId: number;
+  enabled: boolean;
+  /** Qaysi ruxsatlar berilgan — ulanish paytida siz belgilaysiz */
+  rights: Record<string, boolean>;
+}
+
 interface TgStore {
   /** getUpdates uchun keyingi oʻrin — bir xabarni ikki marta oʻqimaymiz */
   offset: number;
   contacts: Record<string, TgContact>;
   chats: Record<string, TgChat>;
+  business?: TgBusiness;
 }
 
 const EMPTY: TgStore = { offset: 0, contacts: {}, chats: {} };
@@ -162,7 +179,20 @@ interface RawUpdate {
   update_id: number;
   message?: RawMessage;
   channel_post?: RawMessage;
+  business_message?: RawMessage;
+  edited_business_message?: RawMessage;
+  business_connection?: RawBusinessConnection;
   my_chat_member?: { chat: RawChat };
+}
+
+interface RawBusinessConnection {
+  id: string;
+  user: { id: number; first_name?: string; last_name?: string; username?: string };
+  user_chat_id: number;
+  is_enabled: boolean;
+  rights?: Record<string, boolean>;
+  /** 9.0 gacha shunday edi — eski serverlar uchun */
+  can_reply?: boolean;
 }
 
 interface RawMessage {
@@ -191,6 +221,8 @@ export interface TgMessage {
   fromId: number;
   text: string;
   at: number;
+  /** Shaxsiy hisobingizga kelgan xabar (bot suhbati emas) */
+  business?: boolean;
 }
 
 /**
@@ -204,7 +236,23 @@ export async function tgSync(signal?: AbortSignal): Promise<TgMessage[]> {
 
   const updates = await call<RawUpdate[]>(
     'getUpdates',
-    { offset: store.offset || undefined, limit: 100, timeout: 0 },
+    {
+      offset: store.offset || undefined,
+      limit: 100,
+      timeout: 0,
+      // Standart roʻyxat business turlarini oʻz ichiga oladi, lekin
+      // avval boshqacha sozlangan boʻlsa oʻsha kuchda qoladi —
+      // shuning uchun har safar aniq aytamiz.
+      allowed_updates: [
+        'message',
+        'edited_message',
+        'channel_post',
+        'my_chat_member',
+        'business_connection',
+        'business_message',
+        'edited_business_message',
+      ],
+    },
     signal,
   );
 
@@ -225,7 +273,23 @@ export async function tgSync(signal?: AbortSignal): Promise<TgMessage[]> {
       };
     }
 
-    const m = u.message ?? u.channel_post;
+    // Shaxsiy hisobga ulanish oʻrnatildi yoki oʻzgartirildi.
+    const bc = u.business_connection;
+    if (bc) {
+      store.business = {
+        id: bc.id,
+        user: [bc.user.first_name, bc.user.last_name].filter(Boolean).join(' ')
+          || bc.user.username
+          || String(bc.user.id),
+        userChatId: bc.user_chat_id,
+        enabled: bc.is_enabled,
+        // 9.0 dan oldin bitta `can_reply` bor edi — eski serverni ham qoʻllaymiz.
+        rights: bc.rights ?? (bc.can_reply ? { can_reply: true } : {}),
+      };
+    }
+
+    const business = u.business_message ?? u.edited_business_message;
+    const m = u.message ?? u.channel_post ?? business;
     if (!m) continue;
 
     const text = m.text ?? m.caption ?? '';
@@ -271,6 +335,7 @@ export async function tgSync(signal?: AbortSignal): Promise<TgMessage[]> {
       fromId: m.from?.id ?? chat.id,
       text,
       at,
+      business: Boolean(business),
     });
   }
 
@@ -476,6 +541,190 @@ export async function tgSetCommands(
   signal?: AbortSignal,
 ): Promise<void> {
   await call('setMyCommands', { commands }, signal);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Shaxsiy hisob — «secretary mode» (Telegram Business)               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Oddiy bot faqat oʻzi bilan gaplashganlarga javob bera oladi. Botni
+ * shaxsiy hisobingizga ulasangiz («Telegram Business → Chatbots»,
+ * Premium kerak) u SIZNING nomingizdan yozadi: odam bot bilan emas, siz
+ * bilan yozishayotgandek koʻradi.
+ *
+ * Har bir ruxsat alohida beriladi va bot faqat berilganini qila oladi —
+ * shuning uchun ish boshlashdan oldin tekshiramiz.
+ */
+
+/** Ulanish maʼlumoti — `sync` paytida saqlanadi. */
+export async function tgBusiness(refresh = false, signal?: AbortSignal): Promise<TgBusiness | null> {
+  const store = await load();
+  if (!store.business) return null;
+  if (!refresh) return store.business;
+
+  // Ruxsatlar oʻzgargan boʻlishi mumkin — foydalanuvchi istalgan
+  // paytda ularni olib qoʻya oladi.
+  const raw = await call<RawBusinessConnection>(
+    'getBusinessConnection',
+    { business_connection_id: store.business.id },
+    signal,
+  );
+  store.business = {
+    id: raw.id,
+    user: [raw.user.first_name, raw.user.last_name].filter(Boolean).join(' ')
+      || raw.user.username
+      || String(raw.user.id),
+    userChatId: raw.user_chat_id,
+    enabled: raw.is_enabled,
+    rights: raw.rights ?? (raw.can_reply ? { can_reply: true } : {}),
+  };
+  await save();
+  return store.business;
+}
+
+/** Ulanish bormi va kerakli ruxsat berilganmi. */
+async function requireBusiness(right?: string): Promise<TgBusiness> {
+  const b = await tgBusiness();
+  if (!b) {
+    throw new Error(
+      'Shaxsiy hisob ulanmagan. Telegram → Sozlamalar → Telegram Business '
+      + '→ Chatbots boʻlimidan botni ulang (Premium kerak), keyin botga '
+      + 'bir marta yozing va `sync` qiling.',
+    );
+  }
+  if (!b.enabled) throw new Error('Ulanish oʻchirilgan — Telegram sozlamalaridan qayta yoqing.');
+  if (right && !b.rights[right]) {
+    throw new Error(
+      `Botga «${right}» ruxsati berilmagan. Telegram → Telegram Business `
+      + '→ Chatbots → botni tanlab shu ruxsatni yoqing.',
+    );
+  }
+  return b;
+}
+
+/** Sizning nomingizdan xabar yozadi. */
+export async function tgSendAs(
+  chatId: number | string,
+  text: string,
+  opts: TgSendOpts = {},
+  signal?: AbortSignal,
+): Promise<number> {
+  const b = await requireBusiness('can_reply');
+  const res = await call<{ message_id: number }>(
+    'sendMessage',
+    {
+      business_connection_id: b.id,
+      chat_id: chatId,
+      text: text.slice(0, 4096),
+      parse_mode: opts.format,
+      reply_to_message_id: opts.replyTo,
+    },
+    signal,
+  );
+  return res.message_id;
+}
+
+export type TgMediaKind = 'photo' | 'video' | 'document' | 'animation' | 'voice' | 'video_note';
+
+const MEDIA_METHOD: Record<TgMediaKind, string> = {
+  photo: 'sendPhoto',
+  video: 'sendVideo',
+  document: 'sendDocument',
+  animation: 'sendAnimation',
+  voice: 'sendVoice',
+  video_note: 'sendVideoNote',
+};
+
+/**
+ * Sizning nomingizdan rasm/video yuboradi.
+ *
+ * `file` — havola yoki Telegramdagi `file_id`. Telegram faylni oʻzi
+ * yuklab oladi, shuning uchun fayl ilova orqali oʻtmaydi.
+ */
+export async function tgSendMediaAs(
+  chatId: number | string,
+  kind: TgMediaKind,
+  file: string,
+  caption = '',
+  signal?: AbortSignal,
+): Promise<number> {
+  const b = await requireBusiness('can_reply');
+  const field = kind === 'video_note' ? 'video_note' : kind;
+  const res = await call<{ message_id: number }>(
+    MEDIA_METHOD[kind],
+    {
+      business_connection_id: b.id,
+      chat_id: chatId,
+      [field]: file,
+      // video_note izohni qabul qilmaydi.
+      ...(kind === 'video_note' ? {} : { caption: caption.slice(0, 1024) }),
+    },
+    signal,
+  );
+  return res.message_id;
+}
+
+/** Xabarni «oʻqildi» deb belgilaydi. */
+export async function tgReadAs(
+  chatId: number,
+  messageId: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  const b = await requireBusiness('can_read_messages');
+  await call(
+    'readBusinessMessage',
+    { business_connection_id: b.id, chat_id: chatId, message_id: messageId },
+    signal,
+  );
+}
+
+/** Story qancha turadi — Telegram faqat shu toʻrttasini qabul qiladi. */
+export const STORY_PERIODS = [6 * 3600, 12 * 3600, 86400, 2 * 86400] as const;
+
+/**
+ * Sizning nomingizdan story joylaydi.
+ *
+ * Telegram oʻlchamga qatʼiy: rasm 1080×1920, video 720×1280 va 60
+ * soniyagacha. Notoʻgʻri oʻlcham berilsa soʻrov rad etiladi.
+ */
+export async function tgPostStory(
+  content: { kind: 'photo' | 'video'; url: string; duration?: number },
+  opts: {
+    activePeriod?: number;
+    caption?: string;
+    /** Muddati tugagach profilda qolsinmi */
+    keep?: boolean;
+  } = {},
+  signal?: AbortSignal,
+): Promise<number> {
+  const b = await requireBusiness('can_manage_stories');
+
+  const period = opts.activePeriod ?? 86400;
+  if (!STORY_PERIODS.includes(period as (typeof STORY_PERIODS)[number])) {
+    throw new Error(`Muddat faqat shulardan biri: ${STORY_PERIODS.join(', ')} soniya.`);
+  }
+
+  const res = await call<{ id: number }>(
+    'postStory',
+    {
+      business_connection_id: b.id,
+      content:
+        content.kind === 'photo'
+          ? { type: 'photo', photo: content.url }
+          : { type: 'video', video: content.url, duration: content.duration },
+      active_period: period,
+      caption: opts.caption?.slice(0, 2048),
+      post_to_chat_page: opts.keep,
+    },
+    signal,
+  );
+  return res.id;
+}
+
+export async function tgDeleteStory(storyId: number, signal?: AbortSignal): Promise<void> {
+  const b = await requireBusiness('can_manage_stories');
+  await call('deleteStory', { business_connection_id: b.id, story_id: storyId }, signal);
 }
 
 /* ------------------------------------------------------------------ */

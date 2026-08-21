@@ -28,6 +28,7 @@ import {
 } from './social';
 import {
   tgBroadcast,
+  tgBusiness,
   tgChatInfo,
   tgChats,
   tgContacts,
@@ -35,7 +36,10 @@ import {
   tgPin,
   tgReady,
   tgSend,
+  tgPostStory,
   tgSchedule,
+  tgSendAs,
+  tgSendMediaAs,
   tgSetCommands,
   tgSync,
 } from './telegram';
@@ -659,7 +663,22 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       + 'tasdiq ol. Bir xil matnni hammaga tashlama — odam oʻzi haqida '
       + 'yozilmaganini sezadi; savoliga qarab guruhla.\n'
       + 'Guruh yoki kanalga yozish uchun bot oʻsha yerda ADMIN boʻlishi kerak '
-      + '— `chat_info` bilan tekshir.',
+      + '— `chat_info` bilan tekshir.\n\n'
+      + 'SHAXSIY HISOB («secretary mode» / Telegram Business) — bot '
+      + 'foydalanuvchining OʻZI boʻlib yozadi, odam bot bilan emas, u bilan '
+      + 'gaplashayotgandek koʻradi:\n'
+      + '- `business` — ulanish bormi, qaysi ruxsatlar berilgan\n'
+      + '- `send_as` — uning nomidan xabar (`chat_id`, `message`)\n'
+      + '- `media_as` — uning nomidan rasm/video (`chat_id`, `file` — havola '
+      + 'yoki file_id, `media` — photo|video|document|animation|voice|video_note)\n'
+      + '- `story` — uning nomidan story (`file`, `media`: photo|video, '
+      + '`hours`: 6|12|24|48, `message` — izoh)\n'
+      + 'Avval `business` bilan tekshir: har bir ruxsat alohida beriladi va '
+      + 'yoʻq boʻlsa soʻrov rad etiladi. Ruxsat yoʻq boʻlsa foydalanuvchiga '
+      + 'aynan qaysi ruxsatni yoqish kerakligini ayt.\n'
+      + 'Story oʻlchami qatʼiy: rasm 1080×1920, video 720×1280 va 60 '
+      + 'soniyagacha. Boshqa oʻlcham berilsa Telegram rad etadi.\n'
+      + 'Odamning nomidan yozish — jiddiy ish. Matnni koʻrsatib TASDIQ ol.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -667,7 +686,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
           type: 'STRING',
           description:
             'bot | sync | contacts | chats | chat_info | send | broadcast | pin '
-            + '| commands | schedule',
+            + '| commands | schedule | business | send_as | media_as | story',
         },
         chat_id: { type: 'STRING' },
         chat_ids: { type: 'ARRAY', items: { type: 'STRING' } },
@@ -675,6 +694,8 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         message_id: { type: 'NUMBER' },
         hours: { type: 'NUMBER', description: 'Necha soat ichida yozganlar (contacts/broadcast)' },
         at: { type: 'STRING', description: 'schedule uchun: ISO vaqt (UTC)' },
+        file: { type: 'STRING', description: 'media_as/story: havola yoki file_id' },
+        media: { type: 'STRING', description: 'photo | video | document | animation | voice | video_note' },
         format: { type: 'STRING', description: 'Markdown yoki HTML' },
         commands: {
           type: 'ARRAY',
@@ -1111,6 +1132,95 @@ export async function executeTool(
                 ? 'Yetmaganlar odatda botni bloklagan yoki suhbatni oʻchirgan.'
                 : undefined,
             },
+          };
+        }
+
+        if (action === 'business') {
+          const b = await tgBusiness(true, ctx.signal);
+          if (!b) {
+            return {
+              ok: false,
+              summary: 'Shaxsiy hisob ulanmagan',
+              payload: {
+                error: 'ulanmagan',
+                izoh:
+                  'Telegram → Sozlamalar → Telegram Business → Chatbots '
+                  + 'boʻlimidan botni ulang (Telegram Premium kerak). '
+                  + 'Ulagach botga bir marta yozing va `sync` qiling — '
+                  + 'ulanish shundan keyin koʻrinadi.',
+              },
+            };
+          }
+          const berilgan = Object.entries(b.rights)
+            .filter(([, v]) => v)
+            .map(([k]) => k);
+          return {
+            ok: b.enabled,
+            summary: b.enabled ? `${b.user} nomidan ishlay oladi` : 'Ulanish oʻchiq',
+            payload: {
+              kim: b.user,
+              yoqilgan: b.enabled,
+              ruxsatlar: berilgan,
+              yozolladimi: Boolean(b.rights.can_reply),
+              story_qoyoladimi: Boolean(b.rights.can_manage_stories),
+              oqiladimi: Boolean(b.rights.can_read_messages),
+            },
+          };
+        }
+
+        if (action === 'send_as') {
+          const id = str(args.chat_id);
+          const message = str(args.message);
+          if (!id || !message) {
+            return { ok: false, summary: 'chat_id va message kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const mid = await tgSendAs(id, message, { format: format || undefined }, ctx.signal);
+          return {
+            ok: true,
+            summary: 'Sizning nomingizdan yuborildi',
+            payload: { message_id: mid },
+          };
+        }
+
+        if (action === 'media_as') {
+          const id = str(args.chat_id);
+          const file = str(args.file);
+          const kind = (str(args.media) || 'photo') as
+            'photo' | 'video' | 'document' | 'animation' | 'voice' | 'video_note';
+          if (!id || !file) {
+            return { ok: false, summary: 'chat_id va file kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const mid = await tgSendMediaAs(id, kind, file, str(args.message), ctx.signal);
+          return {
+            ok: true,
+            summary: `${kind} yuborildi`,
+            payload: { message_id: mid },
+          };
+        }
+
+        if (action === 'story') {
+          const file = str(args.file);
+          if (!file) {
+            return {
+              ok: false,
+              summary: 'file kerak',
+              payload: { error: 'fayl', izoh: 'Rasm yoki video havolasi (yoki file_id).' },
+            };
+          }
+          const kind = str(args.media) === 'video' ? 'video' : 'photo';
+          const hours = Number(args.hours) || 24;
+          const storyId = await tgPostStory(
+            { kind, url: file },
+            {
+              activePeriod: hours * 3600,
+              caption: str(args.message) || undefined,
+            },
+            ctx.signal,
+          );
+          return {
+            ok: true,
+            summary: `Story joylandi (${hours} soat)`,
+            payload: { story_id: storyId, turi: kind },
           };
         }
 
