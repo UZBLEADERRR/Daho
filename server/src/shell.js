@@ -13,7 +13,32 @@ import { env } from './env.js';
  * har foydalanuvchiga alohida papka, vaqt chegarasi, chiqish hajmi
  * chegarasi. ENABLE_SHELL=1 boʻlmasa umuman ishlamaydi.
  */
+/**
+ * Ayni paytda nechta buyruq ishlayapti.
+ *
+ * Server arzon vCPU da turadi va ayni vaqtda fon vazifalarini ham
+ * bajaradi. Bir nechta ogʻir buyruq birga ishlasa hammasi sekinlashadi
+ * va navbatdagi vazifalar toʻxtab qoladi.
+ */
+let active = 0;
+const MAX_PARALLEL = Number(process.env.MAX_PARALLEL_COMMANDS || 2);
+
+export function shellLoad() {
+  return { active, max: MAX_PARALLEL };
+}
+
 export async function runCommand(userId, command, { cwd, timeoutMs } = {}) {
+  if (active >= MAX_PARALLEL) {
+    return {
+      ok: false,
+      code: -1,
+      stdout: '',
+      stderr:
+        `Server band — ayni paytda ${active} ta buyruq ishlayapti. `
+        + 'Biroz kutib qayta urinib koʻring.',
+    };
+  }
+
   if (!env.shellEnabled) {
     return {
       ok: false,
@@ -33,6 +58,7 @@ export async function runCommand(userId, command, { cwd, timeoutMs } = {}) {
   await mkdir(dir, { recursive: true });
 
   const limit = Math.min(Number(timeoutMs) || env.shellTimeoutMs, 600000);
+  active += 1;
 
   return new Promise((resolve) => {
     const child = spawn('bash', ['-lc', command], {
@@ -53,6 +79,7 @@ export async function runCommand(userId, command, { cwd, timeoutMs } = {}) {
     const finish = (code, extra = '') => {
       if (done) return;
       done = true;
+      active = Math.max(0, active - 1);
       clearTimeout(timer);
       try {
         child.kill('SIGKILL');

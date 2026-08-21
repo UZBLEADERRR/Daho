@@ -1,7 +1,7 @@
 import express from 'express';
 import { env, missing } from './env.js';
 import { allowedHosts, proxyRequest } from './proxy.js';
-import { runCommand } from './shell.js';
+import { runCommand, shellLoad } from './shell.js';
 import { adminClient, userFromToken } from './supabase.js';
 import { startPolling, tick, workerStats } from './worker.js';
 
@@ -39,7 +39,12 @@ app.get('/', (_req, res) => {
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: missing().length === 0, worker: workerStats(), yetishmayapti: missing() });
+  res.json({
+    ok: missing().length === 0,
+    worker: workerStats(),
+    terminal: shellLoad(),
+    yetishmayapti: missing(),
+  });
 });
 
 /** Navbatni qoʻlda turtish — Railway cron yoki tashqi chaqiruv uchun. */

@@ -51,6 +51,25 @@ ilovaga yoki repozitoriyga hech qachon qoʻymang.
 | `GET /jobs/:id` | Vazifa holati |
 | `POST /run` | Buyruq bajarish — terminal |
 
+## Server nima uchun EMAS
+
+Server arzon protsessorda turadi va ayni paytda fon vazifalarini ham
+bajaradi. Shuning uchun **ogʻir kodlash unga tegishli emas**:
+
+| Ish | Qayerda |
+|---|---|
+| Video yigʻish va kodlash | **Qurilmada** — telefonda apparat kodlovchi bor, bepul va tez |
+| Rasm chizish, koʻrinish | Qurilmada |
+| Fon vazifalari, uzun matn | Serverda |
+| Kod bajarish, testlar | Serverda |
+
+ffmpeg tasvirda bor, lekin yengil ish uchun: audio ajratish, format
+haqida maʼlumot olish, kichik boʻlak kesish.
+
+Ayni paytda koʻpi bilan 2 ta buyruq ishlaydi
+(`MAX_PARALLEL_COMMANDS` bilan oʻzgartiriladi). Uchinchisi «server band»
+javobini oladi — shunda fon vazifalari toʻxtab qolmaydi.
+
 ## Vosita yasab, ishga tushirish
 
 Terminal yoqilgan boʻlsa agent kerakli vositani oʻzi yozib, oʻrnatib va
