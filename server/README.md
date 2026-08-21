@@ -51,6 +51,22 @@ ilovaga yoki repozitoriyga hech qachon qoʻymang.
 | `GET /jobs/:id` | Vazifa holati |
 | `POST /run` | Buyruq bajarish — terminal |
 
+## Vosita yasab, ishga tushirish
+
+Terminal yoqilgan boʻlsa agent kerakli vositani oʻzi yozib, oʻrnatib va
+ishga tushirib, natijani qaytara oladi:
+
+```
+pip install --break-system-packages pandas matplotlib
+python3 tahlil.py
+```
+
+Tasvirda ffmpeg oldindan bor. Qolgan kutubxonalar ish paytida
+oʻrnatiladi — shuning uchun tasvir yengil qoladi.
+
+Boshqa xizmatlardan material yuklab olishda oʻsha xizmat shartlariga
+eʼtibor bering — bu sizning javobgarligingiz.
+
 ## Terminal haqida ogohlantirish
 
 `ENABLE_SHELL=1` qoʻyilsa, `WORKER_SECRET` ni yoki yaroqli foydalanuvchi
