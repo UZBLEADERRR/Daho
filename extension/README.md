@@ -16,6 +16,11 @@ Yoki shu papkadan bevosita:
 4. Panelni ochib Gemini kalitini bir marta kiriting
    (aistudio.google.com/apikey dan bepul olinadi).
 
+Belgini bosganda yon panel ochiladi. Yon panel yoʻq brauzerda alohida
+oyna ochiladi. Kengaytmani yangilaganingizda `chrome://extensions` da
+**qayta yuklash** (🔄) tugmasini bosing — eski nusxa xotirada qolib
+ketmasin.
+
 Telefondagi Chrome kengaytmalarni qoʻllab-quvvatlamaydi — buni
 kompyuterda qiling (Android’da Kiwi Browser ishlaydi).
 

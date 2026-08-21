@@ -2,12 +2,39 @@
  * Fon xizmati — panelni ochadi va sahifa maʼlumotini oladi.
  */
 
-chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.id) return;
-  await chrome.sidePanel.open({ tabId: tab.id });
-});
+/*
+ * Panelni ochish.
+ *
+ * `sidePanel.open()` faqat foydalanuvchi harakati ichida ishlaydi va
+ * baʼzan jimgina yiqiladi, shuning uchun belgini bosishni Chrome’ning
+ * oʻziga topshiramiz — bu eng ishonchli yoʻl. Yon panel yoʻq brauzerda
+ * (Chrome 114 dan eski, baʼzi Chromium qurilmalari) alohida oyna
+ * ochiladi, aks holda bosganda hech narsa boʻlmasdi.
+ */
+const hasSidePanel = Boolean(chrome.sidePanel);
 
-chrome.runtime.onInstalled.addListener(() => {
+if (hasSidePanel) {
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((err) => console.warn('[daho] panel sozlanmadi:', err));
+} else {
+  chrome.action.onClicked.addListener(() => void openWindow());
+}
+
+/** Zaxira yoʻl — panelni oddiy oyna qilib ochamiz. */
+function openWindow() {
+  return chrome.windows.create({
+    url: chrome.runtime.getURL('src/panel.html'),
+    type: 'popup',
+    width: 460,
+    height: 900,
+  });
+}
+
+chrome.runtime.onInstalled.addListener(async () => {
+  // Kengaytma qayta yuklanganda eski menyu qolib ketadi va
+  // `create` «duplicate id» deb yiqiladi.
+  await chrome.contextMenus.removeAll().catch(() => undefined);
   chrome.contextMenus.create({
     id: 'daho-analyze',
     title: 'Daho bilan tahlil qilish',
@@ -16,8 +43,16 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId !== 'daho-analyze' || !tab?.id) return;
-  await chrome.sidePanel.open({ tabId: tab.id });
+  if (info.menuItemId !== 'daho-analyze') return;
+  if (hasSidePanel && tab?.id) {
+    try {
+      await chrome.sidePanel.open({ tabId: tab.id });
+      return;
+    } catch {
+      /* pastdagi zaxira yoʻl */
+    }
+  }
+  await openWindow();
 });
 
 /**
@@ -58,12 +93,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   return true;
 });
 
+/**
+ * Tahlil qilinadigan varaq.
+ *
+ * Panel alohida oyna boʻlib ochilgan boʻlsa, «joriy oyna» — panelning
+ * oʻzi boʻlib chiqadi. Shuning uchun kengaytma sahifasi boʻlsa oddiy
+ * veb varaqni qidiramiz.
+ */
+async function activeTab() {
+  const [current] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (current?.url && /^https?:/.test(current.url)) return current;
+
+  const others = await chrome.tabs.query({ active: true });
+  return others.find((t) => t.url && /^https?:/.test(t.url)) ?? current;
+}
+
 /** Panel soʻraganda sahifadan maʼlumot yigʻamiz. */
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type !== 'daho:page') return undefined;
 
   (async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = await activeTab();
     if (!tab?.id) return reply({ ok: false, error: 'Faol varaq topilmadi' });
 
     try {

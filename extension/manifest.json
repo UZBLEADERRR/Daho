@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Daho",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Ochiq sahifani tahlil qiladi — YouTube, Telegram, Instagram va boshqalar.",
-  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus", "sidePanel"],
   "host_permissions": ["https://*/*"],
   "action": { "default_title": "Daho bilan tahlil qilish" },
   "background": { "service_worker": "src/background.js", "type": "module" },
