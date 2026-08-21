@@ -1374,7 +1374,10 @@ function GooglePanel() {
 
   // Telefonda qaytish manzili server orqali oʻtadi — u boʻlmasa ulanib
   // boʻlmaydi, shuning uchun buni oldindan aytamiz.
-  const needsServer = Capacitor.isNativePlatform() && !(settings.serverUrl ?? '').trim();
+  const needsServer =
+    Capacitor.isNativePlatform()
+    && !(settings.serverUrl ?? '').trim()
+    && !(settings.googleRedirect ?? '').trim();
 
   const connect = async () => {
     setBusy(true);
@@ -1439,19 +1442,45 @@ function GooglePanel() {
 
           <div className="field">
             <label>Ruxsat etilgan qaytish manzili</label>
-            <input value={redirectUri()} readOnly onFocus={(e) => e.target.select()} />
-            <div className="tiny" style={{ marginTop: 6, lineHeight: 1.55 }}>
+            <input
+              value={settings.googleRedirect || redirectUri()}
+              onChange={(e) => updateSettings({ googleRedirect: e.target.value.trim() })}
+              onFocus={(e) => e.target.select()}
+              placeholder={redirectUri()}
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+            <div className="row" style={{ gap: 8, marginTop: 8 }}>
+              <button
+                className="btn ghost"
+                onClick={() => void copyText(settings.googleRedirect || redirectUri())}
+              >
+                Nusxa olish
+              </button>
+              {settings.googleRedirect && (
+                <button
+                  className="btn ghost"
+                  onClick={() => updateSettings({ googleRedirect: '' })}
+                >
+                  Avtomatikka qaytarish
+                </button>
+              )}
+            </div>
+            <div className="tiny" style={{ marginTop: 8, lineHeight: 1.55 }}>
               Shu manzilni Google Console’da «Authorized redirect URIs» ga
-              aynan koʻchiring — aks holda ulanish rad etiladi.
+              aynan koʻchiring — aks holda ulanish rad etiladi. Odatda oʻzi
+              toʻgʻri toʻldiriladi; boshqa xostingdan foydalansangiz shu
+              yerga qoʻlda yozing.
               {needsServer && (
                 <>
                   {' '}
                   <b style={{ color: 'var(--danger)' }}>
-                    Telefonda avval «Daho serveri» boʻlimiga Railway manzilini
-                    kiriting:
+                    Telefonda «localhost» ishlamaydi:
                   </b>{' '}
-                  Google «localhost» ga qaytara olmaydi, shuning uchun kod
-                  server orqali ilovaga qaytariladi.
+                  Google bunday manzilga qaytara olmaydi. «Daho serveri»
+                  boʻlimiga Railway manzilini kiriting — shunda bu maydon
+                  <code> …/oauth/callback</code> ga oʻzgaradi. Yoki oʻzingiz
+                  boshqaradigan https sahifani shu yerga yozing.
                 </>
               )}
             </div>

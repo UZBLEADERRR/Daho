@@ -92,6 +92,10 @@ function serverBase(): string {
  * `uz.daho.app://oauth?code=…` deep link bilan ilovaga qaytaradi.
  */
 export function redirectUri(): string {
+  // Qoʻlda kiritilgani bor boʻlsa — hammasidan ustun.
+  const manual = (getState().settings.googleRedirect ?? '').trim();
+  if (manual) return manual;
+
   if (isNative()) {
     const base = serverBase();
     if (base) return `${base}/oauth/callback`;

@@ -205,6 +205,12 @@ export interface Settings {
   supabaseToken: string;
   /** Google OAuth mijoz ID si (PKCE — maxfiy soʻz kerak emas) */
   googleClientId: string;
+  /**
+   * Qaytish manzilini qoʻlda belgilash. Boʻsh boʻlsa oʻzi hisoblanadi
+   * (vebda sahifa manzili, telefonda server `/oauth/callback`). Oʻz
+   * sahifangiz yoki boshqa xosting boʻlsa shu yerga yozing.
+   */
+  googleRedirect: string;
   /** Instagram Graph API tokeni (Business/Creator hisob uchun) */
   igToken: string;
   /** Instagram Business hisob ID si */
