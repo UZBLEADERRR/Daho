@@ -1,0 +1,133 @@
+{
+  "artboards": [
+    {
+      "file": "Tokens.dc.html",
+      "title": "Asoslar",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 1400
+    },
+    {
+      "file": "Components.dc.html",
+      "title": "Komponentlar",
+      "x": 1000,
+      "y": 0,
+      "w": 920,
+      "h": 1220
+    },
+    {
+      "file": "Main.dc.html",
+      "title": "Ilova · Chat",
+      "x": 0,
+      "y": 1520,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "AppAgent.dc.html",
+      "title": "Ilova · Agent",
+      "x": 510,
+      "y": 1520,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "AppBook.dc.html",
+      "title": "Ilova · Kitob",
+      "x": 1020,
+      "y": 1520,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "AppCode.dc.html",
+      "title": "Ilova · Code",
+      "x": 1530,
+      "y": 1520,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "AppModels.dc.html",
+      "title": "Ilova · Modellar",
+      "x": 2040,
+      "y": 1520,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "AppLight.dc.html",
+      "title": "Ilova · Kun mavzusi",
+      "x": 2550,
+      "y": 1520,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "Web.dc.html",
+      "title": "Veb · Bosh sahifa",
+      "x": 0,
+      "y": 2484,
+      "w": 1440,
+      "h": 1580
+    },
+    {
+      "file": "WebApp.dc.html",
+      "title": "Veb · Ish stoli",
+      "x": 1560,
+      "y": 2484,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "ExtPopup.dc.html",
+      "title": "Kengaytma · Popup",
+      "x": 0,
+      "y": 4184,
+      "w": 440,
+      "h": 570
+    },
+    {
+      "file": "ExtPanel.dc.html",
+      "title": "Kengaytma · Panel",
+      "x": 560,
+      "y": 4184,
+      "w": 520,
+      "h": 760
+    }
+  ],
+  "annotations": [
+    {
+      "id": "n-asos",
+      "x": 0,
+      "y": -140,
+      "w": 420,
+      "text": "ASOSLAR — ranglar, shrift, radius va komponentlar. Hammasi src/styles.css dagi haqiqiy tokenlardan."
+    },
+    {
+      "id": "n-ilova",
+      "x": 0,
+      "y": 1380,
+      "w": 420,
+      "text": "ILOVA (390x844) — Chat, Agent, Kitob, Code, Modellar va kun mavzusi."
+    },
+    {
+      "id": "n-veb",
+      "x": 0,
+      "y": 2344,
+      "w": 420,
+      "text": "VEB (1440x900) — bosh sahifa va ish stoli koʻrinishi."
+    },
+    {
+      "id": "n-ext",
+      "x": 0,
+      "y": 4044,
+      "w": 420,
+      "text": "KENGAYTMA — brauzer popupi va yon panel. Sahifa matni bilan ishlaydi."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

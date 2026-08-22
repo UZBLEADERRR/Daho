@@ -1,0 +1,333 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><script src="./support.js"></script></head>
+<body>
+<x-dc>
+<helmet>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Daho — tun (asosiy) */
+:root {
+  --bg: #09090b;
+  --surface: #121215;
+  --surface-2: #1a1a1f;
+  --line: #26262c;
+  --text: #ededf0;
+  --muted: #8f8f99;
+  --accent: #8b7cf6;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --danger: #f4655f;
+  --ok: #4ec98a;
+  --radius: 14px;
+}
+.kun {
+  --bg: #fbfbfc;
+  --surface: #ffffff;
+  --surface-2: #f2f2f5;
+  --line: #e3e3e8;
+  --text: #17171a;
+  --muted: #6c6c78;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  /* Tokenlar shu daraxtda qayta hisoblanishi uchun rang shu yerda ham beriladi */
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.005em;
+}
+svg { display: block; }
+
+/* ---- tipografika ---- */
+.display { font-size: 22px; font-weight: 660; letter-spacing: -0.025em; margin: 0; }
+.h2 { font-size: 17px; font-weight: 640; letter-spacing: -0.015em; margin: 0; }
+.b  { font-size: 14.5px; font-weight: 550; }
+.muted { color: var(--muted); font-size: 13px; }
+.tiny { font-size: 11.5px; color: var(--muted); }
+.section-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+
+/* ---- karkas ---- */
+.row { display: flex; align-items: center; gap: 9px; }
+.between { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.grow { flex: 1 1 auto; min-width: 0; }
+.col { display: flex; flex-direction: column; }
+.trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pad { padding: 14px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 13px;
+}
+
+/* ---- boshqaruvlar ---- */
+.btn {
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 11px; padding: 11px 16px; font: inherit;
+  font-size: 14.5px; font-weight: 550;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+}
+.btn.ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+.btn.mini { padding: 7px 12px; font-size: 13px; border-radius: 9px; }
+.btn.wide { width: 100%; }
+.btn.off { opacity: 0.45; }
+
+.icon-btn {
+  width: 38px; height: 38px; border-radius: 10px;
+  display: grid; place-items: center; color: var(--muted);
+  background: none; border: none; flex: 0 0 auto;
+}
+.icon-btn.on { color: var(--accent); background: var(--accent-soft); }
+
+.round-btn {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--muted);
+  background: none; border: none; flex: 0 0 auto;
+}
+.round-btn.primary { background: var(--accent); color: #fff; }
+.round-btn.rec { background: var(--danger); color: #fff; }
+
+.chip {
+  font-size: 12.5px; padding: 6px 12px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted);
+  border: 1px solid var(--line); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chip.sm { font-size: 11.5px; padding: 3px 9px; }
+.chip.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.chip.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.field > span {
+  display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 5px;
+}
+.input {
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; width: 100%; color: var(--muted);
+}
+.input.focus { border-color: var(--accent); color: var(--text); }
+
+.switch {
+  width: 40px; height: 23px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  position: relative; flex: 0 0 auto;
+}
+.switch i {
+  position: absolute; top: 2px; left: 2px; width: 17px; height: 17px;
+  border-radius: 50%; background: var(--muted);
+}
+.switch.on { background: var(--accent-soft); border-color: var(--accent); }
+.switch.on i { left: auto; right: 2px; background: var(--accent); }
+
+/* ---- qatorlar ---- */
+.action-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 11px 12px; border-radius: 13px; border: 1px solid transparent;
+}
+.action-row.on { background: var(--accent-soft); border-color: var(--accent); }
+.action-icon {
+  width: 38px; height: 38px; border-radius: 11px; background: var(--surface-2);
+  display: grid; place-items: center; flex: 0 0 auto; color: var(--muted);
+}
+.model-row, .prov-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 12px; border-radius: 11px;
+  background: var(--surface); border: 1px solid var(--line); text-align: left;
+}
+.model-row.off { opacity: 0.5; }
+.model-row.on { border-color: var(--accent); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); flex: 0 0 auto; }
+.dot.on { background: var(--ok); }
+
+/* ---- ilova karkasi ---- */
+.phone {
+  width: 390px; height: 844px; background: var(--bg);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.status {
+  height: 44px; flex: 0 0 auto; display: flex; align-items: flex-end;
+  justify-content: space-between; padding: 0 20px 6px;
+  font-size: 12px; font-weight: 600; color: var(--text);
+}
+.topbar {
+  height: 52px; flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 0 8px; border-bottom: 1px solid var(--line);
+}
+.tabs { display: flex; gap: 2px; background: var(--surface-2); border-radius: 11px; padding: 3px; margin: 0 auto; }
+.tab { padding: 6px 18px; border-radius: 9px; font-size: 14px; font-weight: 500; color: var(--muted); }
+.tab.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.seg {
+  display: flex; gap: 4px; padding: 10px 14px; border-bottom: 1px solid var(--line);
+  flex: 0 0 auto; overflow: hidden;
+}
+.seg .chip { flex: 0 0 auto; }
+.body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.composer { flex: 0 0 auto; padding: 6px 10px 14px; }
+.composer-box {
+  display: flex; align-items: flex-end; gap: 4px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px;
+}
+.composer-box .txt { flex: 1 1 auto; padding: 10px 6px; color: var(--muted); font-size: 15px; }
+
+/* ---- suhbat ---- */
+.msgs { display: flex; flex-direction: column; gap: 16px; padding: 16px 14px 8px; }
+.msg-user {
+  align-self: flex-end; max-width: 86%; background: var(--accent); color: #fff;
+  padding: 10px 14px; border-radius: 17px 17px 4px 17px; font-size: 15px;
+}
+.md p { margin: 0 0 10px; }
+.md h3 { font-size: 16px; font-weight: 640; margin: 16px 0 7px; letter-spacing: -0.01em; }
+.md ul { margin: 0 0 10px; padding-left: 21px; }
+.md li { margin-bottom: 4px; }
+.msg-actions { display: flex; gap: 3px; margin-top: 8px; }
+.msg-actions span {
+  font-size: 11.5px; color: var(--muted); padding: 4px 9px;
+  border-radius: 8px; background: var(--surface); border: 1px solid var(--line);
+}
+.tool-line {
+  display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 11px; margin-bottom: 10px;
+}
+.code {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  overflow: hidden; margin-bottom: 10px;
+}
+.code header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 11px; border-bottom: 1px solid var(--line);
+  font-size: 11.5px; color: var(--muted);
+}
+.code pre {
+  margin: 0; padding: 11px; font: 12px/1.6 ui-monospace, 'SF Mono', Menlo, monospace;
+  color: var(--text); white-space: pre; overflow: hidden;
+}
+.k { color: #c4b5fd; } .s { color: #86dfae; } .c { color: var(--muted); }
+
+.book-head { display: flex; gap: 13px; }
+.book-cover {
+  width: 108px; height: 152px; border-radius: 10px; flex: 0 0 auto;
+  background: linear-gradient(160deg, #241f47 0%, #120f24 60%, #0c0b16 100%);
+  position: relative; overflow: hidden; padding: 13px 12px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+}
+.cover-glow {
+  position: absolute; top: -34px; right: -34px; width: 104px; height: 104px;
+  border-radius: 50%; background: radial-gradient(circle, rgba(139,124,246,.8), transparent 70%);
+}
+.book-title { font-size: 15px; font-weight: 640; line-height: 1.2; color: #f2f0ff; letter-spacing: -.02em; }
+.book-by { font-size: 8px; color: rgba(242,240,255,.6); margin-top: 7px; letter-spacing: .08em; text-transform: uppercase; }
+.progress { height: 4px; border-radius: 999px; background: var(--surface-2); margin-top: 12px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.ch {
+  display: flex; align-items: center; gap: 11px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 12px;
+}
+.ch + .ch { margin-top: 6px; }
+.ch-n {
+  font: 600 11.5px/1 ui-monospace, Menlo, monospace; color: var(--muted);
+  width: 20px; flex: 0 0 auto; letter-spacing: .02em;
+}
+.ch.live { border-color: var(--accent); background: var(--accent-soft); }
+.ch:not(.done):not(.live) { opacity: .55; }
+.ch-mark {
+  width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto;
+}
+.ch-mark.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.spin {
+  width: 15px; height: 15px; border-radius: 50%; flex: 0 0 auto;
+  border: 2px solid var(--accent-soft); border-top-color: var(--accent);
+}
+</style>
+</helmet>
+<div class="phone">
+  <div class="status">
+    <span>9:41</span>
+    <span style="display:flex;gap:6px;align-items:center;opacity:.9">
+      <svg width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.3" y="5" width="3" height="6" rx="1"/><rect x="8.6" y="2.5" width="3" height="8.5" rx="1"/><rect x="12.9" y="0" width="3" height="11" rx="1" opacity=".35"/></svg>
+      <svg width="15" height="11" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M2 6.5a15 15 0 0 1 20 0M6 11a9 9 0 0 1 12 0"/><circle cx="12" cy="15.5" r="1.3" fill="currentColor"/></svg>
+      <svg width="22" height="11" viewBox="0 0 26 12" fill="none"><rect x=".7" y=".7" width="21" height="10.6" rx="3" stroke="currentColor" stroke-opacity=".45"/><rect x="2.4" y="2.4" width="15" height="7.2" rx="1.8" fill="currentColor"/><path d="M23.4 4.2v3.6a2.4 2.4 0 0 0 0-3.6z" fill="currentColor" fill-opacity=".45"/></svg>
+    </span>
+  </div>
+  <div class="topbar">
+    <span class="icon-btn"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5 7.5 12l7 7"/></svg></span>
+    <span class="grow trunc" style="font-size:15.5px;font-weight:580">Sunʼiy intellekt asoslari</span>
+    <span class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="5" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="19" r="1.4" fill="currentColor"/></svg></span>
+  </div>
+
+  <div class="body" style="padding:14px;display:flex;flex-direction:column;gap:11px">
+    <div class="book-head">
+      <div class="book-cover">
+        <div class="cover-glow"></div>
+        <div class="book-title">Sunʼiy<br>intellekt<br>asoslari</div>
+        <div class="book-by">Sarvarbek · Daho</div>
+      </div>
+      <div class="grow">
+        <div class="chips" style="margin-bottom:8px">
+          <span class="chip sm accent">Yozilmoqda</span>
+          <span class="chip sm">12 bob</span>
+        </div>
+        <div class="muted" style="line-height:1.5">
+          Oʻzbek tilida, oʻrta daraja. Har bob soʻngida savollar va rasm.
+        </div>
+        <div class="progress"><i style="width:58%"></i></div>
+        <div class="tiny" style="margin-top:6px">7 / 12 bob · ~104 sahifa</div>
+      </div>
+    </div>
+
+    <div class="row" style="gap:8px">
+      <span class="btn mini ghost grow" style="justify-content:center">PDF</span>
+      <span class="btn mini ghost grow" style="justify-content:center">DOCX</span>
+      <span class="btn mini grow" style="justify-content:center">Davom ettirish</span>
+    </div>
+
+    <div class="section-label" style="margin:6px 2px 0">Boblar</div>
+
+    <div class="ch done">
+      <span class="ch-n">01</span>
+      <span class="grow"><span class="b trunc" style="display:block">Sunʼiy intellekt nima</span><span class="tiny">2 940 soʻz · rasm bor</span></span>
+      <span class="ch-mark ok"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 5 5L20 7"/></svg></span>
+    </div>
+    <div class="ch done">
+      <span class="ch-n">02</span>
+      <span class="grow"><span class="b trunc" style="display:block">Maʼlumot va bilim</span><span class="tiny">3 180 soʻz · rasm bor</span></span>
+      <span class="ch-mark ok"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 5 5L20 7"/></svg></span>
+    </div>
+    <div class="ch live">
+      <span class="ch-n">08</span>
+      <span class="grow"><span class="b trunc" style="display:block">Neyron tarmoqlar</span><span class="tiny" style="color:var(--accent)">yozilmoqda · 1 240 soʻz</span></span>
+      <span class="spin"></span>
+    </div>
+    <div class="ch">
+      <span class="ch-n">09</span>
+      <span class="grow"><span class="b trunc" style="display:block">Til modellari</span><span class="tiny">navbatda</span></span>
+    </div>
+    <div class="ch">
+      <span class="ch-n">10</span>
+      <span class="grow"><span class="b trunc" style="display:block">Amaliy misollar</span><span class="tiny">navbatda</span></span>
+    </div>
+  </div>
+
+  <div class="composer">
+    <div class="composer-box">
+      <span class="round-btn"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      <span class="txt">Bobga nima qoʻshay?</span>
+      <span class="round-btn primary"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

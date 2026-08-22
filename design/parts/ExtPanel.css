@@ -1,0 +1,43 @@
+.wrap { display: flex; height: 760px; background: var(--bg); }
+.site {
+  flex: 1 1 auto; background: #101014; padding: 22px 20px; overflow: hidden;
+  border-right: 1px solid var(--line); opacity: .55;
+}
+.s-nav { display: flex; gap: 10px; margin-bottom: 26px; }
+.s-nav i { height: 7px; border-radius: 4px; background: #24242b; display: block; }
+.s-h { height: 15px; width: 70%; border-radius: 5px; background: #2c2c35; margin-bottom: 18px; }
+.s-l { height: 8px; border-radius: 4px; background: #1f1f26; margin-bottom: 11px; }
+.s-l.sel { background: color-mix(in srgb, var(--accent) 42%, #1f1f26); }
+.s-img { height: 74px; border-radius: 8px; background: #1c1c23; margin: 18px 0; }
+
+.panel {
+  width: 396px; flex: 0 0 auto; background: var(--bg);
+  display: flex; flex-direction: column; min-height: 0;
+  box-shadow: -18px 0 44px rgba(0,0,0,.5);
+}
+.pt { display: flex; align-items: center; gap: 9px; padding: 12px 12px 12px 14px; border-bottom: 1px solid var(--line); }
+.ext-mark {
+  width: 22px; height: 22px; border-radius: 7px; background: var(--accent); color: #fff;
+  display: grid; place-items: center; font-size: 12.5px; font-weight: 700; letter-spacing: -.03em; flex: 0 0 auto;
+}
+.brand { font-size: 15px; font-weight: 660; letter-spacing: -.03em; }
+.brand span { color: var(--accent); }
+.ctx {
+  display: flex; align-items: center; gap: 9px; margin: 12px 14px 0;
+  font-size: 12.5px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 8px 11px;
+}
+.pbody { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 16px 14px; display: flex; flex-direction: column; gap: 15px; }
+.msg-user { font-size: 14px; }
+.quote {
+  border-left: 2px solid var(--accent); padding: 2px 0 2px 12px; margin-bottom: 12px;
+  font-size: 13px; color: var(--muted); line-height: 1.55;
+}
+.md ul { padding-left: 19px; }
+.md li { font-size: 14px; }
+.md p { font-size: 14px; }
+.cursor {
+  display: inline-block; width: 2px; height: 14px; background: var(--accent);
+  vertical-align: -2px; margin-left: 3px; border-radius: 1px;
+}
+.pcomp { padding: 12px 14px 16px; border-top: 1px solid var(--line); }

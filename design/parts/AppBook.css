@@ -1,0 +1,35 @@
+.book-head { display: flex; gap: 13px; }
+.book-cover {
+  width: 108px; height: 152px; border-radius: 10px; flex: 0 0 auto;
+  background: linear-gradient(160deg, #241f47 0%, #120f24 60%, #0c0b16 100%);
+  position: relative; overflow: hidden; padding: 13px 12px;
+  display: flex; flex-direction: column; justify-content: flex-end;
+}
+.cover-glow {
+  position: absolute; top: -34px; right: -34px; width: 104px; height: 104px;
+  border-radius: 50%; background: radial-gradient(circle, rgba(139,124,246,.8), transparent 70%);
+}
+.book-title { font-size: 15px; font-weight: 640; line-height: 1.2; color: #f2f0ff; letter-spacing: -.02em; }
+.book-by { font-size: 8px; color: rgba(242,240,255,.6); margin-top: 7px; letter-spacing: .08em; text-transform: uppercase; }
+.progress { height: 4px; border-radius: 999px; background: var(--surface-2); margin-top: 12px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.ch {
+  display: flex; align-items: center; gap: 11px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 12px;
+}
+.ch + .ch { margin-top: 6px; }
+.ch-n {
+  font: 600 11.5px/1 ui-monospace, Menlo, monospace; color: var(--muted);
+  width: 20px; flex: 0 0 auto; letter-spacing: .02em;
+}
+.ch.live { border-color: var(--accent); background: var(--accent-soft); }
+.ch:not(.done):not(.live) { opacity: .55; }
+.ch-mark {
+  width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto;
+}
+.ch-mark.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.spin {
+  width: 15px; height: 15px; border-radius: 50%; flex: 0 0 auto;
+  border: 2px solid var(--accent-soft); border-top-color: var(--accent);
+}

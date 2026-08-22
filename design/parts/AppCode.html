@@ -1,0 +1,61 @@
+<div class="phone">
+<!--@status-->
+  <div class="topbar">
+    <span class="icon-btn"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5 7.5 12l7 7"/></svg></span>
+    <span class="grow" style="min-width:0">
+      <span class="trunc" style="display:block;font-size:15.5px;font-weight:580">QoraQosh · Telegram bot</span>
+      <span class="tiny">kimi-k2 · <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="display:inline-block;vertical-align:-1px"><path d="M9 3h6l-1 6 3.5 3.5H6.5L10 9z"/><path d="M12 12.5V21"/></svg> biriktirilgan</span>
+    </span>
+    <span class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h12"/></svg></span>
+  </div>
+
+  <div class="runbar">
+    <span class="spin"></span>
+    <span class="grow trunc">Toʻlov moduli · 14/60 qadam</span>
+    <span class="btn mini ghost" style="padding:5px 11px">Toʻxtat</span>
+  </div>
+
+  <div class="body" style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+    <div class="card" style="padding:12px">
+      <div class="between" style="margin-bottom:10px">
+        <span class="section-label">Reja</span>
+        <span class="tiny">4 / 7</span>
+      </div>
+      <div class="step done"><span class="sdot"></span><span class="grow trunc">Loyiha tuzilmasi va konfiguratsiya</span></div>
+      <div class="step done"><span class="sdot"></span><span class="grow trunc">Maʼlumotlar bazasi sxemasi</span></div>
+      <div class="step done"><span class="sdot"></span><span class="grow trunc">Buyurtma oqimi (FSM)</span></div>
+      <div class="step live"><span class="sdot"></span><span class="grow trunc">Toʻlov: Click va Payme</span></div>
+      <div class="step"><span class="sdot"></span><span class="grow trunc">Admin panel</span></div>
+      <div class="step"><span class="sdot"></span><span class="grow trunc">Testlar va README</span></div>
+    </div>
+
+    <div class="tool-line">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 8 5 12l4 4M15 8l4 4-4 4"/></svg>
+      <span class="grow trunc">write_file — <b style="font-weight:550;color:var(--text)">bot/payments/click.py</b></span>
+      <span class="tiny" style="color:var(--ok)">+128</span>
+    </div>
+
+    <div class="code">
+      <header><span>click.py</span><span>python</span></header>
+      <pre><span class="c"># Click imzosini tekshirish</span>
+<span class="k">def</span> verify(data, secret):
+    raw = <span class="s">f"{data['click_trans_id']}{secret}"</span>
+    <span class="k">return</span> md5(raw) == data[<span class="s">'sign_string'</span>]</pre>
+    </div>
+
+    <div class="section-label" style="margin:2px 2px 0">Skrinshotlar</div>
+    <div class="shots">
+      <div class="shot"><div class="shot-in"></div></div>
+      <div class="shot"><div class="shot-in b2"></div></div>
+      <div class="shot new"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>
+    </div>
+  </div>
+
+  <div class="composer">
+    <div class="composer-box">
+      <span class="round-btn"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      <span class="txt">Yoʻnaltirish yoki savol…</span>
+      <span class="round-btn primary"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span>
+    </div>
+  </div>
+</div>
