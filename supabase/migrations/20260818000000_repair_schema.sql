@@ -14,6 +14,98 @@
 -- ============================================================================
 
 
+-- ============================================================================
+--  `is_admin` ikkilanib qolgan boʻlsa — tozalaymiz
+--
+--  Xato: «function public.is_admin() is not unique».
+--
+--  Bazada ikkita funksiya paydo boʻlgan:
+--      is_admin()          — eskiroq, argumentsiz
+--      is_admin(uuid)      — hozirgi, `default auth.uid()` bilan
+--
+--  Ikkalasini ham `is_admin()` deb chaqirish mumkin, shuning uchun
+--  PostgreSQL qaysi birini tanlashni bilmaydi va RLS siyosatlari
+--  butunlay ishlamay qoladi.
+--
+--  Argumentlisi qoladi (u ham `is_admin()`, ham `is_admin(uuid)` boʻlib
+--  ishlaydi). Argumentsizini olib tashlaymiz — lekin unga bogʻlangan
+--  siyosatlar borligi uchun avval ularni saqlab, keyin qaytadan
+--  yaratamiz. Siyosat matni oʻzgarmaydi.
+-- ============================================================================
+
+do $$
+declare
+  r record;
+begin
+  if not exists (
+    select 1 from pg_proc pr
+      join pg_namespace n on n.oid = pr.pronamespace
+     where n.nspname = 'public' and pr.proname = 'is_admin' and pr.pronargs = 0
+  ) then
+    return;   -- ikkilanish yoʻq
+  end if;
+
+  /*
+   * Tartib muhim: avval TOʻGʻRI funksiya boʻlishi kerak.
+   *
+   * Argumentsizini oldin oʻchirsak, siyosatlarni qaytarish paytida
+   * `is_admin()` umuman topilmay qoladi. Shuning uchun avval
+   * argumentlisini yaratamiz — u ham `is_admin()` boʻlib chaqiriladi.
+   */
+  alter table if exists public.profiles
+    add column if not exists role text default 'user';
+
+  create or replace function public.is_admin(p_user uuid default auth.uid())
+  returns boolean language sql stable security definer set search_path = public as $fn$
+    select exists (
+      select 1 from public.profiles p where p.id = p_user and p.role = 'admin'
+    );
+  $fn$;
+
+  create temp table saqlangan_siyosat (
+    nomi text, jadval text, buyruq text, roli text, qoida text, tekshiruv text
+  ) on commit drop;
+
+  insert into saqlangan_siyosat
+  select pol.polname,
+         pol.polrelid::regclass::text,
+         case pol.polcmd
+           when 'r' then 'select' when 'a' then 'insert'
+           when 'w' then 'update' when 'd' then 'delete' else 'all'
+         end,
+         coalesce(
+           (select string_agg(quote_ident(rolname), ', ')
+              from pg_roles where oid = any(pol.polroles)),
+           'public'
+         ),
+         pg_get_expr(pol.polqual, pol.polrelid),
+         pg_get_expr(pol.polwithcheck, pol.polrelid)
+    from pg_policy pol
+   where pg_get_expr(pol.polqual, pol.polrelid) like '%is_admin()%'
+      or pg_get_expr(pol.polwithcheck, pol.polrelid) like '%is_admin()%';
+
+  for r in select * from saqlangan_siyosat loop
+    execute format('drop policy %I on %s', r.nomi, r.jadval);
+  end loop;
+
+  begin
+    drop function public.is_admin();
+  exception when others then
+    raise notice 'is_admin() olib tashlanmadi: %', sqlerrm;
+  end;
+
+  -- Siyosatlar qaytadi; endi ular argumentli funksiyaga bogʻlanadi.
+  for r in select * from saqlangan_siyosat loop
+    execute format(
+      'create policy %I on %s for %s to %s%s%s',
+      r.nomi, r.jadval, r.buyruq, r.roli,
+      case when r.qoida is not null then ' using (' || r.qoida || ')' else '' end,
+      case when r.tekshiruv is not null then ' with check (' || r.tekshiruv || ')' else '' end
+    );
+  end loop;
+end $$;
+
+
 -- app_settings
 alter table if exists public.app_settings
   add column if not exists key text,
