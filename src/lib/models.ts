@@ -24,6 +24,10 @@ export interface ModelInfo {
   inPrice?: number;
   /** 1 mln chiqish tokeni narxi (USD) */
   outPrice?: number;
+  /** Daho modeli darajasi: 0 — bepul tarifga ham ochiq */
+  tier?: number;
+  /** Rasm chiqara oladimi */
+  images?: boolean;
   /** Bepul modelmi */
   free?: boolean;
 }

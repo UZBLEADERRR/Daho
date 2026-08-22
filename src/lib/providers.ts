@@ -21,6 +21,8 @@ import {
   type StreamResult,
 } from './gemini';
 import { cachedModels, geminiModel, getModels, type ModelInfo, type ModelRole } from './models';
+import { accessToken, session, signedIn } from './auth';
+import { functionsUrl, hasServer } from './config';
 import { getState } from './store';
 import { recordUsage } from './usage';
 import type { Attachment, ProviderConfig, RoleModels } from './types';
@@ -119,6 +121,61 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
 ];
 
+/* ------------------------------------------------------------------ */
+/*  Daho provayderi — foydalanuvchi kalit kiritmaydi                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Daho hisobi orqali ishlaydigan «provayder».
+ *
+ * Ilova endi model soʻrovlarini toʻgʻridan-toʻgʻri OpenRouter’ga emas, oʻz
+ * serverimizga yuboradi: u yerda tarif, kvota va token hisobi tekshiriladi.
+ * Server OpenAI bilan mos javob berganligi uchun quyidagi butun qatlam —
+ * stream, vositalar, rasm — hech oʻzgarishsiz ishlayveradi.
+ */
+export const DAHO = 'daho';
+
+function dahoBase(): ProviderConfig | null {
+  if (!hasServer() || !signedIn()) return null;
+  return {
+    id: DAHO,
+    label: 'Daho',
+    baseUrl: functionsUrl('ai'),
+    apiKey: session()?.accessToken ?? '',
+    enabled: true,
+    manual: [],
+  };
+}
+
+/** Sinxron variant — roʻyxat va UI uchun (token yangi boʻlmasligi mumkin). */
+export function dahoConfigSync(): ProviderConfig | null {
+  return dahoBase();
+}
+
+/** Soʻrov yuborishdan oldin — tokenni yangilab beradi. */
+export async function dahoConfig(): Promise<ProviderConfig | null> {
+  const base = dahoBase();
+  if (!base) return null;
+  const token = await accessToken();
+  if (!token) return null;
+  return { ...base, apiKey: token };
+}
+
+/** Daho modellari ishlayaptimi — hisobga kirilgan va server bor. */
+export function hasDaho(): boolean {
+  return dahoBase() !== null;
+}
+
+export function isDahoRef(ref: string): boolean {
+  return parseRef(ref).provider === DAHO;
+}
+
+/** Soʻrov uchun provayder sozlamasi (Daho boʻlsa yangi token bilan). */
+async function resolveConfig(providerId: string): Promise<ProviderConfig | undefined> {
+  if (providerId === DAHO) return (await dahoConfig()) ?? undefined;
+  return providerConfig(providerId);
+}
+
 export function presetById(id: string): ProviderPreset | undefined {
   return PROVIDER_PRESETS.find((p) => p.id === id);
 }
@@ -149,12 +206,16 @@ export function isGeminiRef(ref: string): boolean {
 
 /** Sozlamalardagi provayder (yoqilgan boʻlsa). */
 export function providerConfig(id: string): ProviderConfig | undefined {
+  if (id === DAHO) return dahoConfigSync() ?? undefined;
   return getState().settings.providers?.find((p) => p.id === id);
 }
 
 /** Ishlashga tayyor provayderlar — kaliti bor va yoqilgan. */
 export function activeProviders(): ProviderConfig[] {
-  return (getState().settings.providers ?? []).filter((p) => p.enabled && p.apiKey.trim());
+  const own = (getState().settings.providers ?? []).filter((p) => p.enabled && p.apiKey.trim());
+  const daho = dahoConfigSync();
+  // Daho modellari doim roʻyxat boshida turadi.
+  return daho ? [daho, ...own] : own;
 }
 
 /* ------------------------------------------------------------------ */
@@ -171,7 +232,7 @@ export function hasGemini(): boolean {
  * (yoki boshqa provayder) ulangan boʻlsa ham ilova toʻliq gaplashadi.
  */
 export function canChat(): boolean {
-  return hasGemini() || activeProviders().length > 0;
+  return hasDaho() || hasGemini() || activeProviders().length > 0;
 }
 
 /**
@@ -640,10 +701,12 @@ export async function streamAny(opts: StreamOptions): Promise<StreamResult> {
   const ref = parseRef(opts.model);
   if (!ref.provider) return streamGenerate(opts);
 
-  const cfg = providerConfig(ref.provider);
+  const cfg = await resolveConfig(ref.provider);
   if (!cfg || !cfg.apiKey.trim()) {
     throw new GeminiError(
-      `«${ref.provider}» provayderining kaliti kiritilmagan. Sozlamalar → AI modellar.`,
+      ref.provider === DAHO
+        ? 'Daho hisobingizga kiring — modellar shundan keyin ishlaydi.'
+        : `«${ref.provider}» provayderining kaliti kiritilmagan. Sozlamalar → AI modellar.`,
       0,
     );
   }
@@ -756,7 +819,7 @@ async function imageViaProvider(
   signal?: AbortSignal,
 ): Promise<Attachment[]> {
   const { provider, model } = parseRef(ref);
-  const cfg = providerConfig(provider);
+  const cfg = await resolveConfig(provider);
   if (!cfg?.apiKey.trim()) throw new GeminiError('Rasm uchun provayder kaliti yoʻq.', 0);
 
   const headers: Record<string, string> = {
@@ -870,6 +933,12 @@ export interface ProviderModel {
   inPrice?: number;
   /** 1 mln chiqish tokeni narxi (USD) */
   outPrice?: number;
+  /** Koʻrsatiladigan nom — Daho modellarida "DahoX" */
+  name?: string;
+  /** Qisqa izoh */
+  tagline?: string;
+  /** Daho modeli darajasi (0 = bepul, katta = kuchli) */
+  tier?: number;
 }
 
 interface ListCache {
@@ -924,6 +993,9 @@ function readProviderModel(m: any): ProviderModel | null {
     context: typeof m?.context_length === 'number' ? m.context_length : undefined,
     inPrice: perMillion(m?.pricing?.prompt),
     outPrice: perMillion(m?.pricing?.completion),
+    name: typeof m?.name === 'string' && m.name ? m.name : undefined,
+    tagline: typeof m?.description === 'string' && m.description ? m.description : undefined,
+    tier: typeof m?.daho?.tier === 'number' ? m.daho.tier : undefined,
   };
 }
 
@@ -1053,14 +1125,16 @@ function guessRole(id: string): ModelRole {
 }
 
 function providerModelInfo(cfg: ProviderConfig, m: ProviderModel): ModelInfo {
+  const daho = cfg.id === DAHO;
   return {
     id: makeRef(cfg.id, m.id),
-    label: m.id,
+    label: m.name ?? m.id,
     // Rasm chiqaradigan model «image» roliga tushadi, qolgani nomidan aniqlanadi.
     role: m.draws ? 'image' : guessRole(m.id),
-    score: guessScore(m.id),
-    preview: /preview|exp|beta/.test(m.id.toLowerCase()),
-    description: cfg.label,
+    // Daho modellari serverdagi tartibda turadi, nomidan taxmin qilinmaydi.
+    score: daho ? 1000 - (m.context ? 0 : 1) : guessScore(m.id),
+    preview: daho ? false : /preview|exp|beta/.test(m.id.toLowerCase()),
+    description: daho ? (m.tagline ?? '') : cfg.label,
     provider: cfg.id,
     providerLabel: cfg.label,
     vision: m.vision,
@@ -1068,7 +1142,9 @@ function providerModelInfo(cfg: ProviderConfig, m: ProviderModel): ModelInfo {
     context: m.context,
     inPrice: m.inPrice,
     outPrice: m.outPrice,
-    free: isFreeModel(m),
+    free: daho ? (m.tier ?? 0) === 0 : isFreeModel(m),
+    tier: m.tier,
+    images: m.draws,
   };
 }
 
@@ -1133,6 +1209,12 @@ export async function allModels(force = false): Promise<ModelInfo[]> {
  * Qoʻlda kiritilganlar HAR DOIM qoladi — foydalanuvchi aynan oʻshani tanlagan.
  */
 function trimProvider(cfg: ProviderConfig, list: ProviderModel[]): ModelInfo[] {
+  // Daho modellari sanoqli va serverda allaqachon saralangan — tegmaymiz.
+  if (cfg.id === DAHO) {
+    // Server tartibini saqlaymiz: birinchisi eng yuqorida turadi.
+    return list.map((m, i) => ({ ...providerModelInfo(cfg, m), score: 1000 - i }));
+  }
+
   const manual = (cfg.manual ?? []).map((id) =>
     providerModelInfo(cfg, list.find((m) => m.id === id) ?? guessProviderModel(id)),
   );
@@ -1254,7 +1336,38 @@ const JOB_SLOT: Partial<Record<JobKind, keyof RoleModels>> = {
 };
 
 /** Ish turi uchun modelni qanchalik yoqtirishimiz. */
+/**
+ * Daho modeli qaysi ishga qanchalik mos.
+ *
+ * `tier` — tarif darajasi: 0 bepul/yengil, katta son kuchliroq model.
+ * Jiddiy ishlarda kuchlisi, mayda ishlarda arzoni tanlanadi — shunda
+ * foydalanuvchining oylik tokeni bekorga sarflanmaydi.
+ */
+function dahoJobScore(m: ModelInfo, job: JobKind): number {
+  const tier = m.tier ?? 0;
+  let score = 100 + tier * 30;
+
+  if (job === 'koʻrish' || job === 'dizayn') {
+    if (!m.vision) return -1;
+    score += 60;
+  }
+  if (job === 'tez') {
+    // Tez ish — eng arzon model yetadi.
+    score = 200 - tier * 40;
+  }
+  if (job === 'reja' || job === 'tekshir') score += tier * 25;
+  if (job === 'kod') score += tier * 20;
+  if (job === 'matn') score += tier * 10;
+
+  if (job !== 'koʻrish' && job !== 'matn' && m.tools === false) score -= 200;
+  return score;
+}
+
 function jobScore(m: ModelInfo, job: JobKind): number {
+  // Daho modellarining nomi ataylab neytral («DahoX») — nomidan kuchini
+  // taxmin qilib boʻlmaydi, shuning uchun serverdagi darajaga tayanamiz.
+  if (m.provider === DAHO) return dahoJobScore(m, job);
+
   const id = m.label.toLowerCase();
   let score = priorityRank(m.label) + m.score / 10;
 
