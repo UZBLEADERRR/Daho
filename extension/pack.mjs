@@ -11,7 +11,15 @@
  * oldindan tekshiradi — rad javobi kelmasin.
  */
 
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync, crc32 } from 'node:zlib';
@@ -63,6 +71,25 @@ if (problems.length) {
 /* ------------------------------------------------------------------ */
 /*  Arxivga tushadigan fayllar                                         */
 /* ------------------------------------------------------------------ */
+
+/*
+ * Server manzilini kengaytmaga singdiramiz.
+ *
+ * Aks holda foydalanuvchi uni qoʻlda yozishi kerak, yozmasa kengaytma
+ * jimgina Google’ga toʻgʻridan-toʻgʻri murojaat qiladi va «kalit yoʻq»
+ * yoki 503 xatosiga uriladi. Railway oʻz domenini oʻzgaruvchida beradi.
+ */
+const serverUrl = (
+  process.env.DAHO_SERVER_URL ||
+  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '')
+).replace(/\/+$/, '');
+
+writeFileSync(
+  join(here, 'config.json'),
+  JSON.stringify({ serverUrl }, null, 2) + '\n',
+);
+if (serverUrl) console.log(`  server: ${serverUrl}`);
+else console.log('  server manzili berilmadi — foydalanuvchi oʻzi kiritadi');
 
 const SKIP = new Set(['pack.mjs', 'README.md', '.DS_Store', 'node_modules', 'dist']);
 

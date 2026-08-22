@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "sync": "npm run build && cap sync android",
     "apk": "npm run sync && cd android && ./gradlew assembleDebug",
-    "ext": "node extension/pack.mjs"
+    "ext": "node extension/pack.mjs",
+    "sql": "node supabase/build-setup.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.1",

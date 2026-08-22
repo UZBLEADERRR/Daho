@@ -13,10 +13,25 @@
 const CONFIG_TTL = 10 * 60 * 1000;
 let configCache = null;
 
-/** Server manzili — Sozlamalarda allaqachon bor. */
+/**
+ * Server manzili.
+ *
+ * Avval foydalanuvchi kiritgani, boʻlmasa kengaytmaga yigʻilishda
+ * singdirilgani. Ikkinchisi tufayli oddiy foydalanuvchi hech narsa
+ * yozmasdan ishlata oladi.
+ */
 async function serverUrl() {
   const s = await chrome.storage.local.get('serverUrl');
-  return (s.serverUrl ?? '').replace(/\/+$/, '');
+  const saved = (s.serverUrl ?? '').replace(/\/+$/, '');
+  if (saved) return saved;
+
+  try {
+    const res = await fetch(chrome.runtime.getURL('config.json'));
+    const cfg = await res.json();
+    return (cfg?.serverUrl ?? '').replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
 }
 
 /** Supabase manzili va ochiq kaliti — serverdan olinadi. */
@@ -188,7 +203,11 @@ export async function aiFetch(path, body, ownKey, query = {}) {
   }
 
   if (!ownKey) {
-    throw new Error('Daho hisobingizga kiring yoki Sozlamalarda kalit kiriting.');
+    throw new Error(
+      cfg
+        ? 'Daho hisobingizga kiring — panel yuqorisidagi tugmadan.'
+        : 'Server manzili topilmadi. Sozlamalarda Daho serveri manzilini kiriting.',
+    );
   }
 
   const url = new URL(`https://generativelanguage.googleapis.com/v1beta${path}`);

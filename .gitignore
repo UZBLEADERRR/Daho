@@ -27,3 +27,6 @@ server/node_modules
 
 # Kengaytma arxivi — build paytida yasaladi
 public/daho-extension.zip
+
+# Yigʻilishda yasaladi
+extension/config.json

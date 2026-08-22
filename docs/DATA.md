@@ -4,6 +4,14 @@ Savol aniq edi — «maʼlumotlar saqlanyaptimi, API kalitlar qayerda?».
 Quyida haqiqiy holat. Barcha jadvallar `supabase/migrations/` da, RLS
 (qatorlar himoyasi) hammasida yoqilgan.
 
+## Bazani sozlash
+
+Supabase → SQL Editor ga **`supabase/setup.sql`** ni qoʻyib «Run» bosing.
+Bitta fayl — toʻqqizta migratsiyani tartib bilan oʻz ichiga oladi.
+
+Bir necha marta ishga tushirsa ham xavfsiz. Eski, yarim yaratilgan bazada
+ham ishlaydi: yetishmagan ustunlar oʻzi toʻldiriladi.
+
 ## Jadvallar
 
 | Jadval | Nima turadi | Kim koʻradi |

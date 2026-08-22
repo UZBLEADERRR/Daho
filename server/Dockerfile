@@ -52,6 +52,11 @@ COPY --from=web /build/dist ./public
 # `pack.mjs` manifestni Doʻkon talablari boʻyicha tekshiradi va arxivga
 # faqat kerakli fayllarni qoʻyadi (pack.mjs va README tushmaydi). Manifest
 # buzuq boʻlsa build shu yerda toʻxtaydi — buzuq arxiv tarqalmasin.
+# Server oʻz domenini biladi — kengaytmaga singdiramiz, shunda
+# foydalanuvchi manzilni qoʻlda yozmaydi.
+ARG DAHO_SERVER_URL=""
+ENV DAHO_SERVER_URL=$DAHO_SERVER_URL
+
 COPY extension ./extension
 RUN node extension/pack.mjs && rm -rf extension
 

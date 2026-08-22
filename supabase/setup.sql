@@ -1,3 +1,204 @@
+-- ============================================================================
+--  Daho — bazani bir marta sozlash
+--
+--  Bu fayl `supabase/migrations/` dagi hamma migratsiyani TARTIB BILAN
+--  birlashtiradi. Supabase → SQL Editor ga shu faylning oʻzini qoʻyib
+--  «Run» bosing — boshqa hech narsa kerak emas.
+--
+--  Bir necha marta ishga tushirsa ham xavfsiz: hammasi «if not exists» va
+--  «create or replace» bilan yozilgan, eski bazadagi yetishmagan ustunlar
+--  esa oʻzi toʻldiriladi.
+--
+--  QOʻLDA TAHRIRLANMAYDI — `npm run sql` uni qayta yasaydi.
+-- ============================================================================
+
+
+-- ==========================================================================
+--  20260818000000_repair_schema.sql
+-- ==========================================================================
+
+-- ============================================================================
+--  Sxemani taʼmirlash — eski yoki yarim yaratilgan bazani toʻldiradi
+--
+--  Muammo: `create table if not exists` mavjud jadvalni oʻtkazib yuboradi.
+--  Agar baza avvalgi (eskiroq) versiyada yaratilgan boʻlsa, jadval bor —
+--  lekin yangi ustunlari yoʻq. Shundan keyin indeks yoki funksiya oʻsha
+--  ustunga urilib migratsiya toʻxtaydi va qolgan jadvallar umuman
+--  yaratilmaydi.
+--
+--  Bu fayl HAR QANDAY holatda xavfsiz: jadval yoʻq boʻlsa jim oʻtadi
+--  (`alter table if exists`), ustun bor boʻlsa tegmaydi
+--  (`add column if not exists`). Migratsiyalardan BIRINCHI boʻlib
+--  ishga tushadi va nomi shunga qarab tanlangan.
+-- ============================================================================
+
+
+-- app_settings
+alter table if exists public.app_settings
+  add column if not exists key text,
+  add column if not exists value jsonb default '{}'::jsonb,
+  add column if not exists updated_at timestamp with time zone default now();
+
+-- bot_tokens
+alter table if exists public.bot_tokens
+  add column if not exists user_id uuid,
+  add column if not exists provider text,
+  add column if not exists token text,
+  add column if not exists updated_at timestamp with time zone default now();
+
+-- credit_balances
+alter table if exists public.credit_balances
+  add column if not exists user_id uuid,
+  add column if not exists balance numeric(14,4) default 0,
+  add column if not exists granted numeric(14,4) default 0,
+  add column if not exists used numeric(14,4) default 0,
+  add column if not exists extra numeric(14,4) default 0,
+  add column if not exists period_start timestamp with time zone default now(),
+  add column if not exists period_end timestamp with time zone default (now() + '30 days'::interval),
+  add column if not exists updated_at timestamp with time zone default now(),
+  add column if not exists wallet numeric(14,2) default 0;
+
+-- daily_model_usage
+alter table if exists public.daily_model_usage
+  add column if not exists user_id uuid,
+  add column if not exists day date default CURRENT_DATE,
+  add column if not exists calls integer default 0;
+
+-- jobs
+alter table if exists public.jobs
+  add column if not exists id uuid default gen_random_uuid(),
+  add column if not exists user_id uuid,
+  add column if not exists kind text,
+  add column if not exists title text default ''::text,
+  add column if not exists payload jsonb default '{}'::jsonb,
+  add column if not exists model text default ''::text,
+  add column if not exists status text default 'queued'::text,
+  add column if not exists attempts integer default 0,
+  add column if not exists result jsonb,
+  add column if not exists error text,
+  add column if not exists credits numeric(14,4) default 0,
+  add column if not exists scheduled_at timestamp with time zone default now(),
+  add column if not exists started_at timestamp with time zone,
+  add column if not exists finished_at timestamp with time zone,
+  add column if not exists created_at timestamp with time zone default now(),
+  add column if not exists updated_at timestamp with time zone default now();
+
+-- plan_models
+alter table if exists public.plan_models
+  add column if not exists id uuid default gen_random_uuid(),
+  add column if not exists plan_id uuid,
+  add column if not exists model text,
+  add column if not exists role text default 'chat'::text,
+  add column if not exists input_credits_per_mtok numeric(12,4) default 0,
+  add column if not exists output_credits_per_mtok numeric(12,4) default 0,
+  add column if not exists call_credits numeric(12,4) default 0,
+  add column if not exists enabled boolean default true,
+  add column if not exists created_at timestamp with time zone default now(),
+  add column if not exists updated_at timestamp with time zone default now();
+
+-- plans
+alter table if exists public.plans
+  add column if not exists id uuid default gen_random_uuid(),
+  add column if not exists code text,
+  add column if not exists name text,
+  add column if not exists description text default ''::text,
+  add column if not exists price_cents integer default 0,
+  add column if not exists currency text default 'UZS'::text,
+  add column if not exists period text default 'monthly'::text,
+  add column if not exists credit_grant numeric(14,2) default 0,
+  add column if not exists daily_credit_cap numeric(14,2),
+  add column if not exists max_queued_jobs integer default 0,
+  add column if not exists max_jobs_per_day integer default 0,
+  add column if not exists allow_background boolean default false,
+  add column if not exists features jsonb default '{}'::jsonb,
+  add column if not exists is_active boolean default true,
+  add column if not exists is_default boolean default false,
+  add column if not exists sort integer default 0,
+  add column if not exists created_at timestamp with time zone default now(),
+  add column if not exists updated_at timestamp with time zone default now(),
+  add column if not exists hourly_credit_cap numeric(14,2),
+  add column if not exists weekly_credit_cap numeric(14,2),
+  add column if not exists allow_payg boolean default true,
+  add column if not exists daily_model_access text default 'limited'::text,
+  add column if not exists daily_model_quota integer default 30;
+
+-- profiles
+alter table if exists public.profiles
+  add column if not exists id uuid,
+  add column if not exists email text,
+  add column if not exists full_name text default ''::text,
+  add column if not exists role text default 'user'::text,
+  add column if not exists blocked boolean default false,
+  add column if not exists locale text default 'uz'::text,
+  add column if not exists created_at timestamp with time zone default now(),
+  add column if not exists updated_at timestamp with time zone default now();
+
+-- purchase_requests
+alter table if exists public.purchase_requests
+  add column if not exists id uuid default gen_random_uuid(),
+  add column if not exists user_id uuid,
+  add column if not exists plan_id uuid,
+  add column if not exists status text default 'pending'::text,
+  add column if not exists contact text default ''::text,
+  add column if not exists note text default ''::text,
+  add column if not exists decided_by uuid,
+  add column if not exists decided_at timestamp with time zone,
+  add column if not exists created_at timestamp with time zone default now(),
+  add column if not exists updated_at timestamp with time zone default now();
+
+-- subscriptions
+alter table if exists public.subscriptions
+  add column if not exists id uuid default gen_random_uuid(),
+  add column if not exists user_id uuid,
+  add column if not exists plan_id uuid,
+  add column if not exists status text default 'active'::text,
+  add column if not exists started_at timestamp with time zone default now(),
+  add column if not exists expires_at timestamp with time zone,
+  add column if not exists auto_renew boolean default false,
+  add column if not exists note text default ''::text,
+  add column if not exists granted_by uuid,
+  add column if not exists created_at timestamp with time zone default now(),
+  add column if not exists updated_at timestamp with time zone default now();
+
+-- sync_items
+alter table if exists public.sync_items
+  add column if not exists user_id uuid,
+  add column if not exists collection text,
+  add column if not exists item_id text,
+  add column if not exists payload jsonb,
+  add column if not exists deleted boolean default false,
+  add column if not exists device text default ''::text,
+  add column if not exists rev bigint default 1,
+  add column if not exists updated_at timestamp with time zone default now();
+
+-- usage_events
+alter table if exists public.usage_events
+  add column if not exists id bigint,
+  add column if not exists user_id uuid,
+  add column if not exists model text default ''::text,
+  add column if not exists kind text default 'chat'::text,
+  add column if not exists source text default 'gateway'::text,
+  add column if not exists input_tokens integer default 0,
+  add column if not exists output_tokens integer default 0,
+  add column if not exists total_tokens integer default 0,
+  add column if not exists credits numeric(14,4) default 0,
+  add column if not exists job_id uuid,
+  add column if not exists meta jsonb default '{}'::jsonb,
+  add column if not exists created_at timestamp with time zone default now();
+
+-- wallet_events
+alter table if exists public.wallet_events
+  add column if not exists id bigint,
+  add column if not exists user_id uuid,
+  add column if not exists amount numeric(14,2),
+  add column if not exists reason text default ''::text,
+  add column if not exists admin_id uuid,
+  add column if not exists created_at timestamp with time zone default now();
+
+-- ==========================================================================
+--  20260819000000_daho_cloud.sql
+-- ==========================================================================
+
 -- Daho Cloud — asosiy sxema.
 -- Foydalanuvchi, obuna, kredit (token) hisobi, sinxronizatsiya va fon vazifalari.
 --
@@ -1134,3 +1335,908 @@ grant insert, update, delete on
 
 grant select, insert, update, delete on public.sync_items to authenticated;
 grant select, update, delete on public.jobs to authenticated;
+
+-- ==========================================================================
+--  20260819000100_daho_seed_plans.sql
+-- ==========================================================================
+
+-- Boshlang'ich rejalar va model narxlari.
+-- Narxlar «1 million token = N kredit» ko'rinishida. Admin panelidan
+-- istalgan vaqtda o'zgartiriladi — bu yerdagilar faqat boshlang'ich qiymat.
+
+insert into public.plans
+  (code, name, description, price_cents, currency, period, credit_grant,
+   daily_credit_cap, max_queued_jobs, max_jobs_per_day, allow_background,
+   is_default, is_active, sort)
+values
+  ('free', 'Bepul', 'Sinash uchun. Kunlik kichik limit, fon vazifalari yo''q.',
+   0, 'UZS', 'free', 2000, 200, 0, 0, false, true, true, 0),
+  ('start', 'Start', 'Kundalik o''qish uchun. Chat, rasm va kurslar.',
+   39000, 'UZS', 'monthly', 30000, null, 3, 20, true, false, true, 10),
+  ('pro', 'Pro', 'Daho Code, video studiya va fon vazifalari to''liq.',
+   99000, 'UZS', 'monthly', 120000, null, 10, 100, true, false, true, 20)
+on conflict (code) do nothing;
+
+-- Model narxlari. Bepul rejaga faqat tezkor model, Pro'ga hammasi.
+with p as (select id, code from public.plans)
+insert into public.plan_models
+  (plan_id, model, role, input_credits_per_mtok, output_credits_per_mtok, call_credits, enabled)
+select p.id, m.model, m.role, m.inp, m.outp, m.call_c, true
+from p
+join (values
+  ('free',  'gemini-flash-lite-latest', 'chat',  20::numeric,  60::numeric, 0::numeric),
+  ('free',  'gemini-flash-latest',      'chat',  30,  90, 0),
+  ('start', 'gemini-flash-lite-latest', 'chat',  20,  60, 0),
+  ('start', 'gemini-flash-latest',      'chat',  30,  90, 0),
+  ('start', 'gemini-2.5-flash-image',   'image',  0,   0, 40),
+  ('start', 'gemini-2.5-flash-tts',     'tts',   10,   0, 5),
+  ('pro',   'gemini-flash-lite-latest', 'chat',  20,  60, 0),
+  ('pro',   'gemini-flash-latest',      'chat',  30,  90, 0),
+  ('pro',   'gemini-pro-latest',        'chat', 150, 600, 0),
+  ('pro',   'gemini-2.5-flash-image',   'image',  0,   0, 40),
+  ('pro',   'gemini-2.5-flash-tts',     'tts',   10,   0, 5)
+) as m(plan_code, model, role, inp, outp, call_c) on m.plan_code = p.code
+on conflict (plan_id, model) do nothing;
+
+-- ==========================================================================
+--  20260821120000_telegram_jobs.sql
+-- ==========================================================================
+
+-- Telegram xabarlarini KEYINGA rejalashtirish.
+--
+-- `jobs` da `scheduled_at` allaqachon bor va `claim_jobs` uni hisobga
+-- oladi, lekin `telegram` turi ruxsat etilgan roʻyxatda yoʻq edi —
+-- shuning uchun rejalashtirilgan xabar navbatga tusha olmasdi.
+--
+-- `kitob` ham shu roʻyxatda yoʻq edi, holbuki server uni bajara oladi:
+-- bu eskidan qolgan kamchilik, birga tuzatiladi.
+
+alter table public.jobs drop constraint if exists jobs_kind_check;
+
+alter table public.jobs
+  add constraint jobs_kind_check
+  check (kind in ('chat', 'search', 'json', 'image', 'plan', 'kitob', 'telegram'));
+
+-- ---------------------------------------------------------------- token
+
+-- Rejalashtirilgan xabarni server yuboradi, demak bot tokeni serverga
+-- kerak. Uni vazifa ichida saqlash notoʻgʻri boʻlardi: vazifa natijasi
+-- koʻrsatiladi va tarixda qoladi. Shuning uchun alohida jadval — har
+-- kim faqat oʻzinikini koʻradi, server esa service_role bilan oʻqiydi.
+create table if not exists public.bot_tokens (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  provider text not null check (provider in ('telegram')),
+  token text not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, provider)
+);
+
+alter table public.bot_tokens enable row level security;
+
+drop policy if exists bot_tokens_own on public.bot_tokens;
+create policy bot_tokens_own on public.bot_tokens
+  for all
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+-- RLS siyosati yetarli emas: jadvalning oʻziga ham ruxsat kerak,
+-- aks holda «permission denied» chiqadi.
+grant select, insert, update, delete on public.bot_tokens to authenticated;
+
+-- --------------------------------------------------------- rejalashtirish
+
+-- Eski imzoni olib tashlaymiz: yangisiga qoʻshimcha parametr qoʻshilsa
+-- ikkalasi qolib, chaqiruv ikki maʼnoli boʻlib qolardi.
+drop function if exists public.enqueue_job(text, text, jsonb, text);
+
+create or replace function public.enqueue_job(
+  p_kind text,
+  p_title text,
+  p_payload jsonb,
+  p_model text default null,
+  p_scheduled_at timestamptz default now()
+) returns public.jobs language plpgsql security definer set search_path = public as $$
+declare
+  v_user uuid := auth.uid();
+  v_plan public.plans%rowtype;
+  v_queued integer;
+  v_today integer;
+  v_job public.jobs%rowtype;
+begin
+  if v_user is null then
+    raise exception 'avval tizimga kiring';
+  end if;
+
+  v_plan := public.active_plan(v_user);
+  if v_plan.id is null or not v_plan.allow_background then
+    raise exception 'fon vazifalari obunada ochiladi';
+  end if;
+
+  select count(*) into v_queued from public.jobs
+  where user_id = v_user and status in ('queued', 'running');
+  if v_queued >= v_plan.max_queued_jobs then
+    raise exception 'navbatda ko''p vazifa bor (limit: %)', v_plan.max_queued_jobs;
+  end if;
+
+  select count(*) into v_today from public.jobs
+  where user_id = v_user and created_at >= date_trunc('day', now());
+  if v_plan.max_jobs_per_day > 0 and v_today >= v_plan.max_jobs_per_day then
+    raise exception 'bugungi vazifa chegarasi tugadi (limit: %)', v_plan.max_jobs_per_day;
+  end if;
+
+  insert into public.jobs (user_id, kind, title, payload, model, scheduled_at)
+  values (
+    v_user,
+    p_kind,
+    coalesce(p_title, ''),
+    coalesce(p_payload, '{}'::jsonb),
+    nullif(p_model, ''),
+    -- Oʻtmishdagi vaqt berilsa darhol bajariladi.
+    greatest(coalesce(p_scheduled_at, now()), now() - interval '1 minute')
+  )
+  returning * into v_job;
+
+  return v_job;
+end;
+$$;
+
+grant execute on function public.enqueue_job(text, text, jsonb, text, timestamptz)
+  to authenticated;
+
+-- ==========================================================================
+--  20260822090000_admin_access.sql
+-- ==========================================================================
+
+-- ============================================================================
+--  Admin kirishini tuzatish
+--
+--  `admin_emails` boʻsh massiv bilan seed qilingan edi, shuning uchun admin
+--  boʻlishning yagona yoʻli — birinchi boʻlib roʻyxatdan oʻtish. Kimdir
+--  oldinroq roʻyxatdan oʻtgan boʻlsa, egasi oʻz panelini ocholmay qolardi.
+-- ============================================================================
+
+-- 1. Egasining pochtasi roʻyxatga qoʻshiladi (mavjudlari saqlanadi).
+update public.app_settings
+   set value = (
+     select jsonb_agg(distinct lower(e))
+       from jsonb_array_elements_text(
+         coalesce(value, '[]'::jsonb) || '["sarvarbeksanjarivich@gmail.com"]'::jsonb
+       ) e
+   )
+ where key = 'admin_emails';
+
+insert into public.app_settings (key, value)
+values ('admin_emails', '["sarvarbeksanjarivich@gmail.com"]'::jsonb)
+on conflict (key) do nothing;
+
+-- 2. Allaqachon roʻyxatdan oʻtgan boʻlsa — hoziroq admin qilamiz.
+update public.profiles p
+   set role = 'admin'
+  from public.app_settings s
+ where s.key = 'admin_emails'
+   and s.value ? lower(p.email)
+   and p.role <> 'admin';
+
+-- ---------------------------------------------------------------------------
+--  Oʻzini admin qilish uchun qulay funksiya.
+--
+--  Supabase SQL Editor da bir qator yozish kifoya:
+--     select public.claim_admin('pochta@example.com');
+--
+--  Hech kim admin boʻlmaganda ishlaydi (birinchi egani belgilash uchun),
+--  yoki chaqirayotgan odam allaqachon admin boʻlsa.
+-- ---------------------------------------------------------------------------
+create or replace function public.claim_admin(p_email text)
+returns text language plpgsql security definer set search_path = public as $$
+declare
+  v_has_admin boolean;
+  v_found integer;
+begin
+  select exists (select 1 from public.profiles where role = 'admin') into v_has_admin;
+
+  if v_has_admin and not public.is_admin() then
+    raise exception 'Admin allaqachon bor — faqat admin yangi admin tayinlay oladi';
+  end if;
+
+  update public.profiles
+     set role = 'admin'
+   where lower(email) = lower(p_email);
+  get diagnostics v_found = row_count;
+
+  if v_found = 0 then
+    return 'Bunday pochta bilan roʻyxatdan oʻtilmagan: ' || p_email;
+  end if;
+
+  -- Keyingi safar ham admin boʻlib qolsin.
+  update public.app_settings
+     set value = (
+       select jsonb_agg(distinct lower(e))
+         from jsonb_array_elements_text(
+           coalesce(value, '[]'::jsonb) || to_jsonb(array[lower(p_email)])
+         ) e
+     )
+   where key = 'admin_emails';
+
+  return 'Tayyor — ' || p_email || ' endi admin';
+end;
+$$;
+
+revoke all on function public.claim_admin(text) from public;
+grant execute on function public.claim_admin(text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+--  Foydalanuvchi oʻz holatini koʻra olsin (nega admin emasman?).
+-- ---------------------------------------------------------------------------
+create or replace function public.whoami()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'user_id',      auth.uid(),
+    'email',        (select email from public.profiles where id = auth.uid()),
+    'role',         (select role  from public.profiles where id = auth.uid()),
+    'is_admin',     public.is_admin(),
+    'admin_emails', (select value from public.app_settings where key = 'admin_emails'),
+    'admin_count',  (select count(*) from public.profiles where role = 'admin')
+  );
+$$;
+
+grant execute on function public.whoami() to authenticated;
+
+-- ---------------------------------------------------------------------------
+--  3. Xavfsizlik: «birinchi roʻyxatdan oʻtgan — admin» qoidasi olib tashlanadi
+--
+--  Ilova ochiq boʻlgach birinchi roʻyxatdan oʻtgan BEGONA odam butun tizimga
+--  egalik qilib qolardi: barcha foydalanuvchilarni koʻradi, tarif beradi,
+--  modellarni oʻzgartiradi. Endi admin faqat `admin_emails` roʻyxati orqali
+--  beriladi.
+-- ---------------------------------------------------------------------------
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_admins jsonb;
+  v_role text := 'user';
+  v_plan public.plans%rowtype;
+begin
+  select value into v_admins from public.app_settings where key = 'admin_emails';
+
+  if v_admins is not null and v_admins ? lower(coalesce(new.email, '')) then
+    v_role := 'admin';
+  end if;
+
+  insert into public.profiles (id, email, full_name, role)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'full_name', ''),
+    v_role
+  )
+  on conflict (id) do nothing;
+
+  select * into v_plan from public.plans where is_default and is_active limit 1;
+
+  insert into public.credit_balances (user_id, balance, granted, period_start, period_end)
+  values (
+    new.id,
+    coalesce(v_plan.credit_grant, 0),
+    coalesce(v_plan.credit_grant, 0),
+    now(),
+    now() + interval '30 days'
+  )
+  on conflict (user_id) do nothing;
+
+  if v_plan.id is not null then
+    insert into public.subscriptions (user_id, plan_id, status, note)
+    values (new.id, v_plan.id, 'active', 'avtomatik bepul reja')
+    on conflict do nothing;
+  end if;
+
+  return new;
+end;
+$$;
+
+-- ==========================================================================
+--  20260822091000_limits_and_payg.sql
+-- ==========================================================================
+
+-- ============================================================================
+--  Obuna aqli: foizli limitlar, pay-as-you-go va bepul zaxira model
+--
+--  Foydalanuvchiga token soni koʻrsatilmaydi. U «haftalik limitning 64% i
+--  qoldi» degan tushunarli raqamni koʻradi. Limit tugaganda ish toʻxtamaydi:
+--  yoki hisobidagi puldan yechiladi (pay-as-you-go), yoki bepul, lekin
+--  sekinroq «Daho Daily» modeliga oʻtadi.
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+--  1. Rejaga oyna-limitlari
+-- ---------------------------------------------------------------------------
+alter table public.plans
+  add column if not exists hourly_credit_cap  numeric(14, 2),
+  add column if not exists weekly_credit_cap  numeric(14, 2),
+  -- Limit tugaganda nima boʻladi
+  add column if not exists allow_payg         boolean not null default true,
+  add column if not exists daily_model_access text not null default 'limited'
+    check (daily_model_access in ('none', 'limited', 'unlimited')),
+  -- Bepul zaxira modeldan kuniga nechta xabar (limited uchun)
+  add column if not exists daily_model_quota  integer not null default 30;
+
+comment on column public.plans.hourly_credit_cap is
+  'Soatiga sarflanadigan kredit chegarasi. null — cheklovsiz.';
+comment on column public.plans.daily_model_access is
+  'Limit tugagach bepul «Daho Daily» modeli: yoʻq / cheklangan / cheksiz.';
+
+-- ---------------------------------------------------------------------------
+--  2. Hisobdagi pul — pay-as-you-go uchun
+--
+--  Kredit (obuna bilan beriladi, har davrda kuyadi) va pul (foydalanuvchi
+--  toʻlagan, kuymaydi) — bu ikki xil narsa, shuning uchun alohida turadi.
+-- ---------------------------------------------------------------------------
+alter table public.credit_balances
+  add column if not exists wallet numeric(14, 2) not null default 0;
+
+comment on column public.credit_balances.wallet is
+  'Pay-as-you-go hamyoni. Obuna krediti tugagach shundan yechiladi; '
+  'davr almashganda kuymaydi.';
+
+create table if not exists public.wallet_events (
+  id bigint generated by default as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  amount numeric(14, 2) not null,          -- + toʻldirish, − sarf
+  reason text not null default '',
+  admin_id uuid references auth.users(id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists wallet_events_user_idx
+  on public.wallet_events(user_id, created_at desc);
+
+alter table public.wallet_events enable row level security;
+
+drop policy if exists wallet_events_read on public.wallet_events;
+create policy wallet_events_read on public.wallet_events
+  for select using (user_id = auth.uid() or public.is_admin());
+
+-- ---------------------------------------------------------------------------
+--  3. Bepul zaxira modeldan foydalanish hisobi
+-- ---------------------------------------------------------------------------
+create table if not exists public.daily_model_usage (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  day date not null default current_date,
+  calls integer not null default 0,
+  primary key (user_id, day)
+);
+
+alter table public.daily_model_usage enable row level security;
+
+drop policy if exists daily_usage_read on public.daily_model_usage;
+create policy daily_usage_read on public.daily_model_usage
+  for select using (user_id = auth.uid() or public.is_admin());
+
+-- ---------------------------------------------------------------------------
+--  4. Oynalar boʻyicha sarf — foizli koʻrsatkich uchun
+-- ---------------------------------------------------------------------------
+
+-- Bitta oynaning holati. Chegara yoʻq boʻlsa — cheksiz.
+create or replace function public.window_state(p_used numeric, p_cap numeric)
+returns jsonb language sql immutable as $$
+  select case
+    when p_cap is null or p_cap <= 0 then
+      jsonb_build_object('unlimited', true, 'left_percent', 100)
+    else jsonb_build_object(
+      'unlimited', false,
+      'left_percent', greatest(0, least(100,
+        round((1 - coalesce(p_used, 0) / p_cap) * 100)::int
+      ))
+    )
+  end;
+$$;
+
+create or replace function public.usage_windows(p_user uuid default auth.uid())
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  v_plan public.plans%rowtype;
+  v_bal public.credit_balances%rowtype;
+  v_hour numeric;
+  v_day numeric;
+  v_week numeric;
+  v_daily_calls integer;
+begin
+  v_plan := public.active_plan(p_user);
+  select * into v_bal from public.credit_balances where user_id = p_user;
+
+  select coalesce(sum(credits), 0) into v_hour from public.usage_events
+   where user_id = p_user and created_at >= now() - interval '1 hour';
+  select coalesce(sum(credits), 0) into v_day from public.usage_events
+   where user_id = p_user and created_at >= date_trunc('day', now());
+  select coalesce(sum(credits), 0) into v_week from public.usage_events
+   where user_id = p_user and created_at >= date_trunc('week', now());
+
+  select coalesce(calls, 0) into v_daily_calls
+    from public.daily_model_usage
+   where user_id = p_user and day = current_date;
+
+  return jsonb_build_object(
+    'plan',   v_plan.code,
+    -- Har bir oyna: sarflangan, chegara va QOLGAN FOIZ.
+    'hour',   public.window_state(v_hour, v_plan.hourly_credit_cap),
+    'day',    public.window_state(v_day,  v_plan.daily_credit_cap),
+    'week',   public.window_state(v_week, v_plan.weekly_credit_cap),
+    'period', public.window_state(
+                coalesce(v_bal.granted, 0) - coalesce(v_bal.balance, 0),
+                nullif(coalesce(v_bal.granted, 0), 0)
+              ),
+    'wallet',       coalesce(v_bal.wallet, 0),
+    'allow_payg',   coalesce(v_plan.allow_payg, true),
+    'daily_model',  jsonb_build_object(
+      'access', coalesce(v_plan.daily_model_access, 'limited'),
+      'used',   coalesce(v_daily_calls, 0),
+      'quota',  coalesce(v_plan.daily_model_quota, 30)
+    ),
+    'period_end', v_bal.period_end
+  );
+end;
+$$;
+
+grant execute on function public.usage_windows(uuid) to authenticated;
+grant execute on function public.window_state(numeric, numeric) to authenticated;
+
+-- ==========================================================================
+--  20260822092000_gateway_fallback.sql
+-- ==========================================================================
+
+-- ============================================================================
+--  Limit tugaganda ish toʻxtamasin
+--
+--  Avval kredit tugashi bilan «kredit tugadi» deb rad javob berilardi.
+--  Endi uch bosqich:
+--    1. Obuna krediti bor       → oʻshandan yechiladi
+--    2. Hisobda pul bor         → pay-as-you-go, hamyondan yechiladi
+--    3. Ikkalasi ham yoʻq       → bepul «Daho Daily» modeliga oʻtiladi
+--                                  (Pro da cheksiz, oddiy rejada kunlik son)
+-- ============================================================================
+
+-- Bepul zaxira modelning nomi sozlamada turadi — admin istagancha almashtiradi.
+insert into public.app_settings (key, value)
+values ('daily_model', '{"model": "gemini-flash-latest", "label": "Daho Daily"}'::jsonb)
+on conflict (key) do nothing;
+
+-- ---------------------------------------------------------------------------
+--  can_use_model — endi zaxira yoʻlni ham qaytaradi
+-- ---------------------------------------------------------------------------
+create or replace function public.can_use_model(p_user uuid, p_model text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_profile public.profiles%rowtype;
+  v_plan public.plans%rowtype;
+  v_pm public.plan_models%rowtype;
+  v_bal public.credit_balances%rowtype;
+  v_today numeric;
+  v_hour numeric;
+  v_week numeric;
+  v_daily jsonb;
+  v_daily_model text;
+  v_daily_used integer;
+
+  -- Limit tugagach nima taklif qilamiz.
+  v_note text;
+begin
+  select * into v_profile from public.profiles where id = p_user;
+  if not found then
+    return jsonb_build_object('allowed', false, 'reason', 'profil topilmadi');
+  end if;
+  if v_profile.blocked then
+    return jsonb_build_object('allowed', false, 'reason', 'hisob bloklangan');
+  end if;
+
+  if coalesce((select value::text from public.app_settings where key = 'gateway_enabled'), 'true') = 'false' then
+    return jsonb_build_object('allowed', false, 'reason', 'xizmat vaqtincha toʻxtatilgan');
+  end if;
+
+  v_plan := public.active_plan(p_user);
+  if v_plan.id is null then
+    return jsonb_build_object('allowed', false, 'reason', 'reja biriktirilmagan');
+  end if;
+
+  select value into v_daily from public.app_settings where key = 'daily_model';
+  v_daily_model := coalesce(v_daily ->> 'model', '');
+
+  select * into v_pm from public.plan_models
+  where plan_id = v_plan.id and model = p_model and enabled;
+
+  -- Model rejaga kirmagan boʻlsa — zaxira model bilan ishlashni taklif qilamiz.
+  if not found then
+    if v_daily_model <> '' and p_model <> v_daily_model
+       and coalesce(v_plan.daily_model_access, 'limited') <> 'none' then
+      return public.daily_fallback(
+        p_user, v_plan, v_daily,
+        format('«%s» modeli rejangizga kirmagan', p_model)
+      );
+    end if;
+    return jsonb_build_object(
+      'allowed', false,
+      'reason', format('«%s» modeli «%s» rejasiga kirmagan', p_model, v_plan.name),
+      'plan', v_plan.name
+    );
+  end if;
+
+  v_bal := public.ensure_period(p_user);
+
+  -- Oyna limitlari.
+  select coalesce(sum(credits), 0) into v_today from public.usage_events
+   where user_id = p_user and created_at >= date_trunc('day', now());
+  select coalesce(sum(credits), 0) into v_hour from public.usage_events
+   where user_id = p_user and created_at >= now() - interval '1 hour';
+  select coalesce(sum(credits), 0) into v_week from public.usage_events
+   where user_id = p_user and created_at >= date_trunc('week', now());
+
+  v_note := '';
+  if v_plan.hourly_credit_cap is not null and v_hour >= v_plan.hourly_credit_cap then
+    v_note := 'soatlik limit tugadi';
+  elsif v_plan.daily_credit_cap is not null and v_today >= v_plan.daily_credit_cap then
+    v_note := 'kunlik limit tugadi';
+  elsif v_plan.weekly_credit_cap is not null and v_week >= v_plan.weekly_credit_cap then
+    v_note := 'haftalik limit tugadi';
+  elsif v_bal.balance <= 0 then
+    v_note := 'obuna krediti tugadi';
+  end if;
+
+  if v_note <> '' then
+    -- 2-bosqich: hisobdagi pul.
+    if coalesce(v_bal.wallet, 0) > 0 and coalesce(v_plan.allow_payg, true) then
+      return jsonb_build_object(
+        'allowed', true,
+        'source', 'wallet',
+        'note', v_note || ' — hisobingizdagi puldan yechilmoqda',
+        'plan_id', v_plan.id,
+        'plan', v_plan.name,
+        'wallet', v_bal.wallet,
+        'input_price', v_pm.input_credits_per_mtok,
+        'output_price', v_pm.output_credits_per_mtok,
+        'call_price', v_pm.call_credits
+      );
+    end if;
+
+    -- 3-bosqich: bepul zaxira model.
+    if v_daily_model <> '' and coalesce(v_plan.daily_model_access, 'limited') <> 'none' then
+      return public.daily_fallback(p_user, v_plan, v_daily, v_note);
+    end if;
+
+    return jsonb_build_object('allowed', false, 'reason', v_note);
+  end if;
+
+  return jsonb_build_object(
+    'allowed', true,
+    'source', 'plan',
+    'plan_id', v_plan.id,
+    'plan', v_plan.name,
+    'balance', v_bal.balance,
+    'input_price', v_pm.input_credits_per_mtok,
+    'output_price', v_pm.output_credits_per_mtok,
+    'call_price', v_pm.call_credits
+  );
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+--  Bepul zaxira modelga oʻtish
+-- ---------------------------------------------------------------------------
+create or replace function public.daily_fallback(
+  p_user uuid,
+  p_plan public.plans,
+  p_daily jsonb,
+  p_reason text
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_used integer;
+  v_model text := coalesce(p_daily ->> 'model', '');
+  v_label text := coalesce(p_daily ->> 'label', 'Daho Daily');
+begin
+  if v_model = '' then
+    return jsonb_build_object('allowed', false, 'reason', p_reason);
+  end if;
+
+  if coalesce(p_plan.daily_model_access, 'limited') = 'unlimited' then
+    return jsonb_build_object(
+      'allowed', true,
+      'source', 'daily',
+      'use_model', v_model,
+      'note', format('%s — %s modeliga oʻtildi (cheksiz, lekin sekinroq)', p_reason, v_label)
+    );
+  end if;
+
+  select coalesce(calls, 0) into v_used
+    from public.daily_model_usage where user_id = p_user and day = current_date;
+
+  if coalesce(v_used, 0) >= coalesce(p_plan.daily_model_quota, 30) then
+    return jsonb_build_object(
+      'allowed', false,
+      'reason', format('%s va bugungi bepul xabarlar ham tugadi', p_reason)
+    );
+  end if;
+
+  return jsonb_build_object(
+    'allowed', true,
+    'source', 'daily',
+    'use_model', v_model,
+    'note', format('%s — %s modeliga oʻtildi', p_reason, v_label),
+    'daily_left', coalesce(p_plan.daily_model_quota, 30) - coalesce(v_used, 0)
+  );
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+--  charge_usage — hamyondan yechish va bepul model hisobi
+-- ---------------------------------------------------------------------------
+create or replace function public.charge_source(
+  p_user uuid,
+  p_source text,
+  p_credits numeric
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if p_source = 'daily' then
+    -- Bepul model: kredit yechilmaydi, faqat kunlik son oshadi.
+    insert into public.daily_model_usage (user_id, day, calls)
+    values (p_user, current_date, 1)
+    on conflict (user_id, day) do update set calls = public.daily_model_usage.calls + 1;
+    return;
+  end if;
+
+  if p_source = 'wallet' then
+    update public.credit_balances
+       set wallet = greatest(wallet - p_credits, 0)
+     where user_id = p_user;
+
+    insert into public.wallet_events (user_id, amount, reason)
+    values (p_user, -p_credits, 'pay-as-you-go');
+    return;
+  end if;
+
+  -- Odatiy yoʻl: obuna kreditidan.
+  update public.credit_balances
+     set balance = greatest(balance - p_credits, 0)
+   where user_id = p_user;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+--  Admin: hisobga pul tushirish
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_add_wallet(
+  p_user uuid,
+  p_amount numeric,
+  p_reason text default ''
+) returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'ruxsat yoʻq'; end if;
+
+  insert into public.credit_balances (user_id, wallet)
+  values (p_user, p_amount)
+  on conflict (user_id) do update set wallet = public.credit_balances.wallet + p_amount;
+
+  insert into public.wallet_events (user_id, amount, reason, admin_id)
+  values (p_user, p_amount, coalesce(nullif(p_reason, ''), 'admin toʻldirdi'), auth.uid());
+
+  return jsonb_build_object(
+    'ok', true,
+    'wallet', (select wallet from public.credit_balances where user_id = p_user)
+  );
+end;
+$$;
+
+grant execute on function public.admin_add_wallet(uuid, numeric, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+--  charge_usage — sarf qaysi manbadan yechilishini biladi
+--
+--  `p_source` endi ikki vazifani bajaradi: sarf qayerdan kelgani (gateway,
+--  byok) va qaysi hamyondan yechilishi (plan, wallet, daily).
+-- ---------------------------------------------------------------------------
+create or replace function public.charge_usage(
+  p_user uuid,
+  p_model text,
+  p_kind text,
+  p_input integer,
+  p_output integer,
+  p_source text default 'gateway',
+  p_job uuid default null,
+  p_meta jsonb default '{}'::jsonb
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_plan public.plans%rowtype;
+  v_pm public.plan_models%rowtype;
+  v_in numeric;
+  v_out numeric;
+  v_call numeric := 0;
+  v_credits numeric;
+  v_bal public.credit_balances%rowtype;
+  v_fallback jsonb;
+  -- Meta ichida qaysi hamyondan yechish kerakligi keladi.
+  v_wallet text := coalesce(p_meta ->> 'charge_source', 'plan');
+begin
+  v_plan := public.active_plan(p_user);
+  select * into v_pm from public.plan_models
+  where plan_id = v_plan.id and model = p_model;
+
+  if found then
+    v_in := v_pm.input_credits_per_mtok;
+    v_out := v_pm.output_credits_per_mtok;
+    v_call := v_pm.call_credits;
+  else
+    select value into v_fallback from public.app_settings where key = 'fallback_price';
+    v_in := coalesce((v_fallback ->> 'input')::numeric, 30);
+    v_out := coalesce((v_fallback ->> 'output')::numeric, 90);
+  end if;
+
+  v_credits := round(
+    (coalesce(p_input, 0)::numeric / 1000000) * v_in +
+    (coalesce(p_output, 0)::numeric / 1000000) * v_out +
+    v_call,
+    4
+  );
+
+  insert into public.usage_events (
+    user_id, model, kind, source, input_tokens, output_tokens, total_tokens, credits, job_id, meta
+  ) values (
+    p_user, p_model, coalesce(p_kind, 'chat'), coalesce(p_source, 'gateway'),
+    coalesce(p_input, 0), coalesce(p_output, 0), coalesce(p_input, 0) + coalesce(p_output, 0),
+    -- Bepul zaxira model limitni yemaydi, shuning uchun sarfi 0 yoziladi.
+    case when v_wallet = 'daily' then 0 else v_credits end,
+    p_job, coalesce(p_meta, '{}'::jsonb)
+  );
+
+  -- Oʻz kaliti bilan ishlaganda hech narsa yechilmaydi.
+  if coalesce(p_source, '') <> 'byok' then
+    perform public.charge_source(p_user, v_wallet, v_credits);
+    if v_wallet <> 'daily' then
+      update public.credit_balances set used = used + v_credits where user_id = p_user;
+    end if;
+  end if;
+
+  select * into v_bal from public.credit_balances where user_id = p_user;
+
+  return jsonb_build_object(
+    'credits', case when v_wallet = 'daily' then 0 else v_credits end,
+    'balance', coalesce(v_bal.balance, 0),
+    'wallet', coalesce(v_bal.wallet, 0),
+    'source', v_wallet
+  );
+end;
+$$;
+
+revoke execute on function public.charge_usage(uuid, text, text, integer, integer, text, uuid, jsonb)
+  from anon, authenticated;
+
+-- ==========================================================================
+--  20260822093000_settings_privacy.sql
+-- ==========================================================================
+
+-- ============================================================================
+--  app_settings: ichki sozlamalar hammaga koʻrinib turgan edi
+--
+--  `settings_read ... using (true)` — yaʼni istalgan roʻyxatdan oʻtgan
+--  foydalanuvchi (va anon kalit bilan istalgan odam) `admin_emails`,
+--  `daily_model`, `fallback_price` kabi ichki qiymatlarni oʻqiy olardi.
+--  `admin_emails` esa kim admin ekanini oshkor qiladi — bu hujum uchun
+--  birinchi qadam.
+--
+--  Endi faqat ataylab ochiq deb belgilangan kalitlar koʻrinadi.
+-- ============================================================================
+
+drop policy if exists settings_read on public.app_settings;
+
+create policy settings_read on public.app_settings
+  for select using (
+    key like 'public.%'                        -- ataylab ochiq qilinganlar
+    or key in ('contact', 'downloads')         -- aloqa va yuklab olish havolalari
+    or public.is_admin()
+  );
+
+comment on table public.app_settings is
+  'Ichki sozlamalar. Ochiq koʻrsatish kerak boʻlsa kalit nomini '
+  '«public.» bilan boshlang, aks holda faqat admin koʻradi.';
+
+-- Aloqa maʼlumotlari — bosh sahifa va «obuna sotib olish» uchun.
+insert into public.app_settings (key, value) values
+  ('contact', jsonb_build_object(
+     'telegram', '',
+     'phone', '',
+     'email', ''
+   )),
+  ('downloads', jsonb_build_object('apk', '', 'extension', ''))
+on conflict (key) do nothing;
+
+-- ==========================================================================
+--  20260822094000_repair_data.sql
+-- ==========================================================================
+
+-- ============================================================================
+--  Eski bazadagi maʼlumotni toʻgʻrilash
+--
+--  `20260818000000_repair_schema.sql` yetishmagan USTUNLARNI qoʻshadi,
+--  lekin u eng birinchi ishga tushadi — u paytda boshqa jadvallar hali
+--  yoʻq. Shuning uchun QIYMATLARNI toʻgʻrilash shu yerda, hammasi
+--  yaratilib boʻlgandan keyin bajariladi.
+--
+--  Muammo: eski jadvaldagi qatorlar yangi ustunlarni boʻsh qiymat bilan
+--  oladi. Masalan «free» rejasi `credit_grant = 0` boʻlib qoladi va
+--  seed migratsiyasi uni `on conflict do nothing` bilan chetlab oʻtadi —
+--  natijada foydalanuvchi roʻyxatdan oʻtadi, lekin krediti nol boʻladi.
+-- ============================================================================
+
+-- 1. Hech qachon sozlanmagan rejalarga seed qiymatlarini beramiz.
+--    Krediti nol reja ishlamaydi — bu ataylab qilingan sozlama emas,
+--    balki yarim qolgan yaratilishning izi.
+update public.plans set
+  description      = coalesce(nullif(description, ''), 'Sinash uchun. Kunlik kichik limit.'),
+  credit_grant     = 2000,
+  daily_credit_cap = coalesce(daily_credit_cap, 200),
+  period           = coalesce(nullif(period, ''), 'free'),
+  is_active        = true
+where code = 'free' and coalesce(credit_grant, 0) = 0;
+
+update public.plans set
+  description      = coalesce(nullif(description, ''), 'Kundalik oʻqish uchun.'),
+  credit_grant     = 30000,
+  max_queued_jobs  = greatest(coalesce(max_queued_jobs, 0), 3),
+  max_jobs_per_day = greatest(coalesce(max_jobs_per_day, 0), 20),
+  allow_background = true,
+  is_active        = true
+where code = 'start' and coalesce(credit_grant, 0) = 0;
+
+update public.plans set
+  description      = coalesce(nullif(description, ''), 'Daho Code, video va fon vazifalari toʻliq.'),
+  credit_grant     = 120000,
+  max_queued_jobs  = greatest(coalesce(max_queued_jobs, 0), 10),
+  max_jobs_per_day = greatest(coalesce(max_jobs_per_day, 0), 100),
+  allow_background = true,
+  is_active        = true
+where code = 'pro' and coalesce(credit_grant, 0) = 0;
+
+-- 2. Standart reja belgilanmagan boʻlsa — eng arzonini belgilaymiz.
+--    Usiz yangi foydalanuvchiga umuman reja biriktirilmaydi.
+do $$
+begin
+  if not exists (select 1 from public.plans where is_default) then
+    update public.plans
+       set is_default = true
+     where id = (
+       select id from public.plans
+        where coalesce(is_active, true)
+        order by coalesce(price_cents, 0), coalesce(sort, 0)
+        limit 1
+     );
+  end if;
+end $$;
+
+-- 3. Krediti berilmagan mavjud foydalanuvchilarga rejasining kreditini beramiz.
+--    Eski bazada roʻyxatdan oʻtganlar boʻsh balans bilan qolgan boʻlishi mumkin.
+update public.credit_balances b
+   set balance      = p.credit_grant,
+       granted      = p.credit_grant,
+       period_start = coalesce(b.period_start, now()),
+       period_end   = coalesce(b.period_end, now() + interval '30 days')
+  from public.subscriptions s
+  join public.plans p on p.id = s.plan_id
+ where s.user_id = b.user_id
+   and s.status = 'active'
+   and coalesce(b.granted, 0) = 0
+   and p.credit_grant > 0;
+
+-- 4. Obunasi yoʻq foydalanuvchilarni standart rejaga biriktiramiz.
+insert into public.subscriptions (user_id, plan_id, status, note)
+select pr.id, pl.id, 'active', 'taʼmirlashda biriktirildi'
+  from public.profiles pr
+  cross join lateral (
+    select id, credit_grant from public.plans where is_default and is_active limit 1
+  ) pl
+ where not exists (
+   select 1 from public.subscriptions s where s.user_id = pr.id and s.status = 'active'
+ );
+
+insert into public.credit_balances (user_id, balance, granted, period_start, period_end)
+select pr.id, pl.credit_grant, pl.credit_grant, now(), now() + interval '30 days'
+  from public.profiles pr
+  cross join lateral (
+    select credit_grant from public.plans where is_default and is_active limit 1
+  ) pl
+ where not exists (select 1 from public.credit_balances b where b.user_id = pr.id)
+on conflict (user_id) do nothing;
