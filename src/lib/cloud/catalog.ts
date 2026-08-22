@@ -189,3 +189,25 @@ export async function publicCatalog(): Promise<PublicModel[]> {
   if (error) throw new Error(error.message);
   return (data ?? []) as PublicModel[];
 }
+
+/**
+ * Katalogga kiritilmagan, lekin rejada ochiq modellar.
+ *
+ * Katalogdan oldin modellar toʻgʻridan-toʻgʻri `plan_models` ga qoʻlda
+ * yozilgan boʻlishi mumkin. Ular ishlaydi, lekin provayderi nomaʼlum va
+ * narxi eski oʻlchovda qolgan — shuning uchun admin buni koʻrib turishi
+ * kerak.
+ */
+export interface UnlistedModel {
+  model: string;
+  role: string;
+  plans: number;
+  input_credits_per_mtok: number;
+  output_credits_per_mtok: number;
+}
+
+export async function unlistedModels(): Promise<UnlistedModel[]> {
+  const { data, error } = await client().rpc('unlisted_models');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as UnlistedModel[];
+}

@@ -83,8 +83,19 @@ create policy ai_models_admin on public.ai_models
 -- ---------------------------------------------------------------------------
 --  Kredit kursi: tannarxdan sotuv narxini hisoblash
 -- ---------------------------------------------------------------------------
+/*
+ * Kurs seed rejalardagi kredit miqdoriga moslab tanlangan.
+ *
+ * Pro rejasi 120 000 kredit beradi. `usd_per_credit = 0.00005` da bu
+ * $6 lik sotuv qiymati, ustama 2 boʻlgani uchun taxminan $3 haqiqiy
+ * xarajat — oyiga bir necha million token. Bepul reja 2 000 kredit,
+ * yaʼni tanishib chiqish uchun.
+ *
+ * Admin buni panelda oʻzgartira oladi; oʻzgartirilsa yangi qoʻshilgan
+ * modellar narxi shu kurs boʻyicha hisoblanadi.
+ */
 insert into public.app_settings (key, value)
-values ('credit_rate', '{"usd_per_credit": 0.00002, "markup": 2.0}'::jsonb)
+values ('credit_rate', '{"usd_per_credit": 0.00005, "markup": 2.0}'::jsonb)
 on conflict (key) do nothing;
 
 -- USD/1M token → kredit/1M token.
@@ -96,7 +107,7 @@ declare
   v_markup numeric;
 begin
   select value into v from public.app_settings where key = 'credit_rate';
-  v_rate := coalesce(nullif((v ->> 'usd_per_credit')::numeric, 0), 0.00002);
+  v_rate := coalesce(nullif((v ->> 'usd_per_credit')::numeric, 0), 0.00005);
   v_markup := coalesce(nullif((v ->> 'markup')::numeric, 0), 2.0);
   return round(coalesce(p_usd, 0) * v_markup / v_rate, 4);
 end;
@@ -122,6 +133,7 @@ begin
   select coalesce(jsonb_agg(x order by x ->> 'role', (x ->> 'sort')::int, x ->> 'label'), '[]'::jsonb)
     into v_out
   from (
+    -- 1. Katalogdagi modellar (admin qoʻshgan «Daho» nomlari).
     select jsonb_build_object(
              'slug', m.slug,
              'label', coalesce(nullif(m.label, ''), m.slug),
@@ -141,6 +153,34 @@ begin
       left join public.plan_models pm
         on pm.model = m.slug and pm.plan_id = v_plan.id and pm.enabled
      where m.enabled
+
+    union all
+
+    /*
+     * 2. Katalogga hali kiritilmagan, lekin rejada ochiq modellar.
+     *
+     * Katalog yangi. Usiz eski sozlamadagi foydalanuvchi «katalog boʻsh»
+     * degan yozuvni koʻrardi — holbuki modellari ishlab turgan.
+     */
+    select jsonb_build_object(
+             'slug', pm.model,
+             'label', pm.model,
+             'description', '',
+             'role', pm.role,
+             'supports_tools', true,
+             'supports_vision', false,
+             'context_tokens', 0,
+             'is_daily', false,
+             'sort', 100,
+             'open', true,
+             'input_credits_per_mtok', pm.input_credits_per_mtok,
+             'output_credits_per_mtok', pm.output_credits_per_mtok,
+             'call_credits', pm.call_credits
+           ) as x
+      from public.plan_models pm
+     where pm.plan_id = v_plan.id
+       and pm.enabled
+       and not exists (select 1 from public.ai_models m where m.slug = pm.model)
   ) s;
 
   return v_out;
@@ -329,3 +369,46 @@ grant execute on function public.admin_attach_model(text, uuid[], numeric) to au
 insert into public.app_settings (key, value)
 values ('providers', '{"openrouter": {"enabled": true}, "google": {"enabled": true}}'::jsonb)
 on conflict (key) do nothing;
+
+
+-- ---------------------------------------------------------------------------
+--  Katalogga kiritilmagan modellar
+--
+--  Katalog yangi. Undan oldin modellar toʻgʻridan-toʻgʻri `plan_models`
+--  ga qoʻlda yozilgan boʻlishi mumkin — ular ishlaydi, lekin narxi eski
+--  oʻlchovda qolgan va provayderi nomaʼlum. Admin buni koʻrib turishi
+--  va katalogga koʻchirishi kerak.
+-- ---------------------------------------------------------------------------
+create or replace function public.unlisted_models()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare
+  v_out jsonb;
+begin
+  if not public.is_admin() then
+    raise exception 'faqat admin';
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'model', g.model,
+           'role', g.role,
+           'plans', g.plans,
+           'input_credits_per_mtok', g.kirish,
+           'output_credits_per_mtok', g.chiqish
+         ) order by g.model), '[]'::jsonb)
+    into v_out
+    from (
+      select pm.model,
+             max(pm.role) as role,
+             count(*) as plans,
+             max(pm.input_credits_per_mtok) as kirish,
+             max(pm.output_credits_per_mtok) as chiqish
+        from public.plan_models pm
+       where not exists (select 1 from public.ai_models m where m.slug = pm.model)
+       group by pm.model
+    ) g;
+
+  return v_out;
+end;
+$$;
+
+grant execute on function public.unlisted_models() to authenticated;

@@ -20,6 +20,7 @@ import {
   type CloudPlan,
 } from '../../lib/cloud';
 import { recentUsage } from '../../lib/cloud/admin';
+import { publicCatalog, type PublicModel } from '../../lib/cloud/catalog';
 import {
   JOB_LABEL,
   backgroundAllowed,
@@ -153,16 +154,88 @@ const ROLE_WORD: Record<string, string> = {
 };
 
 /**
- * Model qanchalik «qimmat» ekanini soʻz bilan aytadi.
+ * Modellar roʻyxati — nomi, imkoniyati va sarfi.
  *
- * Aniq kredit narxi foydalanuvchiga hech narsa demaydi, lekin qaysi model
- * limitni tez yeyishini bilishi kerak — shuning uchun uch daraja.
+ * Aniq kredit raqami foydalanuvchiga hech narsa demaydi, lekin qaysi
+ * model limitni tez yeyishini bilishi kerak. Baho MUTLAQ emas, NISBIY:
+ * roʻyxatning oʻzidan hisoblanadi, chunki narxlar admin qoʻyadigan
+ * kursga bogʻliq va vaqt oʻtib oʻzgaradi.
+ *
+ * Yopiq modellar ham koʻrsatiladi — «bu qaysi tarifda ochiladi?» degan
+ * savol javobsiz qolmasin.
  */
-function costWord(m: { output_price: number; call_price: number }): string {
-  const price = Number(m.output_price ?? 0) + Number(m.call_price ?? 0) * 10;
-  if (price >= 200) return 'limitni tez yeydi';
-  if (price >= 60) return 'oʻrtacha';
-  return 'tejamkor';
+function ModelList() {
+  const [list, setList] = useState<PublicModel[] | null>(null);
+  const [hammasi, setHammasi] = useState(false);
+
+  useEffect(() => {
+    void publicCatalog()
+      .then(setList)
+      .catch(() => setList([]));
+  }, []);
+
+  const baho = useMemo(() => {
+    const narxlar = (list ?? [])
+      .map((m) => Number(m.output_credits_per_mtok ?? 0) + Number(m.call_credits ?? 0) * 10)
+      .filter((n) => n > 0)
+      .sort((a, b) => a - b);
+    if (narxlar.length < 3) return () => '';
+    const past = narxlar[Math.floor(narxlar.length / 3)];
+    const baland = narxlar[Math.floor((narxlar.length * 2) / 3)];
+    return (m: PublicModel) => {
+      const n = Number(m.output_credits_per_mtok ?? 0) + Number(m.call_credits ?? 0) * 10;
+      if (!n) return 'bepul';
+      if (n <= past) return 'tejamkor';
+      if (n <= baland) return 'oʻrtacha';
+      return 'limitni tez yeydi';
+    };
+  }, [list]);
+
+  if (list === null) return <div className="tiny">Modellar yuklanmoqda…</div>;
+  if (!list.length) {
+    return <div className="tiny">Katalog boʻsh. Admin hali model qoʻshmagan.</div>;
+  }
+
+  const ochiq = list.filter((m) => m.open);
+  const yopiq = list.filter((m) => !m.open);
+  const shown = hammasi ? [...ochiq, ...yopiq] : ochiq;
+
+  return (
+    <>
+      {!ochiq.length && (
+        <div className="tiny">Rejangizda model ochilmagan. Adminga murojaat qiling.</div>
+      )}
+      {shown.map((m) => (
+        <div className={`line-row${m.open ? '' : ' dim'}`} key={m.slug}>
+          <div className="grow">
+            <div>
+              {m.label}
+              {m.is_daily ? ' · bepul' : ''}
+            </div>
+            <div className="tiny">
+              {m.description || ROLE_WORD[m.role] || m.role}
+            </div>
+            <div className="tiny">
+              {[
+                m.open ? baho(m) : 'yuqori tarifda ochiladi',
+                ROLE_WORD[m.role] ?? m.role,
+                m.supports_tools ? 'vosita ishlatadi' : '',
+                m.supports_vision ? 'rasm koʻradi' : '',
+                m.context_tokens ? `${Math.round(m.context_tokens / 1000)}k kontekst` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </div>
+          </div>
+        </div>
+      ))}
+      {yopiq.length > 0 && (
+        <button className="btn mini ghost" onClick={() => setHammasi(!hammasi)}>
+          {hammasi ? 'Faqat ochiqlarini koʻrsat' : `Yana ${yopiq.length} ta model`}
+        </button>
+      )}
+    </>
+  );
 }
 
 /**
@@ -412,21 +485,8 @@ function AccountTab({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
         </div>
       </div>
 
-      <div className="section-label">Ochiq modellar</div>
-      {account.models.length === 0 && (
-        <div className="tiny">Rejangizda model ochilmagan. Adminga murojaat qiling.</div>
-      )}
-      {account.models.map((m) => (
-        <div className="line-row" key={m.model}>
-          <div className="grow">
-            <div>{m.model}</div>
-            <div className="tiny">{costWord(m)} · {ROLE_WORD[m.role] ?? m.role}</div>
-          </div>
-          {account.is_admin && (
-            <span className="pill soft">{formatCredits(m.output_price)}</span>
-          )}
-        </div>
-      ))}
+      <div className="section-label">Modellar</div>
+      <ModelList />
 
       <div className="section-label">Sinxronizatsiya</div>
       <div className="tiny">

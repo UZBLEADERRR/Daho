@@ -19,10 +19,12 @@ import {
   saveAiModel,
   saveCreditRate,
   toCredits,
+  unlistedModels,
   type AiModel,
   type CatalogModel,
   type CreditRate,
   type ProviderStatus,
+  type UnlistedModel,
 } from '../../lib/cloud/catalog';
 import { adminPlans } from '../../lib/cloud/admin';
 import type { CloudPlan } from '../../lib/cloud';
@@ -409,11 +411,13 @@ export function ModelsAdmin() {
   const [rate, setRate] = useState<CreditRate>({ usd_per_credit: 0.00002, markup: 2 });
   const [providers, setProviders] = useState<ProviderStatus | null>(null);
   const [providerError, setProviderError] = useState('');
+  const [unlisted, setUnlisted] = useState<UnlistedModel[]>([]);
   const [editing, setEditing] = useState<AiModel | null>(null);
   const [showCatalog, setShowCatalog] = useState(false);
 
   const load = () => {
     void aiModels().then(setModels).catch(fail);
+    void unlistedModels().then(setUnlisted).catch(() => setUnlisted([]));
     void adminPlans().then(setPlans).catch(fail);
     void creditRate().then(setRate).catch(fail);
     void providerStatus()
@@ -536,6 +540,45 @@ export function ModelsAdmin() {
           </div>
         </div>
       ))}
+
+      {/* --- katalogdan tashqarida qolganlar --- */}
+      {unlisted.length > 0 && (
+        <>
+          <div className="section-label">Katalogda yoʻq ({unlisted.length})</div>
+          <div className="tiny" style={{ marginBottom: 6 }}>
+            Bular rejada ochiq, lekin katalogga kiritilmagan — provayderi
+            nomaʼlum va narxi eski oʻlchovda. Katalogga koʻchiring.
+          </div>
+          {unlisted.map((m) => (
+            <div className="line-row dim" key={m.model}>
+              <div className="grow">
+                <div>{m.model}</div>
+                <div className="tiny">
+                  {m.plans} ta rejada · {Number(m.output_credits_per_mtok).toLocaleString('ru-RU')}{' '}
+                  kredit / 1M
+                </div>
+              </div>
+              <button
+                className="btn mini"
+                onClick={() =>
+                  setEditing({
+                    ...BOSH,
+                    slug: m.model,
+                    label: m.model,
+                    role: m.role || 'chat',
+                    provider: m.model.includes('/') ? 'openrouter' : 'google',
+                    upstream: m.model,
+                    input_credits_per_mtok: m.input_credits_per_mtok,
+                    output_credits_per_mtok: m.output_credits_per_mtok,
+                  })
+                }
+              >
+                Katalogga
+              </button>
+            </div>
+          ))}
+        </>
+      )}
 
       {editing && (
         <Editor

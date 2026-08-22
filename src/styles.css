@@ -4501,3 +4501,8 @@ iframe {
     opacity: 0.9;
   }
 }
+
+/* Yopiq (yuqori tarifdagi) model — koʻrinadi, lekin oldinga chiqmaydi */
+.line-row.dim {
+  opacity: 0.55;
+}
