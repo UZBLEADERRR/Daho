@@ -18,7 +18,7 @@
 /** Guruh nomi → ichidagi vositalar. */
 export const TOOL_GROUPS: Record<string, string[]> = {
   // Har doim ochiq: savol berish, oʻz maʼlumotini oʻqish, internet.
-  yadro: ['ask_user', 'read_data', 'search_web', 'open_site', 'delegate', 'use_tools'],
+  yadro: ['ask_user', 'read_data', 'search_web', 'open_site', 'delegate', 'use_tools', 'connect_service'],
 
   reja: [
     'create_note',
@@ -119,7 +119,7 @@ export const CODE_GROUPS: Record<string, string[]> = {
     'changes', 'undo', 'checkpoint',
     'run_cmd', 'run_js', 'test_app', 'screenshot',
     'todo', 'plan_write', 'plan_check', 'save_spec',
-    'ask_user', 'fetch_url', 'web_search', 'list_models', 'use_tools',
+    'ask_user', 'fetch_url', 'web_search', 'list_models', 'use_tools', 'connect_service',
   ],
   github: [
     'github_read', 'github_push', 'github_issue', 'github_branch',

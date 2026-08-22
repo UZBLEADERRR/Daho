@@ -70,6 +70,13 @@ import {
 } from './place';
 import { openSite } from './browserbus';
 import { synthesize } from './speech';
+import {
+  connectable,
+  connected,
+  startConnect,
+  type OauthProvider,
+  type ProviderInfo,
+} from './oauth';
 import { TOOL_GROUPS } from './toolpick';
 import { getState, setState } from './store';
 import { DAYS } from './types';
@@ -779,6 +786,21 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'connect_service',
+    description:
+      'Xizmatga ulanishni TAKLIF qiladi: foydalanuvchiga tugma chiqadi va u bir bosishda '
+      + 'ruxsat beradi. Token soʻrama — buning oʻrniga shuni chaqir. '
+      + 'Xizmatlar: github, supabase, google.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        service: { type: 'STRING', description: 'github | supabase | google' },
+        why: { type: 'STRING', description: 'Nima uchun kerakligi — bir jumla' },
+      },
+      required: ['service'],
+    },
+  },
+  {
     name: 'use_tools',
     description:
       'Yopiq vosita guruhini ochadi. Kerakli vosita roʻyxatda koʻrinmasa shuni chaqir — '
@@ -816,6 +838,68 @@ export async function executeTool(
      * qadamda qaysi eʼlonlar yuborilishini belgilaydi. Ochilishning
      * oʻzi agent siklida (`agent.ts`) hisobga olinadi.
      */
+    /*
+     * Xizmatga ulanish taklifi.
+     *
+     * Foydalanuvchidan token soʻrash notoʻgʻri: u qayerdan olishni
+     * bilmaydi. Shuning uchun tayyor tugma chiqaramiz — «Ulash» bosilsa
+     * xizmat sahifasi ochiladi va qolganini server bajaradi.
+     */
+    case 'connect_service': {
+      const service = str(args.service).toLowerCase() as OauthProvider;
+      if (!['github', 'supabase', 'google'].includes(service)) {
+        return {
+          ok: false,
+          summary: 'nomaʼlum xizmat',
+          payload: { xato: 'github, supabase yoki google boʻlishi kerak' },
+        };
+      }
+      if (connected(service)) {
+        return { ok: true, summary: `${service} allaqachon ulangan`, payload: { ulangan: true } };
+      }
+
+      const list = await connectable().catch((): Record<string, ProviderInfo> => ({}));
+      if (!list[service]?.ready) {
+        return {
+          ok: false,
+          summary: `${service} ulanishi sozlanmagan`,
+          payload: {
+            xato: `Serverda ${service} ulanishi sozlanmagan.`,
+            eslatma: 'Foydalanuvchiga Sozlamalardan qoʻlda kalit kiritish mumkinligini ayt.',
+          },
+        };
+      }
+
+      const why = str(args.why, 'shu ish uchun kerak');
+      const answer = await askUser({
+        scope: 'chat',
+        targetId: ctx.chatId,
+        question: `${list[service].label} ga ulanish kerak — ${why}. Ulaymizmi?`,
+        options: ['Ulash', 'Hozir emas'],
+        multi: false,
+        signal: ctx.signal,
+      });
+
+      if (!/ulash/i.test(answer)) {
+        return {
+          ok: false,
+          summary: 'ulanish rad etildi',
+          payload: { javob: answer, eslatma: 'Ulanishsiz qila oladigan ishni davom ettir.' },
+        };
+      }
+
+      await startConnect(service);
+      return {
+        ok: true,
+        summary: `${service} ulanish sahifasi ochildi`,
+        payload: {
+          ochildi: true,
+          eslatma:
+            'Foydalanuvchi ruxsat berib qaytadi. Shu javobingda «qaytganingizda davom ettiraman» deb yoz.',
+        },
+      };
+    }
+
     case 'use_tools': {
       const asked = Array.isArray(args.groups)
         ? args.groups.map((g) => String(g).trim().toLowerCase())

@@ -198,6 +198,9 @@ const B_USLUB = `## Uslub
 - Boʻlim sarlavhalariga mos emoji qoʻy (📌 muhim, ✅ toʻgʻri, ❌ xato, 💡 maslahat,
   ⚠️ ehtiyot boʻling, 🎯 maqsad). Har jumlaga emas — sarlavha va roʻyxat boshiga.
 - Taqqoslash, bosqichlar, xususiyatlar — markdown JADVAL koʻrinishida ber.
+- **Hech qachon token, API kalit yoki parol soʻrama.** Xizmat kerak boʻlsa
+  \`connect_service\` ni chaqir — foydalanuvchiga tugma chiqadi va u bir
+  bosishda ruxsat beradi.
 `;
 const B_GRAFIK = `## Grafiklar
 Javobda sonlar boʻlsa (statistika, taqqoslash, ulush, dinamika, natija) — ularni

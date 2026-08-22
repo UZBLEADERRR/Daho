@@ -76,6 +76,13 @@ import { askUser, drainInterjections } from './ask';
 import { isModelReadable } from './attach';
 import { getState, setState } from './store';
 import { templateById } from './templates';
+import {
+  connectable,
+  connected,
+  startConnect,
+  type OauthProvider,
+  type ProviderInfo,
+} from './oauth';
 import { CODE_GROUPS, closedCodeGroupsNote, codeToolNames, guessCodeGroups } from './toolpick';
 import type {
   Artifact,
@@ -940,6 +947,20 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'connect_service',
+    description:
+      'Xizmatga ulanishni TAKLIF qiladi — foydalanuvchiga tugma chiqadi. Token soʻrama, '
+      + 'shuni chaqir. Xizmatlar: github, supabase, google.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        service: { type: 'STRING', description: 'github | supabase | google' },
+        why: { type: 'STRING', description: 'Nima uchun kerak — bir jumla' },
+      },
+      required: ['service'],
+    },
+  },
+  {
     name: 'use_tools',
     description:
       'Yopiq vosita guruhini ochadi. Kerakli vosita roʻyxatda yoʻq boʻlsa shuni chaqir — '
@@ -1033,6 +1054,50 @@ async function runTool(
      * Guruhni ochish. Hech narsa bajarmaydi — keyingi qadamda qaysi
      * eʼlonlar yuborilishini belgilaydi (siklda hisobga olinadi).
      */
+    /*
+     * Ulanish taklifi — token soʻrash oʻrniga tugma.
+     */
+    case 'connect_service': {
+      const service = str(args.service).toLowerCase() as OauthProvider;
+      if (!['github', 'supabase', 'google'].includes(service)) {
+        return { ok: false, summary: 'nomaʼlum xizmat', payload: { xato: 'github | supabase | google' } };
+      }
+      if (connected(service)) {
+        return { ok: true, summary: `${service} allaqachon ulangan`, payload: { ulangan: true } };
+      }
+      const list = await connectable().catch((): Record<string, ProviderInfo> => ({}));
+      if (!list[service]?.ready) {
+        return {
+          ok: false,
+          summary: `${service} ulanishi sozlanmagan`,
+          payload: {
+            xato: `Serverda ${service} ulanishi sozlanmagan.`,
+            eslatma: 'Sozlamalardan qoʻlda kalit kiritish mumkinligini ayt.',
+          },
+        };
+      }
+      const answer = await askUser({
+        scope: 'code',
+        targetId: projectId,
+        question: `${list[service].label} ga ulanish kerak — ${str(args.why, 'shu ish uchun')}. Ulaymizmi?`,
+        options: ['Ulash', 'Hozir emas'],
+        multi: false,
+        signal,
+      });
+      if (!/ulash/i.test(answer)) {
+        return { ok: false, summary: 'ulanish rad etildi', payload: { javob: answer } };
+      }
+      await startConnect(service);
+      return {
+        ok: true,
+        summary: `${service} ulanish sahifasi ochildi`,
+        payload: {
+          ochildi: true,
+          eslatma: 'Foydalanuvchi ruxsat berib qaytadi — shuni aytib qoʻy.',
+        },
+      };
+    }
+
     case 'use_tools': {
       const asked = Array.isArray(args.groups)
         ? args.groups.map((g) => String(g).trim().toLowerCase())
@@ -2763,8 +2828,8 @@ Nomi: ${project.name}
 ${project.description ? `Tavsif: ${project.description}` : ''}
 GitHub: ${project.repo ? `${project.repo.owner}/${project.repo.repo} (${project.repo.branch})` : 'ulanmagan'}
 Jonli havola: ${project.publish?.url ?? 'hali chiqarilmagan'}
-GitHub tokeni: ${settings.githubToken ? 'kiritilgan' : 'YOʻQ — github vositalari ishlamaydi'}
-Supabase: ${supabaseLink() ? 'ulangan — `supabase` vositasi ishlaydi' : 'ulanmagan (Sozlamalar → Supabase)'}
+GitHub: ${settings.githubToken ? 'ulangan' : 'ULANMAGAN — `connect_service` bilan taklif qil, TOKEN SOʻRAMA'}
+Supabase: ${supabaseLink() ? 'ulangan — `supabase` vositasi ishlaydi' : 'ulanmagan — `connect_service` bilan taklif qil'}
 
 Shablon: ${template.name}
 ${template.brief}

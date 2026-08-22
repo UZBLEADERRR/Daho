@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import { mountAi, providerStatus } from './ai.js';
+import { mountOauth, oauthStatus } from './oauth.js';
 import { env, missing } from './env.js';
 import { allowedHosts, proxyRequest } from './proxy.js';
 import { runCommand, shellLoad } from './shell.js';
@@ -52,6 +53,7 @@ app.get('/api', serviceInfo);
  * pastdagi `app.get('*')` SPA javobini beradi.
  */
 mountAi(app);
+mountOauth(app);
 
 app.get('/health', (_req, res) => {
   res.json({
@@ -136,7 +138,32 @@ app.get('/oauth/callback', (req, res) => {
   const error = String(req.query.error || '');
   if (!code && !error) return res.status(400).send('Kod yoʻq.');
 
-  const link = `${APP_LINK}?${new URLSearchParams(code ? { code } : { error })}`;
+  /*
+   * `state` ichida qaysi xizmat va qayerga qaytish yozilgan. Shu tufayli
+   * har bir xizmatda ROʻYXATDAN OʻTKAZILADIGAN MANZIL BITTA — shu sahifa.
+   * Vebda oʻz manzilimizga, telefonda deep link bilan ilovaga qaytamiz.
+   */
+  let provider = '';
+  let back = '';
+  try {
+    const raw = JSON.parse(
+      Buffer.from(String(req.query.state || ''), 'base64url').toString('utf8'),
+    );
+    provider = String(raw.p || '');
+    back = String(raw.back || '');
+  } catch {
+    /* state boʻlmasa eski yoʻl bilan ishlaymiz */
+  }
+
+  const here = `${req.protocol}://${req.get('host')}`;
+  const query = new URLSearchParams(code ? { code } : { error });
+  if (provider) query.set('provider', provider);
+
+  // Faqat oʻz manzilimizga qaytaramiz — ochiq yoʻnaltirish boʻlmasin.
+  const safeBack = back.startsWith(`${here}/`) || back === here ? back : '';
+  const link = safeBack
+    ? `${safeBack}${safeBack.includes('?') ? '&' : '?'}${query}`
+    : `${APP_LINK}?${query}`;
   const safeLink = escapeHtml(link);
 
   res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
@@ -220,6 +247,11 @@ app.get('/api/public-config', (req, res) => {
     gateway: `${base}/api/ai`,
     server: base,
     providers: providerStatus(),
+    /*
+     * Ulanish uchun mijoz ID lari. Bular OCHIQ boʻlishi moʻljallangan —
+     * himoya sirda emas, qaytish manzilida. Sir serverda qoladi.
+     */
+    oauth: oauthStatus(base),
   });
 });
 

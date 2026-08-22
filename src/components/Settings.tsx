@@ -55,6 +55,7 @@ import {
   Sparkle,
   User,
 } from './Icons';
+import { ConnectButton } from './ConnectButton';
 import { Sheet, Switch, toast } from './ui';
 
 const ACCENTS = [
@@ -555,8 +556,13 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         GitHub (Daho Code uchun)
       </div>
 
+      <ConnectButton
+        provider="github"
+        what="Repo ochish, push, PR va Actions uchun. Token yasash shart emas."
+      />
+
       <div className="field">
-        <label>Shaxsiy token</label>
+        <label>Shaxsiy token (agar ulanmasangiz)</label>
         <input
           type="password"
           value={settings.githubToken}
@@ -1145,8 +1151,13 @@ function SupabasePanel() {
       <p className="tiny set-hint">
         Daho loyiha ochib, jadvallarni oʻzi yaratadi.
       </p>
+      <ConnectButton
+        provider="supabase"
+        what="Loyiha ochish, jadval yaratish va SQL bajarish uchun."
+      />
+
       <div className="field">
-        <label>Management token</label>
+        <label>Management token (agar ulanmasangiz)</label>
         <input
           type="password"
           value={settings.supabaseToken}

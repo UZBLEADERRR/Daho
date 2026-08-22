@@ -22,6 +22,7 @@ import { startScheduler } from './lib/automation';
 import { onOpenSite } from './lib/browserbus';
 import { cloudEnabled, initCloud, useCloud } from './lib/cloud';
 import { installDeviceBridge } from './lib/devicebridge';
+import { finishConnect, listenDeepLink } from './lib/oauth';
 import { onFallbackNotice } from './lib/route';
 import { getModels, pickModel } from './lib/models';
 import { allModels, cachedProviderModels } from './lib/providers';
@@ -97,6 +98,19 @@ export default function App() {
 
   // Limit tugab zaxira modelga oʻtilsa — foydalanuvchiga aytamiz.
   useEffect(() => onFallbackNotice((text) => toast(text)), []);
+
+  /*
+   * Xizmatga ulanishdan qaytish. Vebda manzilda `?code=` boʻladi,
+   * telefonda esa deep link keladi — ikkalasi ham shu yerda yakunlanadi.
+   */
+  useEffect(() => {
+    void finishConnect()
+      .then((provider) => {
+        if (provider) toast(`${provider} ulandi`);
+      })
+      .catch((err) => toast(String((err as Error)?.message ?? err)));
+    listenDeepLink((provider) => toast(`${provider} ulandi`));
+  }, []);
 
   // Avtomatlashtirilgan topshiriqlar soati.
   useEffect(() => startScheduler(), []);
