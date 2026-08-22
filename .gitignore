@@ -24,3 +24,6 @@ android/app/src/main/assets/capacitor.plugins.json
 *.jks
 
 server/node_modules
+
+# Kengaytma arxivi — build paytida yasaladi
+public/daho-extension.zip

@@ -1,3 +1,4 @@
+import { account, limits, session, signIn, signOut } from './cloud.js';
 /*
  * Panel — kengaytmaning yuzi.
  *
@@ -115,7 +116,7 @@ let busy = false;
 async function ask(text) {
   if (busy || !text.trim()) return;
   const { apiKey } = await settings();
-  if (!apiKey) return show('setup');
+  if (!apiKey && !(await session())) return show('setup');
 
   busy = true;
   $('send').disabled = true;
@@ -328,6 +329,27 @@ $('model').addEventListener('change', async (e) => {
 /*  Sozlamalar                                                         */
 /* ------------------------------------------------------------------ */
 
+$('do-login').addEventListener('click', async () => {
+  const note = $('login-note');
+  const server = $('server-url0').value.trim();
+  if (!server) {
+    note.textContent = 'Server manzilini kiriting.';
+    return;
+  }
+  await chrome.storage.local.set({ serverUrl: server.replace(/\/+$/, '') });
+
+  note.textContent = 'Kirilmoqda…';
+  try {
+    await signIn($('login-email').value, $('login-pass').value);
+    note.textContent = '';
+    await fillModels();
+    await renderAccount();
+    show('chat');
+  } catch (err) {
+    note.textContent = String(err?.message ?? err);
+  }
+});
+
 $('save-key').addEventListener('click', async () => {
   const key = $('key').value.trim();
   if (!key) return;
@@ -359,10 +381,53 @@ $('clear-chat').addEventListener('click', async () => {
   show('chat');
 });
 
+/**
+ * Hisob holati.
+ *
+ * Token soni koʻrsatilmaydi — foydalanuvchi «haftalik limitning 64% i
+ * qoldi» degan tushunarli raqamni koʻradi.
+ */
+async function renderAccount() {
+  const box = $('account-bar');
+  if (!box) return;
+
+  const s = await session();
+  if (!s) {
+    box.hidden = true;
+    return;
+  }
+
+  const [acc, win] = await Promise.all([account(), limits()]);
+  const plan = acc?.plan?.name ?? 'Reja yoʻq';
+  const windows = win
+    ? [['soat', win.hour], ['kun', win.day], ['hafta', win.week], ['davr', win.period]]
+        .filter(([, w]) => w && !w.unlimited)
+    : [];
+  const worst = windows.length
+    ? windows.reduce((a, b) => (a[1].left_percent <= b[1].left_percent ? a : b))
+    : null;
+
+  box.hidden = false;
+  box.textContent = '';
+  const left = document.createElement('span');
+  left.textContent = `${s.email} · ${plan}`;
+  const right = document.createElement('span');
+  right.className = worst && worst[1].left_percent <= 15 ? 'low' : '';
+  right.textContent = worst ? `${worst[0]}: ${worst[1].left_percent}%` : 'limitsiz';
+  box.append(left, right);
+}
+
+$('do-logout')?.addEventListener('click', async () => {
+  await signOut();
+  await renderAccount();
+  show('setup');
+});
+
 async function fillSettings() {
   const s = await settings();
   $('key2').value = s.apiKey;
   $('server-url').value = s.serverUrl;
+  if ($('server-url0')) $('server-url0').value = s.serverUrl;
   $('server-secret').value = s.serverSecret;
   $('tg-token').value = s.tgToken;
 }
@@ -371,8 +436,10 @@ async function fillSettings() {
 
 (async () => {
   const { apiKey } = await settings();
+  const signedIn = Boolean(await session());
   await loadThread();
   await fillSettings();
   await fillModels();
-  show(apiKey ? 'chat' : 'setup');
+  await renderAccount();
+  show(apiKey || signedIn ? 'chat' : 'setup');
 })();

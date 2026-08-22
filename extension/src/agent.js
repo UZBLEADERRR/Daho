@@ -10,8 +10,9 @@
  * Telegram bu yerda ham bor, chunki bot uchun bitta token yetarli.
  */
 
+import { aiFetch, session } from './cloud.js';
+
 const MAX_ROUNDS = 12;
-const API = 'https://generativelanguage.googleapis.com/v1beta';
 
 /* ------------------------------------------------------------------ */
 /*  Sozlamalar                                                         */
@@ -43,8 +44,8 @@ export const AGENT_TOOLS = [
     name: 'read_page',
     description:
       'Hozir ochiq sahifadan maʼlumot oladi — YouTube (sarlavha, tavsif, '
-      + 'izohlar), Telegram (xabarlar), Instagram (post va izohlar) yoki '
-      + 'oddiy matn. Sahifa haqida gap ketsa SHUNDAN boshla.',
+      + 'SUBTITR matni va izohlar), Telegram (xabarlar), Instagram (post va '
+      + 'izohlar) yoki oddiy matn. Sahifa haqida gap ketsa SHUNDAN boshla.',
     parameters: { type: 'OBJECT', properties: {} },
   },
   {
@@ -278,6 +279,14 @@ turgan sahifa ustida ishlaysan, lekin undan tashqarisini ham qila olasan.
 
 Qanday ishlaysan:
 - Sahifa haqida gap ketsa ishni \`read_page\` bilan boshla.
+- YOUTUBE. \`read_page\` videoning SUBTITRINI qaytaradi (\`subtitr.matn\`,
+  har boʻlagi oldida [daqiqa:soniya]). Video mazmuni haqidagi savolga
+  FAQAT shu matnga tayanib javob ber — sarlavha va izohlardan taxmin
+  qilma. Javobda kerakli joyning vaqtini koʻrsat, masalan «[4:12] da».
+  \`hozirgi_vaqt\` — foydalanuvchi hozir koʻrayotgan joy; «shu yerda nima
+  dedi?» degan savolda shundan boshla.
+  \`subtitr\` boʻsh boʻlsa — videoda subtitr yoʻqligini ochiq ayt va
+  mazmunini oʻzingdan toʻqima.
 - Topshiriqni OXIRIGACHA bajar. Yarim javob berma, «davom etaymi?» deb
   soʻrama — qilib, keyin natijani koʻrsat.
 - Kod yozsang \`write_code\` bilan yoz, javob matniga tiqma.
@@ -302,7 +311,10 @@ Narx, muddat, shaxsiy shart haqidagi savolga oʻzingdan javob berma —
  */
 export async function runAgent(history, ui = {}) {
   const { apiKey, model } = await settings();
-  if (!apiKey) throw new Error('Gemini kaliti kiritilmagan.');
+  // Hisobga kirilgan boʻlsa kalit shart emas — soʻrov server orqali oʻtadi.
+  if (!apiKey && !(await session())) {
+    throw new Error('Daho hisobingizga kiring yoki Sozlamalarda kalit kiriting.');
+  }
 
   const contents = history.map((m) => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -312,16 +324,16 @@ export async function runAgent(history, ui = {}) {
   let answer = '';
 
   for (let round = 0; round < MAX_ROUNDS; round += 1) {
-    const res = await fetch(`${API}/models/${model}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({
+    const res = await aiFetch(
+      `/models/${model}:generateContent`,
+      {
         contents,
         systemInstruction: { parts: [{ text: SYSTEM }] },
         tools: [{ functionDeclarations: AGENT_TOOLS }],
         generationConfig: { temperature: 0.6 },
-      }),
-    });
+      },
+      apiKey,
+    );
 
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message ?? `Xato ${res.status}`);

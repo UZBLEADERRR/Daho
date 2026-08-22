@@ -5,6 +5,8 @@ export const env = {
   supabaseUrl: process.env.SUPABASE_URL || '',
   serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   anonKey: process.env.SUPABASE_ANON_KEY || '',
+  // Chrome Web Store dagi manzil — joylangach shu yerga yoziladi.
+  storeUrl: process.env.EXTENSION_STORE_URL || '',
 
   geminiKey: process.env.GEMINI_API_KEY || '',
 

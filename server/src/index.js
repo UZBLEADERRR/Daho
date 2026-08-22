@@ -190,6 +190,23 @@ app.post('/run', async (req, res) => {
  * beriladi. Bu sahifa — oʻrnatish yoʻriqnomasi, chunki Chrome arxivni
  * oʻzi oʻrnata olmaydi: avval ochib, keyin «Load unpacked» qilinadi.
  */
+/**
+ * Kengaytma uchun ochiq sozlama.
+ *
+ * Kengaytma qaysi Supabase loyihasiga kirishini bilishi kerak. Bu ikki
+ * qiymat ochiq boʻlishi uchun moʻljallangan — himoya RLS siyosatlarida.
+ * Shuning uchun kengaytmaga qoʻlda hech narsa yozilmaydi: u serveridan
+ * soʻraydi va shu bilan hisobga kira oladi.
+ */
+app.get('/api/public-config', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json({
+    supabaseUrl: env.supabaseUrl,
+    supabaseAnonKey: env.anonKey,
+    gateway: env.supabaseUrl ? `${env.supabaseUrl}/functions/v1/ai-gateway` : '',
+  });
+});
+
 app.get('/extension', (_req, res) => {
   res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
 <html lang="uz"><head><meta charset="utf-8">
@@ -211,17 +228,28 @@ app.get('/extension', (_req, res) => {
        border-radius:.4rem;color:#d4d4d8;font-size:.9rem}
 </style></head><body><main>
 <h1>Daho kengaytmasi</h1>
-<p class="sub">Ochiq sahifani tahlil qiladi — YouTube, Telegram, Instagram va oddiy maqolalar.</p>
+<p class="sub">Ochiq sahifani oʻqiydi va tushuntiradi — YouTube videosining
+subtitrigacha. Daho hisobingiz bilan ishlaydi.</p>
 
-<a class="btn" href="/daho-extension.zip" download>Arxivni yuklab olish</a>
+<a class="btn" href="${env.storeUrl || '#'}"${env.storeUrl ? '' : ' style="opacity:.5;pointer-events:none"'}>
+  ${env.storeUrl ? 'Chrome Web Store dan oʻrnatish' : 'Doʻkonga joylash jarayonda'}
+</a>
+
+<h2 style="font-size:1.05rem;margin:0 0 .5rem">Hozircha qoʻlda oʻrnatish</h2>
+<p style="color:#a1a1aa;margin:0 0 1rem;font-size:.92rem">
+Chrome 2018 yildan beri Doʻkondan tashqari kengaytmani bir bosishda
+oʻrnatishga ruxsat bermaydi. Doʻkonga joylanmaguncha quyidagi yoʻl ishlaydi —
+bu vaqtinchalik, lekin xavfsiz.</p>
+
+<a class="btn" href="/daho-extension.zip" download style="background:#27272a">Arxivni yuklab olish</a>
 
 <ol>
  <li>Arxivni yuklab oling va <b>papkaga chiqaring</b> (unzip).</li>
  <li>Chrome yoki Edge’da <code>chrome://extensions</code> ni oching.</li>
  <li>Oʻng yuqorida <b>Developer mode</b> ni yoqing.</li>
  <li><b>Load unpacked</b> → chiqargan papkani tanlang.</li>
- <li>Kengaytma belgisini bosing, panel ochiladi. Gemini kalitini bir marta
-     kiriting — <code>aistudio.google.com/apikey</code> dan bepul olinadi.</li>
+ <li>Kengaytma belgisini bosing va <b>Daho hisobingizga kiring</b> —
+     obunangizdagi modellar shu yerda ham ishlaydi. Kalit kiritish shart emas.</li>
 </ol>
 
 <p class="note"><b>Diqqat:</b> telefondagi Chrome kengaytmalarni

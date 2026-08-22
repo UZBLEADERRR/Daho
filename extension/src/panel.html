@@ -11,6 +11,8 @@
   <button id="open-settings" class="icon" title="Sozlamalar">⚙</button>
 </header>
 
+<div id="account-bar" class="account-bar" hidden></div>
+
 <nav class="tabs" role="tablist">
   <button data-tab="chat" role="tab" aria-selected="true">Suhbat</button>
   <button data-tab="code" role="tab" aria-selected="false">Kod</button>
@@ -21,16 +23,34 @@
   <!-- ------------------------------------------------ birinchi ochish -->
   <section id="pane-setup" class="pane" hidden>
     <p class="hint">
-      Ishlashi uchun Gemini kaliti kerak. Kalit faqat shu brauzerda
-      saqlanadi va hech qayerga yuborilmaydi — soʻrov bevosita Google’ga
-      ketadi.
+      Daho hisobingiz bilan kiring — obunangizdagi modellar shu yerda ham
+      ishlaydi va suhbatlar telefondagi ilova bilan bir xil boʻladi.
     </p>
+
     <div class="field">
-      <label for="key">Gemini kaliti</label>
-      <input id="key" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+      <label for="server-url0">Daho serveri</label>
+      <input id="server-url0" placeholder="https://daho.up.railway.app" autocomplete="off" spellcheck="false" />
     </div>
-    <button id="save-key" class="btn primary">Saqlash va boshlash</button>
-    <p class="hint">Kalitni <b>aistudio.google.com/apikey</b> dan bepul olasiz.</p>
+    <div class="field">
+      <label for="login-email">Pochta</label>
+      <input id="login-email" type="email" placeholder="siz@example.com" autocomplete="username" />
+    </div>
+    <div class="field">
+      <label for="login-pass">Parol</label>
+      <input id="login-pass" type="password" autocomplete="current-password" />
+    </div>
+    <button id="do-login" class="btn primary">Kirish</button>
+    <p id="login-note" class="hint"></p>
+
+    <details class="own-key">
+      <summary>Oʻz Gemini kalitim bilan ishlayman</summary>
+      <div class="field">
+        <label for="key">Gemini kaliti</label>
+        <input id="key" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+      </div>
+      <button id="save-key" class="btn">Saqlash va boshlash</button>
+      <p class="hint">Kalitni <b>aistudio.google.com/apikey</b> dan bepul olasiz.</p>
+    </details>
   </section>
 
   <!-- ------------------------------------------------------- suhbat -->
@@ -93,6 +113,7 @@
     </div>
 
     <button id="save-settings" class="btn primary">Saqlash</button>
+    <button id="do-logout" class="btn">Hisobdan chiqish</button>
     <button id="clear-chat" class="btn">Suhbatni tozalash</button>
     <p id="settings-note" class="hint"></p>
   </section>
