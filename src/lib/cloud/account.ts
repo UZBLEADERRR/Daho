@@ -44,6 +44,46 @@ export function useCloud(): CloudState {
   );
 }
 
+/**
+ * Soʻrov osilib qolmasin.
+ *
+ * Tarmoq yoʻq yoki server javob bermasa `fetch` juda uzoq kutadi va
+ * ilova «Yuklanmoqda…» holatida qotib qoladi. 15 soniya — yetarli.
+ */
+async function withTimeout<T>(promise: PromiseLike<T>, nima: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Server javob bermadi (${nima}).`)),
+          15_000,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** Texnik xatoni odam tushunadigan matnga oʻgiradi. */
+function humanError(err: unknown): string {
+  const raw = String((err as Error)?.message ?? err);
+
+  if (/function .*my_account.* does not exist|PGRST202|schema cache/i.test(raw)) {
+    return 'Bazada jadvallar yaratilmagan. Supabase → SQL Editor da migratsiyalarni ishga tushiring.';
+  }
+  if (/failed to fetch|networkerror|load failed/i.test(raw)) {
+    return 'Serverga ulanib boʻlmadi. Internetni yoki server manzilini tekshiring.';
+  }
+  if (/invalid api key|jwt|apikey/i.test(raw)) {
+    return 'Server kaliti notoʻgʻri. VITE_SUPABASE_ANON_KEY ni tekshiring.';
+  }
+  if (/javob bermadi/i.test(raw)) return raw;
+  return raw;
+}
+
 let refreshing: Promise<Account | null> | null = null;
 
 /** Reja, kredit va limitlarni serverdan yangilaydi. */
@@ -54,22 +94,33 @@ export async function refreshAccount(): Promise<Account | null> {
 
   refreshing = (async () => {
     try {
-      const { data: sessionData } = await sb.auth.getSession();
+      const { data: sessionData } = await withTimeout(sb.auth.getSession(), 'sessiya');
       if (!sessionData.session) {
-        emit({ status: 'kirilmagan', account: null });
+        emit({ status: 'kirilmagan', account: null, error: '' });
         return null;
       }
-      const { data, error } = await sb.rpc('my_account');
+      const { data, error } = await withTimeout(sb.rpc('my_account'), 'hisob');
       if (error) throw error;
       const account = data as Account;
       if (!account?.signed_in) {
-        emit({ status: 'kirilmagan', account: null });
+        emit({ status: 'kirilmagan', account: null, error: '' });
         return null;
       }
       emit({ status: 'kirgan', account, error: '' });
       return account;
     } catch (err) {
-      emit({ error: String((err as Error)?.message ?? err) });
+      /*
+       * Xato boʻlganda ham holatni ANIQ qilib qoʻyamiz.
+       *
+       * Avval bu yerda faqat `error` yozilardi, `status` esa
+       * «yuklanmoqda» boʻlib qolaverardi — natijada varaq abadiy
+       * «Yuklanmoqda…» deb turardi va foydalanuvchi sababini bilmasdi.
+       * Endi kirish oynasi koʻrsatiladi va xato matni ham chiqadi.
+       */
+      emit({
+        status: state.account ? 'kirgan' : 'kirilmagan',
+        error: humanError(err),
+      });
       return state.account;
     } finally {
       refreshing = null;

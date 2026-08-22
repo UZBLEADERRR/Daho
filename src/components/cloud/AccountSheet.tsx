@@ -685,7 +685,7 @@ export function AccountSheet({
   onClose: () => void;
   onOpenAdmin?: () => void;
 }) {
-  const { status, account } = useCloud();
+  const { status, account, error } = useCloud();
   const [tab, setTab] = useState<Tab>('hisob');
 
   if (status === 'off') {
@@ -702,6 +702,9 @@ export function AccountSheet({
   return (
     <Sheet title="Daho Cloud" onClose={onClose}>
       {status === 'yuklanmoqda' && <div className="tiny">Yuklanmoqda…</div>}
+
+      {/* Xato boʻlsa jim turmaydi — sababi va nima qilish kerakligi yoziladi. */}
+      {error && <div className="auth-error cloud-error">{error}</div>}
 
       {status === 'kirilmagan' && <AuthForm />}
 

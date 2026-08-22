@@ -24,9 +24,12 @@ const COPY: Record<Mode, { title: string; hint: string; action: string }> = {
 export function AuthScreen({
   initial = 'kirish',
   onBack,
+  serverError = '',
 }: {
   initial?: Mode;
   onBack?: () => void;
+  /** Server bilan bogʻliq muammo — kirishdan oldin koʻrsatiladi. */
+  serverError?: string;
 }) {
   const [mode, setMode] = useState<Mode>(initial);
   const [email, setEmail] = useState('');
@@ -156,6 +159,13 @@ export function AuthScreen({
               placeholder="Kamida 6 ta belgi"
             />
           </label>
+        )}
+
+        {serverError && (
+          <div className="auth-error auth-server-error">
+            <b>Server bilan muammo</b>
+            <span>{serverError}</span>
+          </div>
         )}
 
         {error && <div className="auth-error">{error}</div>}

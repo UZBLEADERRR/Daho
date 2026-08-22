@@ -230,11 +230,13 @@ export default function App() {
    */
   if (cloudEnabled && cloud.status === 'kirilmagan') {
     const native = Capacitor.isNativePlatform();
-    if (native || authMode) {
+    // Server bilan muammo boʻlsa reklama sahifasi emas, sababi koʻrsatilsin.
+    if (native || authMode || cloud.error) {
       return (
         <AuthScreen
           initial={authMode ?? 'kirish'}
-          onBack={native ? undefined : () => setAuthMode(null)}
+          serverError={cloud.error}
+          onBack={native || cloud.error ? undefined : () => setAuthMode(null)}
         />
       );
     }

@@ -4387,3 +4387,18 @@ iframe {
   user-select: text;
   -webkit-user-select: text;
 }
+
+.cloud-error {
+  margin-bottom: 14px;
+}
+
+.auth-server-error {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  line-height: 1.5;
+}
+
+.auth-server-error b {
+  font-weight: 600;
+}
