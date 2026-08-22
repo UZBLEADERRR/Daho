@@ -201,3 +201,74 @@ export const Cpu = ({ size = 19, className }: IconProps) => (
     <path d="M10 3v3.5M14 3v3.5M10 17.5V21M14 17.5V21M3 10h3.5M3 14h3.5M17.5 10H21M17.5 14H21" />
   </svg>
 );
+
+export const User = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <circle cx="12" cy="8" r="3.6" />
+    <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+  </svg>
+);
+
+export const Lock = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <rect x="4.5" y="10" width="15" height="10" rx="2.5" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+
+export const Mail = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="m3.5 7 8.5 6 8.5-6" />
+  </svg>
+);
+
+export const Shield = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M12 3l7 3v5.5c0 4.4-3 8-7 9.5-4-1.5-7-5.1-7-9.5V6z" />
+  </svg>
+);
+
+export const Crown = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M4 18h16M4.5 8l3.8 3L12 5.5 15.7 11l3.8-3-1.4 7H5.9z" />
+  </svg>
+);
+
+export const Chart = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
+  </svg>
+);
+
+export const Globe = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M3.5 12h17M12 3.5c4.5 5 4.5 12 0 17-4.5-5-4.5-12 0-17z" />
+  </svg>
+);
+
+export const Puzzle = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M10 4.5a2 2 0 1 1 4 0V6h3.5A1.5 1.5 0 0 1 19 7.5V11h-1.5a2 2 0 1 0 0 4H19v3.5a1.5 1.5 0 0 1-1.5 1.5H14v-1.5a2 2 0 1 0-4 0V20H6.5A1.5 1.5 0 0 1 5 18.5V15h1.5a2 2 0 1 0 0-4H5V7.5A1.5 1.5 0 0 1 6.5 6H10z" />
+  </svg>
+);
+
+export const Logout = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M15 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2" />
+    <path d="M10 12h10m-3-3.5L20.5 12 17 15.5" />
+  </svg>
+);
+
+export const Chevron = ({ size = 18, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="m9.5 6 6 6-6 6" />
+  </svg>
+);
+
+export const Phone = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M6 3.5h3l1.5 4-2 1.5a11 11 0 0 0 6.5 6.5l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4 5.7 2 2 0 0 1 6 3.5z" />
+  </svg>
+);

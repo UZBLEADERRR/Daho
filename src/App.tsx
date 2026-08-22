@@ -2,18 +2,25 @@ import { useEffect, useState } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
+import { AccountPanel } from './components/AccountPanel';
 import { AgentView } from './components/AgentView';
 import { ArtifactViewer } from './components/ArtifactView';
 import { ChatView } from './components/ChatView';
 import { CodeView } from './components/CodeView';
-import { Menu, Settings as SettingsIcon } from './components/Icons';
+import { Menu, Settings as SettingsIcon, User } from './components/Icons';
+import { AuthScreen } from './components/auth/AuthScreen';
+import { Landing } from './components/Landing';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { VideoStudio } from './components/VideoStudio';
 import { isSection, type AgentSection } from './components/agent/sections';
 import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
+import { refreshAccount } from './lib/account';
+import { startAuthKeeper } from './lib/auth';
 import { startScheduler } from './lib/automation';
+import { hasServer } from './lib/config';
+import { useSession } from './lib/useAccount';
 import { getModels, pickModel } from './lib/models';
 import { allModels, cachedProviderModels } from './lib/providers';
 import { installSandboxStore } from './lib/sandbox';
@@ -26,7 +33,8 @@ export default function App() {
   const theme = useStore((s) => s.settings.theme);
   const accent = useStore((s) => s.settings.accent);
   const fontScale = useStore((s) => s.settings.fontScale);
-  // Ishlash uchun Gemini SHART emas — OpenRouter ham yetarli.
+  const session = useSession();
+  // Ishlash uchun Gemini SHART emas — Daho hisobi yetarli.
   const geminiKey = useStore((s) => Boolean(s.settings.apiKey));
   /**
    * Yoqilgan provayderlarning «imzosi»: id va kalit uzunligi. Kalit yozilib
@@ -39,8 +47,6 @@ export default function App() {
       .map((p) => `${p.id}:${p.apiKey.trim().length}`)
       .join('|'),
   );
-  const ready = geminiKey || Boolean(providerSig);
-
   // Qaysi ekran ochiqligi store da turadi: boʻlim almashsangiz ham,
   // ilovani yopib qayta ochsangiz ham hech narsa qaytadan boshlanmaydi.
   const tab = useStore((s) => s.view.tab) as Tab;
@@ -50,9 +56,11 @@ export default function App() {
   const setSection = (next: AgentSection) => updateView({ section: next });
 
   const [sidebar, setSidebar] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(!ready);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
+  const [account, setAccount] = useState(false);
+  const [authMode, setAuthMode] = useState<'kirish' | 'royxat' | null>(null);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', accent);
@@ -64,6 +72,14 @@ export default function App() {
 
   // Avtomatlashtirilgan topshiriqlar soati.
   useEffect(() => startScheduler(), []);
+
+  // Sessiya muddati tugab qolmasin.
+  useEffect(() => startAuthKeeper(), []);
+
+  // Kirilgach hisob maʼlumotlari va Daho modellari olinadi.
+  useEffect(() => {
+    if (session) void refreshAccount();
+  }, [session]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -152,6 +168,7 @@ export default function App() {
       const view = getState().view;
       if (artifact) setArtifact(null);
       else if (videoId) setVideoId(null);
+      else if (account) setAccount(false);
       else if (settingsOpen) setSettingsOpen(false);
       else if (sidebar) setSidebar(false);
       // Ochiq kitob/kurs/loyiha — avval oʻshani yopamiz.
@@ -166,7 +183,43 @@ export default function App() {
     return () => {
       void handle.then((h) => h.remove());
     };
-  }, [artifact, videoId, settingsOpen, sidebar, tab, section]);
+  }, [artifact, videoId, account, settingsOpen, sidebar, tab, section]);
+
+
+  /**
+   * Kirish darvozasi.
+   *
+   * Vebda avval rasmiy bosh sahifa koʻrinadi; ilovada esa toʻgʻridan-toʻgʻri
+   * kirish oynasi ochiladi — telefonda reklama sahifasi ortiqcha.
+   * Eski usul (oʻz API kaliti) bilan ishlayotganlar toʻsiqsiz oʻtadi.
+   */
+  const native = Capacitor.isNativePlatform();
+  if (!session && !geminiKey && !providerSig) {
+    if (!hasServer()) {
+      return (
+        <div className="auth">
+          <div className="auth-card">
+            <div className="auth-mark">D</div>
+            <h1 className="auth-title">Server sozlanmagan</h1>
+            <p className="auth-hint">
+              Ilova qaysi serverga ulanishini bilmayapti. Yigʻish paytida
+              <code> VITE_SUPABASE_URL </code> va <code> VITE_SUPABASE_ANON_KEY </code>
+              qiymatlarini bering.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    if (native || authMode) {
+      return (
+        <AuthScreen
+          initial={authMode ?? 'kirish'}
+          onBack={native ? undefined : () => setAuthMode(null)}
+        />
+      );
+    }
+    return <Landing onStart={setAuthMode} />;
+  }
 
   return (
     <div className="app">
@@ -187,13 +240,19 @@ export default function App() {
           </button>
         </div>
 
-        <button
-          className="icon-btn"
-          onClick={() => setSettingsOpen(true)}
-          aria-label="Sozlamalar"
-        >
-          <SettingsIcon size={20} />
-        </button>
+        {session ? (
+          <button className="icon-btn" onClick={() => setAccount(true)} aria-label="Hisobim">
+            <User size={20} />
+          </button>
+        ) : (
+          <button
+            className="icon-btn"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Sozlamalar"
+          >
+            <SettingsIcon size={20} />
+          </button>
+        )}
       </header>
 
       <TaskBar />
@@ -228,6 +287,7 @@ export default function App() {
         />
       )}
 
+      {account && <AccountPanel onClose={() => setAccount(false)} />}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
       {videoId && <VideoStudio projectId={videoId} onClose={() => setVideoId(null)} />}
       {artifact && <ArtifactViewer artifact={artifact} onClose={() => setArtifact(null)} />}
