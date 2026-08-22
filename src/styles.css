@@ -4422,3 +4422,82 @@ iframe {
 .auth-server-error b {
   font-weight: 600;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Jonli jarayon — «hozir nima qilinyapti»                            */
+/* ------------------------------------------------------------------ */
+
+.process {
+  margin: 4px 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.process-past {
+  color: var(--muted);
+  opacity: 0.55;
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+}
+
+.process-tick {
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.process-now {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--text);
+  margin-top: 2px;
+}
+
+.process-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.process-time,
+.process-total {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.process-total {
+  margin-top: 6px;
+}
+
+/* Nafas olayotgan nuqta — ish ketayotganini bildiradi */
+.process-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+  animation: process-puls 1.2s ease-in-out infinite;
+}
+
+@keyframes process-puls {
+  0%,
+  100% {
+    transform: scale(0.7);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .process-dot {
+    animation: none;
+    opacity: 0.9;
+  }
+}

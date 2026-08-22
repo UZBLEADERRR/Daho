@@ -51,6 +51,15 @@ const STEP_LABEL: Record<string, string> = {
   log_work: 'ish vaqti yozilmoqda',
   complete_task: 'vazifa belgilanmoqda',
   read_data: 'maʼlumotlaringiz oʻqilmoqda',
+  use_tools: 'kerakli vositalar ochilmoqda',
+  delegate: 'yordamchi agent chaqirilmoqda',
+  send_file: 'fayl tayyorlanmoqda',
+  connect_app: 'xizmatga ulanilmoqda',
+  connect_list: 'ulanishlar tekshirilmoqda',
+  telegram: 'Telegram bilan ishlanmoqda',
+  instagram: 'Instagram bilan ishlanmoqda',
+  google: 'Google xizmati bilan ishlanmoqda',
+  youtube_manage: 'YouTube kanali bilan ishlanmoqda',
 };
 
 /**
@@ -580,6 +589,14 @@ export async function sendMessage(
         }
       }
 
+      /*
+       * Foydalanuvchi nima boʻlayotganini koʻrib tursin. Birinchi
+       * turda «oʻylayapti», keyingilarida «natijani koʻryapti» —
+       * chunki ular vosita javobidan keyin keladi.
+       */
+      onStep?.(round === 0 ? 'oʻylayapti' : 'natijani koʻrib chiqyapti');
+      let yozaBoshladi = false;
+
       const result = await streamResilient({
         apiKey: settings.apiKey,
         model: settings.model,
@@ -588,7 +605,13 @@ export async function sendMessage(
         tools: declarations,
         temperature: settings.temperature,
         signal,
-        onText,
+        onText: (chunk) => {
+          if (!yozaBoshladi) {
+            yozaBoshladi = true;
+            onStep?.('javob yozilmoqda');
+          }
+          onText(chunk);
+        },
         rollback: (chars) => {
           accumulated = accumulated.slice(0, Math.max(0, accumulated.length - chars));
           patchMessage(chatId, modelMsg.id, { text: accumulated });
@@ -659,6 +682,9 @@ export async function sendMessage(
             groups.add(g);
           }
         }
+
+        // Natija ham izda qolsin — «nima chiqdi» degan savolga javob.
+        if (outcome.summary) onStep?.(outcome.summary.slice(0, 70));
 
         responseParts.push({
           functionResponse: { name: call.name, response: outcome.payload },

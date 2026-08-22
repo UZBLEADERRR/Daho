@@ -16,6 +16,7 @@ import type { Artifact, Attachment, Message } from '../lib/types';
 import { uid } from '../lib/utils';
 import { interject, usePendingQuestion } from '../lib/ask';
 import { noteTask, startTask, stopFor, useTaskFor } from '../lib/tasks';
+import { ProcessTrail } from './ProcessTrail';
 import { planVideo } from '../lib/video';
 import { Composer, type ComposerMode } from './Composer';
 import { MessageView } from './Message';
@@ -283,6 +284,7 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
                 onRegenerate={onRegenerate}
               />
             ))}
+            {running && !question && <ProcessTrail task={running} />}
             {question && <QuestionCard question={question} />}
           </div>
         )}
