@@ -14,15 +14,15 @@ import {
 import { updateSettings, useStore } from '../lib/store';
 import type { ProviderConfig, RoleModels } from '../lib/types';
 import { ModelPickButton } from './ModelPicker';
-import { Close, Cpu, Refresh, Trash } from './Icons';
+import { Close, Cpu, Globe, Refresh, Trash } from './Icons';
 import { Sheet, Switch, toast } from './ui';
 
 const ROLE_LABEL: Array<{ key: keyof RoleModels; title: string; hint: string }> = [
-  { key: 'bosh', title: '🧭 Bosh agent', hint: 'Rejalashtiradi va boshqaradi' },
-  { key: 'kod', title: '⌨️ Dasturchi', hint: 'Mantiq va funksiyalar yozadi' },
-  { key: 'dizayn', title: '🎨 Dizayner', hint: 'Koʻrinish va joylashuv' },
-  { key: 'tekshir', title: '🔍 Tekshiruvchi', hint: 'Xato qidiradi va tuzatadi' },
-  { key: 'matn', title: '✍️ Muharrir', hint: 'Kitob va hujjat matnlari' },
+  { key: 'bosh', title: 'Bosh agent', hint: 'Rejalashtiradi va boshqaradi' },
+  { key: 'kod', title: 'Dasturchi', hint: 'Mantiq va funksiyalar yozadi' },
+  { key: 'dizayn', title: 'Dizayner', hint: 'Koʻrinish va joylashuv' },
+  { key: 'tekshir', title: 'Tekshiruvchi', hint: 'Xato qidiradi va tuzatadi' },
+  { key: 'matn', title: 'Muharrir', hint: 'Kitob va hujjat matnlari' },
 ];
 
 /**
@@ -143,7 +143,7 @@ export function ModelsPanel() {
           <Cpu size={15} /> Modellar ({active})
         </button>
         <button className="btn ghost grow" onClick={() => setRolesOpen(true)}>
-          👥 Rollar
+          Rollar
         </button>
       </div>
 
@@ -151,7 +151,7 @@ export function ModelsPanel() {
         <Switch
           on={settings.freeOnly === true}
           onChange={(on) => updateSettings({ freeOnly: on })}
-          label="🆓 Faqat bepul modellar"
+          label="Faqat bepul modellar"
           hint="Avto tanlov va zaxira model faqat bepullardan olinadi — pul sarflanmaydi"
         />
       </div>
@@ -160,7 +160,7 @@ export function ModelsPanel() {
         <Switch
           on={settings.autoPickModel !== false}
           onChange={(on) => updateSettings({ autoPickModel: on })}
-          label="AVTO — modelni oʻzi tanlaydi"
+          label="Modelni vazifaga qarab tanlash"
           hint="Har ish uchun mos model: kod, dizayn, tekshirish, matn"
         />
       </div>
@@ -171,7 +171,7 @@ export function ModelsPanel() {
           style={{ marginBottom: 4 }}
           onClick={() => setPoolOpen(true)}
         >
-          🎛 Avto qaysi modellardan tanlasin (
+          Avto qaysi modellardan tanlasin (
           {settings.autoPool?.length ? `${settings.autoPool.length} ta` : 'hammasi'})
         </button>
       )}
@@ -215,7 +215,7 @@ export function ModelsPanel() {
         <Sheet title="Provayder tanlang" onClose={() => setAdd(false)}>
           {PROVIDER_PRESETS.map((preset) => (
             <button key={preset.id} className="action-row" onClick={() => addProvider(preset.id)}>
-              <span className="action-icon">🔌</span>
+              <span className="action-icon"><Globe size={17} /></span>
               <span className="grow">
                 <b>{preset.label}</b>
                 <div className="tiny">{preset.note}</div>
@@ -223,7 +223,7 @@ export function ModelsPanel() {
             </button>
           ))}
           <button className="action-row" onClick={addCustom}>
-            <span className="action-icon">⚙️</span>
+            <span className="action-icon"><Cpu size={17} /></span>
             <span className="grow">
               <b>Boshqa (OpenAI-mos)</b>
               <div className="tiny">Oʻz serveringiz yoki roʻyxatda yoʻq xizmat</div>
@@ -473,9 +473,9 @@ function ModelList({ onClose }: { onClose: () => void }) {
       <div className="chips" style={{ marginBottom: 10 }}>
         {([
           ['hammasi', `Hammasi (${base.length})`],
-          ['sevimli', `⭐ Sevimli (${base.filter((m) => favorites.has(m.id)).length})`],
+          ['sevimli', `★ Sevimli (${base.filter((m) => favorites.has(m.id)).length})`],
           ['bepul', `🆓 Bepul (${base.filter(modelIsFree).length})`],
-          ['vosita', '🔧 Vositali'],
+          ['vosita', 'Vositali'],
         ] as const).map(([id, label]) => (
           <button
             key={id}
@@ -497,7 +497,7 @@ function ModelList({ onClose }: { onClose: () => void }) {
                 onClick={() => star(m.id)}
                 aria-label={favorites.has(m.id) ? 'Sevimlilardan olish' : 'Sevimlilarga qoʻshish'}
               >
-                {favorites.has(m.id) ? '⭐' : '☆'}
+                {favorites.has(m.id) ? '★' : '☆'}
               </button>
               <button
                 className="grow"
@@ -509,7 +509,7 @@ function ModelList({ onClose }: { onClose: () => void }) {
                   {m.providerLabel ?? 'Gemini'}
                   {modelIsFree(m) ? ' · 🆓 bepul' : priceLabel(m) ? ` · ${priceLabel(m)}` : ''}
                   {m.tools === false ? ' · vositasiz' : ''}
-                  {m.vision ? ' · 👁' : ''}
+                  {m.vision ? ' · rasm' : ''}
                 </div>
               </button>
               <span className="model-mark">{on ? '✓' : <Close size={14} />}</span>
@@ -564,7 +564,7 @@ function RolePicker({ onClose }: { onClose: () => void }) {
 
       {!chat.some((m) => m.provider) && (
         <div className="tiny" style={{ marginTop: 8, opacity: 0.75 }}>
-          💡 Turli provayderdan model ulasangiz, bittasi band boʻlganda ish toʻxtamaydi.
+          Turli provayderdan model ulasangiz, bittasi band boʻlganda ish toʻxtamaydi.
         </div>
       )}
     </Sheet>
@@ -650,7 +650,7 @@ function AutoPool({ onClose }: { onClose: () => void }) {
                 <b>{m.label}</b>
                 <div className="tiny">
                   {m.providerLabel ?? 'Gemini'}
-                  {m.vision ? ' · 👁 rasm' : ''}
+                  {m.vision ? ' · rasm' : ''}
                   {m.tools === false ? ' · vositasiz' : ''}
                 </div>
               </span>

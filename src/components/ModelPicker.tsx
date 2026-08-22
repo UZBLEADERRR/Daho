@@ -67,9 +67,9 @@ export function ModelPickerSheet({
 
   const chips: Array<[ModelFilter, string]> = [
     ['hammasi', `Hammasi (${base.length})`],
-    ['sevimli', `⭐ Sevimli (${base.filter((m) => favorites.has(m.id)).length})`],
+    ['sevimli', `★ Sevimli (${base.filter((m) => favorites.has(m.id)).length})`],
     ['bepul', `🆓 Bepul (${base.filter(modelIsFree).length})`],
-    ['vositali', '🔧 Vositali'],
+    ['vositali', 'Vositali'],
   ];
 
   return (
@@ -119,14 +119,14 @@ export function ModelPickerSheet({
               onClose();
             }}
           >
-            <span className="action-icon">{favorites.has(m.id) ? '⭐' : modelIsFree(m) ? '🆓' : '🤖'}</span>
+            <span className="action-icon">{m.label.slice(0, 1).toUpperCase()}</span>
             <span className="grow" style={{ minWidth: 0 }}>
               <b style={{ wordBreak: 'break-word' }}>{m.label}</b>
               <div className="tiny">
                 {m.providerLabel ?? 'Gemini'}
                 {modelIsFree(m) ? ' · bepul' : priceLabel(m) ? ` · ${priceLabel(m)}` : ''}
                 {m.tools === false ? ' · vositasiz' : ''}
-                {m.vision ? ' · 👁' : ''}
+                {m.vision ? ' · rasm' : ''}
               </div>
             </span>
           </button>
@@ -175,7 +175,7 @@ export function ModelPickButton({
             </div>
           )}
         </span>
-        <span className="tiny">🔍</span>
+        <span className="tiny">›</span>
       </button>
 
       {open && (

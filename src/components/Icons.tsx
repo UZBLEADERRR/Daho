@@ -240,3 +240,25 @@ export const Puzzle = ({ size = 19, className }: IconProps) => (
     <path d="M10 4.5a2 2 0 1 1 4 0V6h3.5A1.5 1.5 0 0 1 19 7.5V11h-1.5a2 2 0 1 0 0 4H19v3.5a1.5 1.5 0 0 1-1.5 1.5H14v-1.5a2 2 0 1 0-4 0V20H6.5A1.5 1.5 0 0 1 5 18.5V15h1.5a2 2 0 1 0 0-4H5V7.5A1.5 1.5 0 0 1 6.5 6H10z" />
   </svg>
 );
+
+export const Server = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <rect x="3.5" y="4" width="17" height="6.5" rx="2" />
+    <rect x="3.5" y="13.5" width="17" height="6.5" rx="2" />
+    <path d="M7 7.25h.01M7 16.75h.01" />
+  </svg>
+);
+
+export const Database = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <ellipse cx="12" cy="6" rx="7.5" ry="3" />
+    <path d="M4.5 6v12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6" />
+    <path d="M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3" />
+  </svg>
+);
+
+export const Moon = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z" />
+  </svg>
+);

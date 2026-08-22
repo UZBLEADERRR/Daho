@@ -3399,10 +3399,18 @@ textarea {
 }
 
 .settings-icon {
-  font-size: 19px;
-  width: 26px;
-  text-align: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
   flex: 0 0 auto;
+}
+
+.settings-row:hover .settings-icon {
+  color: var(--accent);
 }
 
 .settings-arrow {
@@ -4294,4 +4302,31 @@ iframe {
 
 .auth-alt {
   margin-top: 9px;
+}
+
+/* Sozlamalar boʻlimidagi kichik sarlavhalar */
+.set-label {
+  padding: 18px 0 8px;
+}
+
+.set-foot {
+  text-align: center;
+  margin-top: 18px;
+}
+
+/* Belgilar emoji emas — bir xil chiziqli ikonkalar */
+.settings-icon svg {
+  display: block;
+}
+
+/* Maydon ostidagi qisqa izoh */
+.set-hint {
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+/* Boʻlim boshidagi bir qatorlik izoh */
+.set-intro {
+  margin: 0 0 16px;
+  line-height: 1.5;
 }

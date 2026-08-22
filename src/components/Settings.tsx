@@ -37,7 +37,24 @@ import { tgChats, tgContacts, tgMe, tgReady, tgSync } from '../lib/telegram';
 import { igMedia } from '../lib/social';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
 import { UsagePanel } from './UsagePanel';
-import { Copy, Refresh } from './Icons';
+import {
+  Chart,
+  Cloud,
+  Code,
+  Copy,
+  Cpu,
+  Database,
+  Download,
+  Globe,
+  Image,
+  Mic,
+  Moon,
+  Refresh,
+  Send,
+  Server,
+  Sparkle,
+  User,
+} from './Icons';
 import { Sheet, Switch, toast } from './ui';
 
 const ACCENTS = [
@@ -152,7 +169,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
   /** Sozlamalar boʻlimlari — bittasi ochiladi, qolgani xalaqit bermaydi. */
   const groups: Array<{
     id: string;
-    icon: string;
+    icon: JSX.Element;
     title: string;
     hint: string;
     show?: boolean;
@@ -160,16 +177,12 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
   }> = [
     {
       id: 'cloud',
-      icon: '☁️',
+      icon: <Cloud size={18} />,
       title: 'Daho Cloud',
       hint: 'Hisob, obuna va sinxronizatsiya',
       show: cloudEnabled,
       body: (
         <>
-
-          <div className="section-label" style={{ padding: '0 0 6px' }}>
-            Daho Cloud
-          </div>
 
           <button className="btn ghost wide" onClick={onOpenAccount}>
             {cloud.status === 'kirgan'
@@ -209,22 +222,14 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'ai',
-      icon: '🧠',
+      icon: <Cpu size={18} />,
       title: 'AI modellar',
       hint: 'Gemini, OpenRouter, rol modellari va ijodkorlik',
       body: (
         <>
-      <div className="section-label" style={{ padding: '0 0 6px' }}>
-        Gemini (ixtiyoriy)
-      </div>
 
-      <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.55 }}>
-        Ilova <b>faqat OpenRouter</b> (yoki boshqa provayder) bilan ham toʻliq
-        gaplashadi — pastdagi «Provayderlar» roʻyxatiga qarang. Google kaliti
-        quyidagilar uchun kerak: <b>internet qidiruvi</b>, <b>tabiiy ovoz</b>{' '}
-        (Gemini TTS) va <b>mikrofonni matnga oʻgirish</b>. Kalitsiz ovoz
-        telefonning oʻz xizmati bilan ishlaydi. Rasm yasash uchun OpenRouter’da
-        rasm modeli qoʻshsangiz kifoya.
+      <div className="tiny set-intro">
+        Ixtiyoriy — internet qidiruvi, tabiiy ovoz va mikrofon uchun kerak.
       </div>
 
       <div className="field">
@@ -244,8 +249,8 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
             {showKey ? 'Yashir' : 'Koʻrsat'}
           </button>
         </div>
-        <div className="tiny" style={{ marginTop: 6 }}>
-          Kalitni bepul olish: aistudio.google.com/apikey. Kalit faqat shu telefonda saqlanadi.
+        <div className="tiny set-hint">
+          aistudio.google.com/apikey — bepul. Kalit qurilmada qoladi.
         </div>
       </div>
 
@@ -257,10 +262,6 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
       >
         <Refresh size={15} /> {loadingModels ? 'Qidirilmoqda…' : 'Modellarni yangilash'}
       </button>
-      <div className="tiny" style={{ margin: '-6px 0 12px' }}>
-        Roʻyxat Google’dan jonli olinadi — yangi model chiqsa shu yerda oʻzi paydo boʻladi.
-        Eski model ishlamay qolsa ham shu tugma tuzatadi.
-      </div>
 
       <div className="field">
         <label>Suhbat modeli</label>
@@ -304,14 +305,14 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'telegram',
-      icon: '✈️',
+      icon: <Send size={17} />,
       title: 'Telegram bot',
       hint: 'Mijozlar, guruh va kanal boshqaruvi',
       body: <TelegramPanel />,
     },
     {
       id: 'instagram',
-      icon: '📸',
+      icon: <Image size={18} />,
       title: 'Instagram',
       hint: 'Izoh va Direct’ga javob berish',
       body: (
@@ -322,7 +323,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'google',
-      icon: '🔗',
+      icon: <Globe size={18} />,
       title: 'Google hisobi',
       hint: 'Gmail, Drive va Kalendar',
       body: (
@@ -333,7 +334,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'server',
-      icon: '🖥',
+      icon: <Server size={18} />,
       title: 'Daho serveri',
       hint: 'Fon ishlari va haqiqiy terminal',
       body: (
@@ -344,7 +345,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'xarajat',
-      icon: '📊',
+      icon: <Chart size={18} />,
       title: 'Xarajat va xotira',
       hint: 'Sarflangan token, narx va eslab qolinganlar',
       body: (
@@ -355,12 +356,12 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'ovoz',
-      icon: '🎙',
+      icon: <Mic size={18} />,
       title: 'Ovoz va mikrofon',
       hint: 'Diktor, tillar, nutqni tanish va tekshiruv',
       body: (
         <>
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <div className="section-label set-label">
         Ovoz
       </div>
 
@@ -460,7 +461,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         {testing ? 'Tayyorlanmoqda…' : 'Ovozni sinab koʻrish'}
       </button>
 
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <div className="section-label set-label">
         Mikrofon
       </div>
 
@@ -473,9 +474,8 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
           <option value="gemini">Gemini — oʻzbekchani yaxshi tushunadi</option>
           <option value="qurilma">Telefon xizmati — tezroq, lekin aniqligi past</option>
         </select>
-        <div className="tiny" style={{ marginTop: 5 }}>
-          Gemini rejimida gapirib boʻlgach mikrofon tugmasini yana bosing — yozuv matnga
-          aylanadi.
+        <div className="tiny set-hint">
+          Gapirib boʻlgach mikrofon tugmasini yana bosing.
         </div>
       </div>
 
@@ -507,7 +507,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
           }
         }}
       >
-        {micBusy ? 'Tekshirilmoqda…' : '🎤 Mikrofonni tekshirish'}
+        {micBusy ? 'Tekshirilmoqda…' : 'Mikrofonni tekshirish'}
       </button>
 
       {micChecks && (
@@ -516,7 +516,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
             <div key={c.step} className="between" style={{ marginBottom: 6, gap: 10 }}>
               <span style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13.5 }}>
-                  {c.ok ? '✅' : '❌'} {c.step}
+                  {c.step}
                 </div>
                 <div className="tiny" style={{ wordBreak: 'break-word' }}>
                   {c.detail}
@@ -546,12 +546,12 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'github',
-      icon: '⌨️',
+      icon: <Code size={18} />,
       title: 'GitHub',
       hint: 'Daho Code uchun token va nashr domeni',
       body: (
         <>
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <div className="section-label set-label">
         GitHub (Daho Code uchun)
       </div>
 
@@ -566,10 +566,9 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
           autoCorrect="off"
           spellCheck={false}
         />
-        <div className="tiny" style={{ marginTop: 6 }}>
-          github.com → Settings → Developer settings → Personal access tokens →
-          <b> Tokens (classic)</b> → Generate new token. <b>repo</b> va{' '}
-          <b>workflow</b> ruxsatlarini belgilang. Token faqat shu telefonda saqlanadi.
+        <div className="tiny set-hint">
+          GitHub → Developer settings → Tokens (classic). <b>repo</b> va{' '}
+          <b>workflow</b> ruxsatlari kerak.
         </div>
       </div>
 
@@ -582,9 +581,8 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
           autoCapitalize="off"
           spellCheck={false}
         />
-        <div className="tiny" style={{ marginTop: 6 }}>
-          Loyihani chiqarganda shu domen ishlatiladi. DNS sozlash koʻrsatmasi Daho Code →
-          Nashr boʻlimida.
+        <div className="tiny set-hint">
+          Loyihani chiqarganda ishlatiladi.
         </div>
       </div>
 
@@ -615,7 +613,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'supabase',
-      icon: '🗄',
+      icon: <Database size={18} />,
       title: 'Supabase',
       hint: 'Loyihalaringiz uchun maʼlumot bazasi',
       body: (
@@ -626,7 +624,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'qiyofa',
-      icon: '🎨',
+      icon: <Sparkle size={18} />,
       title: 'Ilova qiyofasi',
       hint: 'Ilova nomi va ikonkasini almashtirish',
       body: (
@@ -637,12 +635,12 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'shaxsiy',
-      icon: '👤',
+      icon: <User size={18} />,
       title: 'Shaxsiy',
       hint: 'Ismingiz, oʻqish joyingiz va koʻrsatmalar',
       body: (
         <>
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <div className="section-label set-label">
         Shaxsiy
       </div>
 
@@ -677,12 +675,12 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'korinish',
-      icon: '🌗',
+      icon: <Moon size={18} />,
       title: 'Koʻrinish',
       hint: 'Mavzu, rang va matn oʻlchami',
       body: (
         <>
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <div className="section-label set-label">
         Koʻrinish
       </div>
 
@@ -751,17 +749,17 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'malumot',
-      icon: '💾',
+      icon: <Download size={18} />,
       title: 'Maʼlumotlar',
       hint: 'Zaxira nusxa, tiklash va tozalash',
       body: (
         <>
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <div className="section-label set-label">
         Qurilmadagi joy
       </div>
       <StoragePanel />
 
-      <div className="section-label" style={{ padding: '14px 0 6px' }}>
+      <div className="section-label set-label">
         Zaxira nusxa
       </div>
 
@@ -807,9 +805,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
         Hamma maʼlumotni oʻchirish
       </button>
 
-      <div className="tiny" style={{ textAlign: 'center', marginTop: 16 }}>
-        Daho 2.0 · maʼlumotlar faqat shu telefonda saqlanadi
-      </div>
+
         </>
       ),
     },
@@ -820,9 +816,6 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
   if (current) {
     return (
       <Sheet title={current.title} onClose={() => setOpenGroup(null)}>
-        <button className="btn ghost mini" style={{ marginBottom: 12 }} onClick={() => setOpenGroup(null)}>
-          ← Sozlamalar
-        </button>
         {current.body}
       </Sheet>
     );
@@ -856,8 +849,8 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
           ))}
       </div>
 
-      <div className="tiny" style={{ textAlign: 'center', marginTop: 16 }}>
-        Daho 2.0 · maʼlumotlar faqat shu qurilmada saqlanadi
+      <div className="tiny set-foot">
+        Daho 2.0
       </div>
     </Sheet>
   );
@@ -913,7 +906,7 @@ function AppLook() {
 
   return (
     <>
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <div className="section-label set-label">
         Ilova qiyofasi
       </div>
 
@@ -923,7 +916,7 @@ function AppLook() {
           onClick={() => pickRef.current?.click()}
           aria-label="Ikonka tanlash"
         >
-          {icon ? <img src={icon} alt="" /> : <span>🖼</span>}
+          {icon ? <img src={icon} alt="" /> : <span className="muted">rasm</span>}
         </button>
         <div className="grow">
           <div style={{ fontWeight: 550 }}>Ikonka</div>
@@ -963,10 +956,8 @@ function AppLook() {
         {busy ? 'Yuborilmoqda…' : 'Yangi APK yigʻish'}
       </button>
 
-      <div className="tiny" style={{ marginTop: 6 }}>
-        Ishlab turgan ilova oʻz ikonkasini almashtira olmaydi — shuning uchun Daho yangi
-        ikonka va nomni GitHub’dagi oʻz repozitoriysiga yozadi va APK’ni qaytadan yigʻadi.
-        5-10 daqiqadan soʻng yangi APK’ni yuklab olib oʻrnatasiz. GitHub token kerak.
+      <div className="tiny set-hint">
+        Yangi ikonka bilan APK qaytadan yigʻiladi — 5-10 daqiqa. GitHub token kerak.
       </div>
 
       {done && (
@@ -1000,7 +991,7 @@ function MicCheck() {
 
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
-        say('❌ Bu qurilmada mikrofon interfeysi yoʻq (getUserMedia).');
+        say('Xato — Bu qurilmada mikrofon interfeysi yoʻq (getUserMedia).');
         return;
       }
       say('⏳ Ruxsat soʻralmoqda…');
@@ -1011,16 +1002,16 @@ function MicCheck() {
         const name = String((err as Error)?.name ?? '');
         say(
           name === 'NotAllowedError'
-            ? '❌ Ruxsat berilmadi. Sozlamalar → Ilovalar → Daho → Ruxsatlar → Mikrofon.'
-            : `❌ Mikrofon ochilmadi: ${name || String(err)}`,
+            ? 'Xato — Ruxsat berilmadi. Sozlamalar → Ilovalar → Daho → Ruxsatlar → Mikrofon.'
+            : `Xato — Mikrofon ochilmadi: ${name || String(err)}`,
         );
         return;
       }
-      say('✅ Ruxsat bor, mikrofon ochildi.');
+      say('OK — Ruxsat bor, mikrofon ochildi.');
 
       if (typeof MediaRecorder === 'undefined') {
         stream.getTracks().forEach((t) => t.stop());
-        say('❌ MediaRecorder yoʻq — ovoz yozib boʻlmaydi.');
+        say('Xato — MediaRecorder yoʻq — ovoz yozib boʻlmaydi.');
         return;
       }
 
@@ -1031,16 +1022,16 @@ function MicCheck() {
         recorder.onstop = () => resolve();
       });
       recorder.start();
-      say('🎙 3 soniya gapiring…');
+      say('3 soniya gapiring…');
       await new Promise((r) => setTimeout(r, 3000));
       recorder.stop();
       await done;
       stream.getTracks().forEach((t) => t.stop());
 
       const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-      say(`✅ Yozildi: ${(blob.size / 1024).toFixed(1)} KB · ${blob.type || 'nomaʼlum'}`);
+      say(`OK — Yozildi: ${(blob.size / 1024).toFixed(1)} KB · ${blob.type || 'nomaʼlum'}`);
       if (blob.size < 1200) {
-        say('❌ Ovoz juda kichik — mikrofon boshqa ilovada band boʻlishi mumkin.');
+        say('Xato — Ovoz juda kichik — mikrofon boshqa ilovada band boʻlishi mumkin.');
         return;
       }
 
@@ -1049,16 +1040,16 @@ function MicCheck() {
       try {
         data = bytesToB64(await blobToWavBytes(blob));
         mimeType = 'audio/wav';
-        say('✅ WAV ga oʻgirildi.');
+        say('OK — WAV ga oʻgirildi.');
       } catch (err) {
         data = '';
-        say(`⚠️ WAV ga oʻgirilmadi: ${(err as Error).message}`);
+        say(`Diqqat — WAV ga oʻgirilmadi: ${(err as Error).message}`);
       }
       if (!data) return;
 
       const { settings } = getState();
       if (!aiAvailable(settings.apiKey)) {
-        say('⚠️ Kalit ham, obuna ham yoʻq — matnga oʻgirib boʻlmaydi.');
+        say('Diqqat — Kalit ham, obuna ham yoʻq — matnga oʻgirib boʻlmaydi.');
         return;
       }
       say('⏳ Matnga oʻgirilmoqda…');
@@ -1070,9 +1061,9 @@ function MicCheck() {
           undefined,
           settings.sttLang,
         );
-        say(text.trim() ? `✅ Eshitildi: «${text.trim()}»` : '❌ Model matn qaytarmadi.');
+        say(text.trim() ? `OK — Eshitildi: «${text.trim()}»` : 'Xato — Model matn qaytarmadi.');
       } catch (err) {
-        say(`❌ Gemini xatosi: ${(err as Error).message}`);
+        say(`Xato — Gemini xatosi: ${(err as Error).message}`);
       }
     } finally {
       setBusy(false);
@@ -1087,7 +1078,7 @@ function MicCheck() {
         disabled={busy}
         onClick={() => void run()}
       >
-        {busy ? 'Tekshirilmoqda…' : '🎙 Mikrofonni tekshirish'}
+        {busy ? 'Tekshirilmoqda…' : 'Mikrofonni tekshirish'}
       </button>
       {!!lines.length && (
         <div className="tiny" style={{ marginTop: 8, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
@@ -1121,15 +1112,15 @@ function SupabasePanel() {
       const list = await listProjects();
       setProjects(
         list.length
-          ? `✅ ${list.length} ta loyiha koʻrindi:\n` +
+          ? `OK — ${list.length} ta loyiha koʻrindi:\n` +
               list
                 .slice(0, 10)
                 .map((p) => `· ${p.name} (${p.status})`)
                 .join('\n')
-          : '✅ Token ishlayapti, lekin hali loyiha yoʻq.',
+          : 'OK — Token ishlayapti, lekin hali loyiha yoʻq.',
       );
     } catch (err) {
-      setProjects(`❌ ${String((err as Error)?.message ?? err)}`);
+      setProjects(`Xato — ${String((err as Error)?.message ?? err)}`);
     }
     setLoadingProjects(false);
   };
@@ -1148,13 +1139,11 @@ function SupabasePanel() {
 
   return (
     <>
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <div className="section-label set-label">
         Agent oʻzi loyiha ochishi uchun
       </div>
-      <p className="tiny" style={{ marginTop: 0, lineHeight: 1.6 }}>
-        Bu token bilan Daho sizning nomingizdan Supabase loyihasi ocha oladi,
-        jadval yarata oladi va kalitlarni oʻzi olib ilovaga yozadi — sizdan
-        SQL koʻchirib qoʻyish soʻralmaydi.
+      <p className="tiny set-hint">
+        Daho loyiha ochib, jadvallarni oʻzi yaratadi.
       </p>
       <div className="field">
         <label>Management token</label>
@@ -1166,10 +1155,8 @@ function SupabasePanel() {
           autoCapitalize="off"
           spellCheck={false}
         />
-        <div className="tiny" style={{ marginTop: 6 }}>
-          supabase.com/dashboard/account/tokens dan olinadi. Faqat shu
-          qurilmada saqlanadi. Brauzerda ishlashi uchun Daho serveri ulangan
-          boʻlishi kerak (CORS).
+        <div className="tiny set-hint">
+          supabase.com/dashboard/account/tokens dan olinadi.
         </div>
       </div>
       <button
@@ -1186,14 +1173,12 @@ function SupabasePanel() {
         </pre>
       )}
 
-      <div className="section-label" style={{ padding: '14px 0 6px' }}>
+      <div className="section-label set-label">
         Supabase (maʼlumot bazasi)
       </div>
 
-      <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.55 }}>
-        Yasalgan ilovaga <b>haqiqiy baza</b> kerak boʻlsa — roʻyxatga olish,
-        foydalanuvchi hisobi, bir nechta odam koʻradigan roʻyxat — Supabase
-        ulang. Bepul. Daho jadvallarni koʻradi, yozuv qoʻshadi va oʻqiydi.
+      <div className="tiny set-hint">
+        Yasagan ilovangizga haqiqiy baza kerak boʻlsa ulang. Bepul.
       </div>
 
       <div className="field">
@@ -1219,10 +1204,9 @@ function SupabasePanel() {
           autoCorrect="off"
           spellCheck={false}
         />
-        <div className="tiny" style={{ marginTop: 6 }}>
-          Supabase → Project Settings → API. <b>anon public</b> kalitini oling.
-          ⚠️ <b>service_role</b> kalitini kiritmang — u maxfiy va hamma
-          himoyani chetlab oʻtadi.
+        <div className="tiny set-hint">
+          Project Settings → API dan <b>anon public</b> kalitini oling.
+          <b> service_role</b> kalitini kiritmang — u hamma himoyani chetlab oʻtadi.
         </div>
       </div>
 
@@ -1299,7 +1283,7 @@ function ServerPanel() {
       const worker = info.worker;
       setHealth(
         [
-          info.ok ? '✅ Server tayyor' : '⚠️ Server sozlanmagan',
+          info.ok ? 'OK — Server tayyor' : 'Diqqat — Server sozlanmagan',
           info.yetishmayapti?.length ? `Yetishmayapti: ${info.yetishmayapti.join(', ')}` : '',
           worker ? `Navbat: ${worker.polling ? 'kuzatilmoqda' : 'toʻxtagan'}` : '',
           worker ? `Bajarildi: ${worker.done} · xato: ${worker.failed}` : '',
@@ -1309,7 +1293,7 @@ function ServerPanel() {
           .join('\n'),
       );
     } catch (err) {
-      setHealth(`❌ Ulanib boʻlmadi: ${String((err as Error)?.message ?? err)}`);
+      setHealth(`Xato — Ulanib boʻlmadi: ${String((err as Error)?.message ?? err)}`);
     }
     setChecking(false);
   };
@@ -1393,7 +1377,7 @@ function GooglePanel() {
     try {
       await startGoogleAuth();
     } catch (err) {
-      setNote(`❌ ${String((err as Error)?.message ?? err)}`);
+      setNote(`Xato — ${String((err as Error)?.message ?? err)}`);
       setBusy(false);
     }
   };
@@ -1534,17 +1518,17 @@ function TelegramPanel() {
       const groups = await tgChats();
 
       setResult(
-        `✅ @${me.username} ulandi\n`
+        `OK — @${me.username} ulandi\n`
         + `· yangi xabar: ${fresh.length}\n`
         + `· yozganlar: ${people.length}\n`
         + `· guruh/kanal: ${groups.length}`
         + (me.can_read_all_group_messages === false
-          ? '\n\n⚠️ Bot guruhdagi hamma xabarni oʻqiy olmaydi. '
+          ? '\n\nDiqqat — Bot guruhdagi hamma xabarni oʻqiy olmaydi. '
             + '@BotFather → /setprivacy → Disable qiling.'
           : ''),
       );
     } catch (err) {
-      setResult(`❌ ${String((err as Error)?.message ?? err)}`);
+      setResult(`Xato — ${String((err as Error)?.message ?? err)}`);
     }
     setBusy(false);
   };
@@ -1610,7 +1594,7 @@ function TelegramPanel() {
       </div>
 
       <div className="tiny" style={{ marginTop: 14, lineHeight: 1.7, opacity: 0.85 }}>
-        ⚠️ Telegram shaxsiy hisobdan avtomatik yozishni taqiqlaydi va buning
+        Diqqat — Telegram shaxsiy hisobdan avtomatik yozishni taqiqlaydi va buning
         uchun hisobni bloklaydi. Shuning uchun bot ishlatiladi — u aynan shu
         ish uchun qilingan va cheklovi yoʻq darajada katta.
         <br />
@@ -1642,14 +1626,14 @@ function InstagramPanel() {
       const media = await igMedia(3);
       setResult(
         media.length
-          ? `✅ Ulandi — oxirgi ${media.length} ta post koʻrindi:\n` +
+          ? `OK — Ulandi — oxirgi ${media.length} ta post koʻrindi:\n` +
               media
                 .map((m) => `· ${(m.caption ?? '(matnsiz)').slice(0, 40)} — ${m.comments_count ?? 0} izoh`)
                 .join('\n')
-          : '✅ Token ishlayapti, lekin post topilmadi.',
+          : 'OK — Token ishlayapti, lekin post topilmadi.',
       );
     } catch (err) {
-      setResult(`❌ ${String((err as Error)?.message ?? err)}`);
+      setResult(`Xato — ${String((err as Error)?.message ?? err)}`);
     }
     setChecking(false);
   };
@@ -1700,7 +1684,7 @@ function InstagramPanel() {
         </pre>
       )}
 
-      <div className="section-label" style={{ padding: '18px 0 6px' }}>
+      <div className="section-label set-label">
         Qanday olinadi
       </div>
       <div className="tiny" style={{ lineHeight: 1.7 }}>
@@ -1722,7 +1706,7 @@ function InstagramPanel() {
       </div>
 
       <div className="tiny" style={{ marginTop: 12, color: 'var(--warn)', lineHeight: 1.6 }}>
-        ⚠️ Instagram faqat odam sizga yozgan boʻlsa va oxirgi xabardan 24 soat
+        Diqqat — Instagram faqat odam sizga yozgan boʻlsa va oxirgi xabardan 24 soat
         oʻtmagan boʻlsa Direct’ga javob berishga ruxsat beradi. Bu Meta’ning
         qoidasi — chetlab oʻtib boʻlmaydi.
       </div>
