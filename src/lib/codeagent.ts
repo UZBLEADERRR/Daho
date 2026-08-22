@@ -76,6 +76,7 @@ import { askUser, drainInterjections } from './ask';
 import { isModelReadable } from './attach';
 import { getState, setState } from './store';
 import { templateById } from './templates';
+import { CODE_GROUPS, closedCodeGroupsNote, codeToolNames, guessCodeGroups } from './toolpick';
 import type {
   Artifact,
   Attachment,
@@ -938,6 +939,23 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
       required: ['query'],
     },
   },
+  {
+    name: 'use_tools',
+    description:
+      'Yopiq vosita guruhini ochadi. Kerakli vosita roʻyxatda yoʻq boʻlsa shuni chaqir — '
+      + 'keyingi qadamda ishlaydi. Guruhlar: github, supabase, media, ulanish, yordamchi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        groups: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Ochiladigan guruhlar',
+        },
+      },
+      required: ['groups'],
+    },
+  },
 ];
 
 /** Yordamchi agentga beriladigan vositalar — ular repo yoki nashrga tegmaydi. */
@@ -1011,6 +1029,28 @@ async function runTool(
   if (!project) return { ok: false, summary: 'Loyiha topilmadi', payload: { error: 'no_project' } };
 
   switch (name) {
+    /*
+     * Guruhni ochish. Hech narsa bajarmaydi — keyingi qadamda qaysi
+     * eʼlonlar yuborilishini belgilaydi (siklda hisobga olinadi).
+     */
+    case 'use_tools': {
+      const asked = Array.isArray(args.groups)
+        ? args.groups.map((g) => String(g).trim().toLowerCase())
+        : [String(args.groups ?? '').trim().toLowerCase()];
+      const known = asked.filter((g) => g && g in CODE_GROUPS && g !== 'yadro');
+      return {
+        ok: known.length > 0,
+        summary: known.length ? `vositalar ochildi: ${known.join(', ')}` : 'bunday guruh yoʻq',
+        payload: {
+          opened: known,
+          tools: known.flatMap((g) => CODE_GROUPS[g] ?? []),
+          eslatma: known.length
+            ? 'Endi shu vositalarni chaqirishing mumkin.'
+            : 'Mavjud guruhlar: github, supabase, media, ulanish, yordamchi.',
+        },
+      };
+    }
+
     case 'ask_user': {
       const question = str(args.question, 'Qanday davom etay?');
       const answer = await askUser({
@@ -2712,9 +2752,10 @@ function planBlock(project: CodeProject): string {
   }`;
 }
 
-function systemPrompt(project: CodeProject): string {
+function systemPrompt(project: CodeProject, groups: Set<string> = new Set()): string {
   const { settings } = getState();
   const template = templateById(project.template);
+  const yopiq = closedCodeGroupsNote(groups);
   return `Sen — "Daho Code", telefonda ishlaydigan dasturchi agentsan. Oʻzbek tilida gaplashasan.
 
 ## Loyiha
@@ -2732,6 +2773,7 @@ Fayllar:
 ${fileTree(project) || '(boʻsh)'}
 ${project.spec ? `\n## Kelishilgan talablar — QATʼIY amal qil\n${project.spec}` : ''}
 ${planBlock(project)}
+${yopiq ? `\n${yopiq}` : ''}
 
 ## Sen qanday agentsan
 Sen bir marta javob yozib qoʻyadigan chat emassan. Sen — ishni OXIRIGACHA
@@ -3102,6 +3144,18 @@ export async function runCodeAgent(
 
   const maxRounds = Math.max(10, Math.min(200, settings.agentRounds || DEFAULT_ROUNDS));
 
+  /*
+   * Ochiq vosita guruhlari. Topshiriq matnidan taxmin qilinadi; loyihaga
+   * repo yoki Supabase ulangan boʻlsa oʻsha guruhlar darrov ochiladi.
+   * Model yetmagan vositani `use_tools` bilan oʻzi ochib oladi.
+   */
+  const groups = new Set<string>(guessCodeGroups(instruction));
+  const boshlanish = getCodeProject(projectId);
+  if (boshlanish?.repo) groups.add('github');
+  if (supabaseLink()) groups.add('supabase');
+  // Fayl yuborilgan boʻlsa rasm/asset vositalari darrov kerak boʻladi.
+  if (attachments.length || projectAttachments(project).length) groups.add('media');
+
   /** Agent oʻrtada toʻxtab qolsa nechta marta turtki berish mumkin */
   // Kuchsiz modellar bitta vosita chaqirgach turnini tugatib qoʻyadi.
   // Foydalanuvchi «Continue» deb yozib oʻtirmasligi uchun koʻp marta
@@ -3138,13 +3192,20 @@ export async function runCodeAgent(
         break;
       }
 
+      /*
+       * Har turda qayta yigʻamiz: model `use_tools` bilan yangi guruh
+       * ochgan boʻlishi mumkin.
+       */
+      const names = codeToolNames(groups);
+      const declarations = CODE_TOOLS.filter((t) => names.has(t.name));
+
       const result = await streamResilient({
         apiKey: settings.apiKey,
         // AVTO yoqilgan boʻlsa u ustun; oʻchiq boʻlsa loyihaning modeli.
         model: pickForProject('reja', current.model),
         contents,
-        systemInstruction: systemPrompt(current),
-        tools: CODE_TOOLS,
+        systemInstruction: systemPrompt(current, groups),
+        tools: declarations,
         temperature: 0.4,
         signal,
         onText,
@@ -3243,6 +3304,11 @@ export async function runCodeAgent(
               summary: `${call.name}: ${(err as Error).message}`,
               payload: { error: (err as Error).message },
             };
+          }
+        }
+        if (call.name === 'use_tools') {
+          for (const g of (outcome.payload.opened as string[] | undefined) ?? []) {
+            groups.add(g);
           }
         }
         toolCalls.push({

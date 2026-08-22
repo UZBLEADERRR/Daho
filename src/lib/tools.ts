@@ -70,6 +70,7 @@ import {
 } from './place';
 import { openSite } from './browserbus';
 import { synthesize } from './speech';
+import { TOOL_GROUPS } from './toolpick';
 import { getState, setState } from './store';
 import { DAYS } from './types';
 import type {
@@ -777,6 +778,24 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ['what'],
     },
   },
+  {
+    name: 'use_tools',
+    description:
+      'Yopiq vosita guruhini ochadi. Kerakli vosita roʻyxatda koʻrinmasa shuni chaqir — '
+      + 'keyingi qadamda oʻsha guruh vositalari ishlaydi. Guruhlar: reja, ijod, video, joy, '
+      + 'ulanish, telegram, ijtimoiy.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        groups: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Ochiladigan guruhlar nomi',
+        },
+      },
+      required: ['groups'],
+    },
+  },
 ];
 
 /** Nomi bo'yicha loyihani topadi yoki yaratadi. */
@@ -792,6 +811,31 @@ export async function executeTool(
   ctx: { chatId: string; signal?: AbortSignal },
 ): Promise<ToolOutcome> {
   switch (name) {
+    /*
+     * Guruhni ochish. Bu vosita hech narsa QILMAYDI — u faqat keyingi
+     * qadamda qaysi eʼlonlar yuborilishini belgilaydi. Ochilishning
+     * oʻzi agent siklida (`agent.ts`) hisobga olinadi.
+     */
+    case 'use_tools': {
+      const asked = Array.isArray(args.groups)
+        ? args.groups.map((g) => String(g).trim().toLowerCase())
+        : [String(args.groups ?? '').trim().toLowerCase()];
+      const known = asked.filter((g) => g && g in TOOL_GROUPS && g !== 'yadro');
+      const unknown = asked.filter((g) => g && !known.includes(g));
+      return {
+        ok: known.length > 0,
+        summary: known.length ? `vositalar ochildi: ${known.join(', ')}` : 'bunday guruh yoʻq',
+        payload: {
+          opened: known,
+          tools: known.flatMap((g) => TOOL_GROUPS[g] ?? []),
+          ...(unknown.length ? { nomaʼlum: unknown } : {}),
+          eslatma: known.length
+            ? 'Endi shu vositalarni chaqirishing mumkin.'
+            : 'Mavjud guruhlar: reja, ijod, video, joy, ulanish, telegram, ijtimoiy.',
+        },
+      };
+    }
+
     case 'ask_user': {
       const question = str(args.question, 'Qanday davom etay?');
       const answer = await askUser({

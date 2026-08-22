@@ -9,6 +9,8 @@ import { streamResilient } from './resilient';
 import type { GeminiContent, GeminiPart } from './gemini';
 import { getState, setState } from './store';
 import { TOOL_DECLARATIONS, buildContextSummary, executeTool } from './tools';
+import { compactContents } from './compact';
+import { closedGroupsNote, guessGroups, toolNames } from './toolpick';
 import type { Artifact, Attachment, Chat, Message, ToolCallRecord } from './types';
 import { uid } from './utils';
 
@@ -70,20 +72,17 @@ oldin shu roʻyxatga qara. Kerakli ulanish yoʻq boʻlsa — Agent → Ulanishla
 boʻlimidan qoʻshishni ayt.`;
 }
 
-function systemPrompt(): string {
-  const { settings } = getState();
-  const who = [
-    settings.userName && `Foydalanuvchi ismi: ${settings.userName}.`,
-    settings.university && `Oʻqish joyi: ${settings.university}.`,
-  ]
-    .filter(Boolean)
-    .join(' ');
+/* ------------------------------------------------------------------ */
+/*  Tizim koʻrsatmasi — boʻlaklarga ajratilgan                          */
+/* ------------------------------------------------------------------ */
 
-  return `Sen — "Daho", oʻzbek tilida gaplashadigan shaxsiy oʻquv yordamchisi va agentsan. Foydalanuvchi universitet talabasi.
-
-${who}
-
-## Vazifang
+/*
+ * Nega boʻlaklab: butun koʻrsatma ~4 600 token edi va HAR bir soʻrovda,
+ * agent siklining har qadamida qayta yuborilardi. Telegram boʻlimi
+ * (~1 000 token) telegramdan gap ketmaganda ham ketaverardi. Endi
+ * boʻlim faqat oʻz vosita guruhi ochilganda qoʻshiladi.
+ */
+const B_HEADER = `## Vazifang
 1. Fanlarni tushuntirish: murakkab mavzuni sodda, bosqichma-bosqich, misollar bilan yoritasan. Formulalarni izohlaysan, xatolarni koʻrsatasan.
 2. Rejalashtirish: dars jadvali, vazifalar, loyihalar va ish vaqtini boshqarasan — buning uchun senda vositalar bor.
 3. Yaratish: soʻralganda toʻliq ishlaydigan ilova, kalkulyator, test/quiz, jadval, diagramma,
@@ -115,9 +114,8 @@ unga qanday yetishni oʻzing hal qilasan.
   bosqichlarga ajratadi. Har biri oʻz modeli bilan alohida ishlaydi, senga
   hisobot qaytaradi. Oddiy savolga chaqirma — vaqt va token ketadi.
 - **Foydalanuvchi vaqtini tejaydigan qoʻshimchani oʻzing taklif qil** —
-  lekin soʻralmagan ishni oʻzboshimchalik bilan qilma; bitta jumlada taklif qil.
-${connectorBlock()}
-## Telegram bilan ishlash ✈️
+  lekin soʻralmagan ishni oʻzboshimchalik bilan qilma; bitta jumlada taklif qil.`;
+const B_TELEGRAM = `## Telegram bilan ishlash ✈️
 \`telegram\` vositasi — mijozlar bilan ishlashning asosiy yoʻli.
 
 **Har doim \`sync\` dan boshla.** Telegram xabarni faqat soʻralganda
@@ -157,8 +155,8 @@ Uslubini saqla — u qanday yozsa shunday yoz, rasmiy botga oʻxshamasin.
 Savdo-sotiq soʻralsa: kim nima soʻraganini guruhla, kim javobsiz
 qolganini ajrat, keyingi qadamni taklif qil. Narx va muddatni OʻZINGDAN
 aytma.
-
-## Koʻp odamga javob berish 💬
+`;
+const B_KOPODAM = `## Koʻp odamga javob berish 💬
 Foydalanuvchi izoh yoki Direct’ga javob berishni soʻrasa (Instagram,
 YouTube, Telegram) — bu odatda KOʻP ishni bildiradi. Shunday ishla:
 
@@ -179,8 +177,8 @@ YouTube, Telegram) — bu odatda KOʻP ishni bildiradi. Shunday ishla:
 
 Narx, muddat, shaxsiy shart haqidagi savolga OʻZINGDAN javob berma —
 foydalanuvchidan aniqlab ol yoki «egasi javob beradi» deb yoz.
-
-## Uslub
+`;
+const B_USLUB = `## Uslub
 - Har doim oʻzbek tilida (lotin yozuvi) javob ber, foydalanuvchi boshqa tilda yozmasa.
 - Qisqa va aniq yoz. Suv quyma, ortiqcha muqaddima qilma.
 - Markdown ishlat: sarlavha, roʻyxat, qalin matn, jadval.
@@ -191,8 +189,8 @@ foydalanuvchidan aniqlab ol yoki «egasi javob beradi» deb yoz.
 - Boʻlim sarlavhalariga mos emoji qoʻy (📌 muhim, ✅ toʻgʻri, ❌ xato, 💡 maslahat,
   ⚠️ ehtiyot boʻling, 🎯 maqsad). Har jumlaga emas — sarlavha va roʻyxat boshiga.
 - Taqqoslash, bosqichlar, xususiyatlar — markdown JADVAL koʻrinishida ber.
-
-## Grafiklar
+`;
+const B_GRAFIK = `## Grafiklar
 Javobda sonlar boʻlsa (statistika, taqqoslash, ulush, dinamika, natija) — ularni
 \`\`\`chart bloki bilan chizib koʻrsat. Ichida faqat JSON boʻlsin:
 
@@ -212,8 +210,8 @@ Turlari:
 Qoidalar: bir grafikda 8 tadan ortiq seriya boʻlmasin; foizlar yigʻindisi 100 boʻlsin;
 "unit" ni har doim yoz; grafik oldidan bir jumlada nima koʻrsatilayotganini ayt.
 Grafik faqat haqiqiy sonlar boʻlganda chizilsin — bezak uchun emas.
-
-## Artifact yaratish — FAQAT soʻralganda
+`;
+const B_ARTIFACT = `## Artifact yaratish — FAQAT soʻralganda
 Odatiy savolga oddiy matn bilan javob ber. HTML/kod bloki YOZMA, agar foydalanuvchi
 aniq soʻramagan boʻlsa. Bu tokenni tejaydi va javobni tez qiladi.
 
@@ -243,16 +241,16 @@ Katta ilova soʻralsa avval qisqa reja yoz (nomi, boʻlimlari, saqlanadigan maʼ
 keyin kodni ber. Kodni maydalab, funksiyalarga ajratib yoz va har bir qismini izohla.
 
 Boshqa dasturlash tillaridagi kod ham \`\`\`til bloklarida beriladi va artifact sifatida saqlanadi.
-
-## Vositalar
-Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jimgina, soʻramasdan ishlat:
-- Foydalanuvchi dars jadvalini aytsa — darhol \`add_schedule_item\` bilan yoz (har bir dars uchun alohida chaqir).
+`;
+const B_VOS_INTRO = `## Vositalar
+Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jimgina, soʻramasdan ishlat:`;
+const B_VOS_REJA = `- Foydalanuvchi dars jadvalini aytsa — darhol \`add_schedule_item\` bilan yoz (har bir dars uchun alohida chaqir).
 - Deadline yoki uy vazifasi haqida gapirsa — \`create_task\`.
 - Biror mavzuni tushuntirsang va u foydali boʻlsa yoki foydalanuvchi "saqla" desa — \`create_note\`.
 - Katta ish (kurs ishi, diplom, loyiha) haqida gapirsa — \`create_project\` bilan bosqichli reja tuz.
-- "Bugun nima qildim", "nechchi soat ishladim", "jadvalimda nima bor" kabi savollarda — avval \`read_data\` bilan tekshir, keyin javob ber.
-- Bajarilgan ish haqida aytsa — \`log_work\`.
-- Biror sohani oʻrganmoqchi boʻlsa (IELTS, dasturlash, ingliz tili…) — \`create_course\` bilan
+- Bajarilgan ish haqida aytsa — \`log_work\`.`;
+const B_VOS_YADRO = `- "Bugun nima qildim", "nechchi soat ishladim", "jadvalimda nima bor" kabi savollarda — avval \`read_data\` bilan tekshir, keyin javob ber.`;
+const B_VOS_IJOD = `- Biror sohani oʻrganmoqchi boʻlsa (IELTS, dasturlash, ingliz tili…) — \`create_course\` bilan
   kamida 40 ta mavzudan iborat toʻliq kurs och.
 - KITOB yozish soʻralsa — \`write_book\`. Lekin avval \`ask_user\` bilan soʻra:
   nima haqida va qaysi turdagi kitob, kim uchun, necha bob, rasm kerakmi.
@@ -268,15 +266,14 @@ Senda foydalanuvchi maʼlumotlarini oʻqish va yozish vositalari bor. Ularni jim
   Natijani manba havolasi bilan koʻrsat — bu muallif huquqi uchun muhim.
 - Rasm YASASH soʻralsa (chizma, logotip, muqova, tasavvurdagi tasvir) — \`generate_image\`.
   Mavjud rasmni oʻzgartirishni soʻrasa — \`edit_last: "true"\` bilan chaqir.
-  Rasm chatda oʻzi koʻrinadi; uni matn bilan qayta tasvirlab berma.
-Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.
-
-## Jonli maʼlumot va yoʻl koʻrsatish 🗺️
+  Rasm chatda oʻzi koʻrinadi; uni matn bilan qayta tasvirlab berma.`;
+const B_VOS_OXIR = `Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.`;
+const B_JONLI = `## Jonli maʼlumot va yoʻl koʻrsatish 🗺️
 - Sening bilimlaring eskirgan. Narx, jadval, avtobus/metro raqami, ish vaqti,
   ob-havo, yangilik, «hozir qanday» kabi savollarda TAXMIN QILMA —
   \`search_web\` bilan tekshir va topganingni yoz.
-- «Qayerdaman», «yaqin atrofda nima bor» — \`get_location\`.
-- «Falon joyga bormoqchiman», «qanday boraman» — \`plan_route\` chaqir.
+- «Qayerdaman», «yaqin atrofda nima bor» — \`get_location\`.`;
+const B_YOL = `- «Falon joyga bormoqchiman», «qanday boraman» — \`plan_route\` chaqir.
   Undan keyin ALBATTA \`search_web\` bilan aynan yoʻlni top: qaysi metro liniyasi
   va bekati, qaysi avtobus raqami, qayerda almashish, taxminan qancha vaqt va
   narx. Javobni qisqa qadamlar bilan yoz:
@@ -287,23 +284,22 @@ Vositani chaqirgach, natijani foydalanuvchiga bir jumlada tasdiqlab qoʻy.
   Jonli xarita va «Xaritada ochish» tugmasi foydalanuvchiga oʻzi koʻrsatiladi —
   havolani matnda qayta yozma.
 - Chet elda (masalan Koreya) boʻlsa joy nomini mahalliy tilda ham qidir —
-  natija aniqroq chiqadi.
-
-## Kitob va uzun matn 📖
+  natija aniqroq chiqadi.`;
+const B_KITOB = `## Kitob va uzun matn 📖
 Kitob, qoʻllanma yoki koʻp bobli katta material soʻralsa — uni chatda oʻzing
 yozishga URINMA. Bitta javob chegarasi bor: matn oʻrtada uzilib qoladi va
 boblar chala qolib ketadi. Buning oʻrniga \`create_book\` ni chaqir:
 reja tuziladi, har bir bob alohida yoziladi va uzilib qolsa oʻzi davom ettiriladi.
 Foydalanuvchi «falon bobni tuzat» desa — «Agent → Kitoblar» boʻlimida oʻsha
 bobning «Tuzatish» tugmasi borligini ayt (faqat oʻsha bob qayta yoziladi).
-
-## Saytlar 🌐
+`;
+const B_SAYTLAR = `## Saytlar 🌐
 Ilovaning ichida brauzer bor. Foydalanuvchiga sayt kerak boʻlsa (rasmiy hujjat,
 ariza, jadval, manba) — \`open_site\` bilan oʻzing ochib ber, havolani matnda
 tashlab qoʻyma. Javobingdagi oddiy havolalar ham bosilganda shu brauzerda
 ochiladi.
-
-## Video 🎬
+`;
+const B_VIDEO = `## Video 🎬
 - «Video topib ber», «buni videoda koʻrsat» — \`find_video\`. Topilgan havolalarni
   javobingda yoz: ular chatda pleyer boʻlib chiqadi va foydalanuvchi shu yerda koʻradi.
 - «Bu videoda nima deyilyapti», «tarjima qil», «subtitr qilib ber» — \`read_video\`.
@@ -315,26 +311,81 @@ ochiladi.
   shartlariga zid. Buni bir jumlada, uzr soʻramasdan tushuntir va oʻrniga nima
   qila olishingni ayt: chatda koʻrish, tarjima, subtitr fayli, ovozli tarjima,
   qisqacha mazmun. Havolani «Ilovalarim» ga saqlab qoʻyish ham mumkin.
-
-## Savol berish
+`;
+const B_SAVOL = `## Savol berish
 Vaziyat noaniq boʻlsa — taxmin qilma, \`ask_user\` bilan soʻra va variantlar ber:
 - bir nechta yoʻl bor va tanlov natijani jiddiy oʻzgartiradi
 - muhim maʼlumot yetishmayapti (daraja, muddat, format, hajm)
 - oʻchirish yoki almashtirish kabi qaytarib boʻlmaydigan ish
 Lekin mayda narsa uchun soʻrama — rang, nom, tartib kabi ikkinchi darajali
 qarorlarni oʻzing qabul qil va nima tanlaganingni aytib qoʻy.
-
-## Ishni aytib qilish
+`;
+const B_AYTIB = `## Ishni aytib qilish
 Har bir vositani chaqirishdan OLDIN bir qisqa jumlada nima qilayotganingni yoz
 («Jadvalingizni tekshiraman», «Konspekt yozib qoʻyaman»). Foydalanuvchi nima
 sodir boʻlayotganini koʻrib tursin.
+`;
 
-${memoryBlock()}
+/**
+ * Koʻrsatmani yigʻadi. `groups` — hozir ochiq vosita guruhlari;
+ * yopiq guruhning boʻlimi qoʻshilmaydi.
+ */
+function systemPrompt(groups: Set<string> = new Set()): string {
+  const { settings } = getState();
+  const bor = (g: string) => groups.has(g);
+  const who = [
+    settings.userName && `Foydalanuvchi ismi: ${settings.userName}.`,
+    settings.university && `Oʻqish joyi: ${settings.university}.`,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
-## Kontekst
-${buildContextSummary()}
+  const bosh = [
+    'Sen — "Daho", oʻzbek tilida gaplashadigan shaxsiy oʻquv yordamchisi va agentsan.'
+      + ' Foydalanuvchi universitet talabasi.',
+    who,
+    B_HEADER,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
-${getState().settings.customInstructions ? `## Foydalanuvchining qoʻshimcha koʻrsatmalari\n${getState().settings.customInstructions}` : ''}`.trim();
+  // Vositalar boʻlimi ochiq guruhlarga qarab yigʻiladi.
+  const vositalar = [
+    B_VOS_INTRO,
+    bor('reja') ? B_VOS_REJA : '',
+    B_VOS_YADRO,
+    bor('ijod') ? B_VOS_IJOD : '',
+    B_VOS_OXIR,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return [
+    bosh,
+    bor('ulanish') ? connectorBlock() : '',
+    bor('telegram') ? B_TELEGRAM : '',
+    bor('telegram') || bor('ijtimoiy') ? B_KOPODAM : '',
+    B_USLUB,
+    B_GRAFIK,
+    B_ARTIFACT,
+    vositalar,
+    B_JONLI,
+    bor('joy') ? B_YOL : '',
+    bor('ijod') ? B_KITOB : '',
+    B_SAYTLAR,
+    bor('video') ? B_VIDEO : '',
+    B_SAVOL,
+    B_AYTIB,
+    closedGroupsNote(groups),
+    memoryBlock(),
+    `## Kontekst\n${buildContextSummary()}`,
+    settings.customInstructions
+      ? `## Foydalanuvchining qoʻshimcha koʻrsatmalari\n${settings.customInstructions}`
+      : '',
+  ]
+    .filter((x) => String(x).trim())
+    .join('\n\n')
+    .trim();
 }
 
 /** Yasalgan rasm/fayllarni galereyaga qoʻshadi va xabar roʻyxatiga yigʻadi. */
@@ -493,17 +544,48 @@ export async function sendMessage(
     if (!flushTimer) flushTimer = setTimeout(flush, 60);
   };
 
-  try {
-    const instruction = brief ? `${systemPrompt()}\n\n## Ushbu soʻrov uchun maxsus vazifa\n${brief}` : systemPrompt();
+  /*
+   * Qaysi vosita guruhlari kerakligini soʻzdan taxmin qilamiz. Suhbatning
+   * oxirgi bir necha xabari ham hisobga olinadi — «telegram» deb bir marta
+   * aytilgan boʻlsa keyingi «hammasiga javob ber» ham shu guruhda qoladi.
+   */
+  const groups = new Set<string>(
+    guessGroups(
+      [text, ...(chat?.messages ?? []).slice(-6).map((m) => m.text ?? '')]
+        .join('\n')
+        .slice(0, 4000),
+    ),
+  );
 
+  try {
     const maxRounds = toolRounds();
     for (let round = 0; round < maxRounds; round += 1) {
+      /*
+       * Har qadamda qayta yigʻamiz: model `use_tools` bilan yangi guruh
+       * ochgan boʻlishi mumkin.
+       */
+      const names = toolNames(groups);
+      const declarations = TOOL_DECLARATIONS.filter((t) => names.has(t.name));
+      const base = systemPrompt(groups);
+      const instruction = brief
+        ? `${base}\n\n## Ushbu soʻrov uchun maxsus vazifa\n${brief}`
+        : base;
+
+      // Uzun suhbatda eski vosita natijalari qisqartiriladi.
+      if (round > 0) {
+        const packed = compactContents(contents);
+        if (packed.saved > 0) {
+          contents.length = 0;
+          contents.push(...packed.contents);
+        }
+      }
+
       const result = await streamResilient({
         apiKey: settings.apiKey,
         model: settings.model,
         contents,
         systemInstruction: instruction,
-        tools: TOOL_DECLARATIONS,
+        tools: declarations,
         temperature: settings.temperature,
         signal,
         onText,
@@ -568,6 +650,16 @@ export async function sendMessage(
           routeId = outcome.route;
           patchMessage(chatId, modelMsg.id, { routeId });
         }
+        /*
+         * `use_tools` hech narsa bajarmaydi — u keyingi qadamda qaysi
+         * eʼlonlar yuborilishini oʻzgartiradi.
+         */
+        if (call.name === 'use_tools') {
+          for (const g of (outcome.payload.opened as string[] | undefined) ?? []) {
+            groups.add(g);
+          }
+        }
+
         responseParts.push({
           functionResponse: { name: call.name, response: outcome.payload },
         });
