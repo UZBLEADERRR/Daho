@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   formatCredits,
+  usageWindows,
+  whoami,
+  type UsageWindows,
+  type WindowState,
   formatPrice,
   publicPlans,
   refreshAccount,
@@ -131,16 +135,146 @@ function AuthForm() {
 
 /* ---------------------------------------------------------------- hisob */
 
-function AccountTab() {
+/**
+ * Limitlar — foizda.
+ *
+ * Foydalanuvchiga token yoki kredit soni koʻrsatilmaydi: u raqamning nimani
+ * anglatishini bilmaydi va bekorga xavotir oladi. Oʻrniga «soatlik limit:
+ * 80% qoldi» degan tushunarli koʻrsatkich turadi.
+ */
+const ROLE_WORD: Record<string, string> = {
+  chat: 'suhbat',
+  image: 'rasm',
+  tts: 'ovoz',
+  video: 'video',
+  other: 'boshqa',
+};
+
+/**
+ * Model qanchalik «qimmat» ekanini soʻz bilan aytadi.
+ *
+ * Aniq kredit narxi foydalanuvchiga hech narsa demaydi, lekin qaysi model
+ * limitni tez yeyishini bilishi kerak — shuning uchun uch daraja.
+ */
+function costWord(m: { output_price: number; call_price: number }): string {
+  const price = Number(m.output_price ?? 0) + Number(m.call_price ?? 0) * 10;
+  if (price >= 200) return 'limitni tez yeydi';
+  if (price >= 60) return 'oʻrtacha';
+  return 'tejamkor';
+}
+
+/**
+ * «Admin panel qayerda?» degan savolga javob.
+ *
+ * Admin faqat `admin_emails` roʻyxati orqali beriladi. Foydalanuvchi
+ * oʻzining holatini koʻra olsin va nima qilish kerakligini bilsin.
+ */
+function AdminHint() {
+  const [info, setInfo] = useState<Record<string, unknown> | null>(null);
+  const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        className="tiny admin-hint-toggle"
+        onClick={() => {
+          setOpen(true);
+          void whoami().then(setInfo).catch(() => undefined);
+        }}
+      >
+        Admin panel koʻrinmayaptimi?
+      </button>
+    );
+  }
+
+  const emails = (info?.admin_emails as string[] | null) ?? [];
+  const email = String(info?.email ?? '');
+
+  return (
+    <div className="card admin-hint">
+      <div className="tiny">
+        Roling: <b>{String(info?.role ?? '…')}</b> · tizimda{' '}
+        <b>{String(info?.admin_count ?? '…')}</b> ta admin bor.
+      </div>
+      <div className="tiny admin-hint-row">
+        {emails.includes(email.toLowerCase())
+          ? 'Pochtangiz admin roʻyxatida bor — chiqib qayta kiring.'
+          : 'Pochtangiz admin roʻyxatida yoʻq.'}
+      </div>
+      <div className="tiny admin-hint-row">
+        Supabase → SQL Editor da bir qator yozing:
+      </div>
+      <code className="admin-hint-sql">select public.claim_admin('{email || 'pochtangiz'}');</code>
+    </div>
+  );
+}
+
+function LimitBars() {
+  const [win, setWin] = useState<UsageWindows | null>(null);
+
+  useEffect(() => {
+    void usageWindows().then(setWin).catch(() => undefined);
+  }, []);
+
+  if (!win) return null;
+
+  const rows: Array<[string, WindowState]> = [
+    ['Soatlik', win.hour],
+    ['Kunlik', win.day],
+    ['Haftalik', win.week],
+    ['Obuna davri', win.period],
+  ];
+
+  const visible = rows.filter(([, w]) => !w.unlimited);
+  const daily = win.daily_model;
+
+  return (
+    <div className="limits">
+      {visible.length === 0 ? (
+        <div className="tiny">Limitsiz reja — cheklov yoʻq.</div>
+      ) : (
+        visible.map(([label, w]) => (
+          <div className="limit" key={label}>
+            <div className="between tiny">
+              <span>{label}</span>
+              <b className={w.left_percent <= 15 ? 'danger-text' : ''}>{w.left_percent}%</b>
+            </div>
+            <div className="meter">
+              <i
+                className={w.left_percent <= 15 ? 'low' : ''}
+                style={{ width: `${w.left_percent}%` }}
+              />
+            </div>
+          </div>
+        ))
+      )}
+
+      {win.wallet > 0 && (
+        <div className="tiny limits-note">
+          Hisobingizda <b>{formatPrice(Math.round(win.wallet))}</b> — limit tugasa shundan
+          ishlatiladi.
+        </div>
+      )}
+
+      {daily.access !== 'none' && (
+        <div className="tiny limits-note">
+          Limit tugasa <b>Daho Daily</b> modeli ishlaydi
+          {daily.access === 'unlimited'
+            ? ' — cheksiz, lekin sekinroq.'
+            : ` — bugun ${Math.max(daily.quota - daily.used, 0)} ta xabar qoldi.`}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountTab({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
   const { account } = useCloud();
   const [sync, setSync] = useState(getSyncState());
 
   useEffect(() => subscribeSync(() => setSync(getSyncState())), []);
 
   if (!account) return null;
-  const used = Number(account.used ?? 0);
-  const granted = Number(account.granted ?? 0) || 1;
-  const percent = Math.min(100, Math.round((used / granted) * 100));
 
   return (
     <div>
@@ -153,33 +287,18 @@ function AccountTab() {
           <span className="pill">{account.plan?.name ?? 'Rejasiz'}</span>
         </div>
 
-        <div className="meter" style={{ marginTop: 12 }}>
-          <i style={{ width: `${percent}%` }} />
-        </div>
-        <div className="between tiny" style={{ marginTop: 6 }}>
-          <span>
-            Qolgan kredit: <b>{formatCredits(account.balance)}</b>
-          </span>
-          <span>
-            {formatCredits(used)} / {formatCredits(granted)}
-          </span>
-        </div>
-        {account.period_end && (
-          <div className="tiny" style={{ marginTop: 4 }}>
-            Yangilanish: {new Date(account.period_end).toLocaleDateString('uz-UZ')}
-          </div>
-        )}
+        <LimitBars />
       </div>
 
+      {account.is_admin && onOpenAdmin && (
+        <button className="btn wide admin-entry" onClick={onOpenAdmin}>
+          Admin panel
+        </button>
+      )}
+
+      {!account.is_admin && <AdminHint />}
+
       <div className="stat-grid">
-        <div className="stat">
-          <span>{formatCredits(account.usage_today)}</span>
-          Bugun
-        </div>
-        <div className="stat">
-          <span>{formatCredits(account.usage_month)}</span>
-          Shu oy
-        </div>
         <div className="stat">
           <span>{account.models.length}</span>
           Ochiq model
@@ -190,7 +309,7 @@ function AccountTab() {
         </div>
       </div>
 
-      <div className="section-label">Ochiq modellar va narxi</div>
+      <div className="section-label">Ochiq modellar</div>
       {account.models.length === 0 && (
         <div className="tiny">Rejangizda model ochilmagan. Adminga murojaat qiling.</div>
       )}
@@ -198,13 +317,11 @@ function AccountTab() {
         <div className="line-row" key={m.model}>
           <div className="grow">
             <div>{m.model}</div>
-            <div className="tiny">
-              1M kirish: {formatCredits(m.input_price)} · 1M chiqish:{' '}
-              {formatCredits(m.output_price)}
-              {m.call_price > 0 ? ` · chaqiruv: ${formatCredits(m.call_price)}` : ''}
-            </div>
+            <div className="tiny">{costWord(m)} · {ROLE_WORD[m.role] ?? m.role}</div>
           </div>
-          <span className="pill soft">{m.role}</span>
+          {account.is_admin && (
+            <span className="pill soft">{formatCredits(m.output_price)}</span>
+          )}
         </div>
       ))}
 
@@ -561,7 +678,13 @@ function JobsTab() {
 
 /* ---------------------------------------------------------------- asosiy */
 
-export function AccountSheet({ onClose }: { onClose: () => void }) {
+export function AccountSheet({
+  onClose,
+  onOpenAdmin,
+}: {
+  onClose: () => void;
+  onOpenAdmin?: () => void;
+}) {
   const { status, account } = useCloud();
   const [tab, setTab] = useState<Tab>('hisob');
 
@@ -599,7 +722,7 @@ export function AccountSheet({ onClose }: { onClose: () => void }) {
             </button>
           </div>
 
-          {tab === 'hisob' && <AccountTab />}
+          {tab === 'hisob' && <AccountTab onOpenAdmin={onOpenAdmin} />}
           {tab === 'rejalar' && <PlansTab />}
           {tab === 'sarf' && <UsageTab />}
           {tab === 'fon' && <JobsTab />}

@@ -335,7 +335,15 @@ export default function App() {
           }}
         />
       )}
-      {accountOpen && <AccountSheet onClose={() => setAccountOpen(false)} />}
+      {accountOpen && (
+        <AccountSheet
+          onClose={() => setAccountOpen(false)}
+          onOpenAdmin={() => {
+            setAccountOpen(false);
+            setAdminOpen(true);
+          }}
+        />
+      )}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
       {browserUrl !== null && (
         <Browser initialUrl={browserUrl} onClose={() => setBrowserUrl(null)} />

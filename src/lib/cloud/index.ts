@@ -50,6 +50,52 @@ export async function myRequests(): Promise<Array<{ id: string; plan_id: string;
   return data ?? [];
 }
 
+/**
+ * Kirish holati tashxisi.
+ *
+ * «Admin panel koʻrinmayapti» degan savolga aniq javob beradi: rolingiz
+ * nima, admin roʻyxatida bormisiz va umuman admin bormi.
+ */
+export async function whoami(): Promise<Record<string, unknown> | null> {
+  const sb = supa();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('whoami');
+  if (error) throw new Error(error.message);
+  return (data ?? null) as Record<string, unknown> | null;
+}
+
+/** Bitta oynaning holati: cheksizmi va necha foiz qolgani. */
+export interface WindowState {
+  unlimited: boolean;
+  left_percent: number;
+}
+
+/**
+ * Limitlar holati.
+ *
+ * Foydalanuvchiga token soni koʻrsatilmaydi — u «haftalik limitning 64% i
+ * qoldi» degan tushunarli raqamni koʻradi.
+ */
+export interface UsageWindows {
+  plan: string;
+  hour: WindowState;
+  day: WindowState;
+  week: WindowState;
+  period: WindowState;
+  wallet: number;
+  allow_payg: boolean;
+  daily_model: { access: 'none' | 'limited' | 'unlimited'; used: number; quota: number };
+  period_end: string | null;
+}
+
+export async function usageWindows(): Promise<UsageWindows | null> {
+  const sb = supa();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('usage_windows');
+  if (error) throw new Error(error.message);
+  return (data ?? null) as UsageWindows | null;
+}
+
 /** Ilova ishga tushganda bir marta chaqiriladi. */
 export function initCloud(): () => void {
   if (!cloudEnabled) return () => undefined;

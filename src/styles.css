@@ -4330,3 +4330,60 @@ iframe {
   margin: 0 0 16px;
   line-height: 1.5;
 }
+
+/* ================================================================== */
+/*  Limitlar — foizda                                                  */
+/* ================================================================== */
+
+.limits {
+  margin-top: 14px;
+  display: grid;
+  gap: 11px;
+}
+
+.limit .meter {
+  margin-top: 5px;
+}
+
+.meter i.low {
+  background: var(--danger);
+}
+
+.limits-note {
+  line-height: 1.5;
+}
+
+.admin-entry {
+  margin-top: 12px;
+}
+
+.admin-hint-toggle {
+  display: block;
+  margin-top: 12px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-hint {
+  margin-top: 10px;
+}
+
+.admin-hint-row {
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.admin-hint-sql {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font: 11.5px/1.5 ui-monospace, Menlo, monospace;
+  color: var(--accent);
+  overflow-x: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
