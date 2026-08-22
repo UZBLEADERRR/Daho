@@ -171,7 +171,7 @@ function costWord(m: { output_price: number; call_price: number }): string {
  * Admin faqat `admin_emails` roʻyxati orqali beriladi. Foydalanuvchi
  * oʻzining holatini koʻra olsin va nima qilish kerakligini bilsin.
  */
-function AdminHint() {
+function AdminHint({ email: sessionEmail }: { email: string }) {
   const [info, setInfo] = useState<Record<string, unknown> | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -190,23 +190,47 @@ function AdminHint() {
   }
 
   const emails = (info?.admin_emails as string[] | null) ?? [];
-  const email = String(info?.email ?? '');
+  const email = String(info?.email ?? '') || sessionEmail;
+  const role = String(info?.role ?? '');
+  /*
+   * Rol boʻsh boʻlsa `public.profiles` da qator yoʻq degani: odam
+   * migratsiyalar ishga tushishidan oldin roʻyxatdan oʻtgan. Bunday
+   * holatda `claim_admin` ham ishlamaydi — avval sxemani yangilash kerak.
+   */
+  const profilYoq = info !== null && role === '';
 
   return (
     <div className="card admin-hint">
       <div className="tiny">
-        Roling: <b>{String(info?.role ?? '…')}</b> · tizimda{' '}
+        Roling: <b>{role || (info === null ? '…' : 'yoʻq')}</b> · tizimda{' '}
         <b>{String(info?.admin_count ?? '…')}</b> ta admin bor.
       </div>
-      <div className="tiny admin-hint-row">
-        {emails.includes(email.toLowerCase())
-          ? 'Pochtangiz admin roʻyxatida bor — chiqib qayta kiring.'
-          : 'Pochtangiz admin roʻyxatida yoʻq.'}
-      </div>
-      <div className="tiny admin-hint-row">
-        Supabase → SQL Editor da bir qator yozing:
-      </div>
-      <code className="admin-hint-sql">select public.claim_admin('{email || 'pochtangiz'}');</code>
+      {profilYoq ? (
+        <>
+          <div className="tiny admin-hint-row">
+            Bazada profilingiz yaratilmagan — hisobingiz sxema oʻrnatilishidan
+            oldin ochilgan.
+          </div>
+          <div className="tiny admin-hint-row">
+            Supabase → SQL Editor da <b>supabase/setup.sql</b> faylini bir marta
+            ishga tushiring, soʻng chiqib qayta kiring.
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="tiny admin-hint-row">
+            {emails.includes(email.toLowerCase())
+              ? 'Pochtangiz admin roʻyxatida bor — chiqib qayta kiring.'
+              : 'Pochtangiz admin roʻyxatida yoʻq.'}
+          </div>
+          <div className="tiny admin-hint-row">
+            Supabase → SQL Editor da bir qator yozing:
+          </div>
+          <code className="admin-hint-sql">
+            select public.claim_admin('{email || 'pochtangiz'}');
+          </code>
+        </>
+      )}
     </div>
   );
 }
@@ -373,7 +397,7 @@ function AccountTab({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
         </button>
       )}
 
-      {!account.is_admin && <AdminHint />}
+      {!account.is_admin && <AdminHint email={account.email} />}
 
       <ProfileBlock />
 

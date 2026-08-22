@@ -12,6 +12,20 @@ Bitta fayl — toʻqqizta migratsiyani tartib bilan oʻz ichiga oladi.
 Bir necha marta ishga tushirsa ham xavfsiz. Eski, yarim yaratilgan bazada
 ham ishlaydi: yetishmagan ustunlar oʻzi toʻldiriladi.
 
+### «Pochtasiz roʻyxatdan oʻtgan» holati
+
+Sxema oʻrnatilishidan OLDIN roʻyxatdan oʻtgan odamda `auth.users` da qator
+bor, lekin `public.profiles` da yoʻq: oʻsha paytda `handle_new_user()`
+triggeri hali yaratilmagan edi. Natijada ilova pochtani ham, rolni ham
+koʻrsatolmaydi va «tizimda 0 ta admin bor» deb yozadi.
+
+Ikki tomondan yopildi:
+
+* `setup.sql` ishga tushganda `auth.users` dagi hamma hisob uchun profil,
+  obuna va balans yaratiladi; pochtasi `admin_emails` da boʻlsa — admin.
+* Har kirishda `my_account()` → `ensure_profile()` profilni tekshiradi va
+  yetishmasa oʻsha zahoti yaratadi. Pochta tokendan olinadi.
+
 ## Jadvallar
 
 | Jadval | Nima turadi | Kim koʻradi |

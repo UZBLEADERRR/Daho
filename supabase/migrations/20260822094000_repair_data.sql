@@ -57,7 +57,54 @@ begin
   end if;
 end $$;
 
--- 3. Krediti berilmagan mavjud foydalanuvchilarga rejasining kreditini beramiz.
+-- 3. Profilsiz qolgan hisoblarni tiklaymiz.
+--    Migratsiyalar ishga tushishidan OLDIN roʻyxatdan oʻtgan odamda
+--    `auth.users` qatori bor, lekin `handle_new_user()` triggeri hali yoʻq
+--    edi — shuning uchun `public.profiles` boʻsh qoldi. Ilova esa pochtani
+--    ham, rolni ham koʻrsatolmaydi va «tizimda 0 ta admin bor» deb yozadi.
+do $$
+begin
+  if to_regclass('auth.users') is null then
+    return;
+  end if;
+
+  execute $q$
+    insert into public.profiles (id, email, full_name, role)
+    select u.id,
+           u.email,
+           coalesce(u.raw_user_meta_data ->> 'full_name', ''),
+           case
+             when coalesce(
+                    (select value from public.app_settings where key = 'admin_emails'),
+                    '[]'::jsonb
+                  ) ? lower(coalesce(u.email, '')) then 'admin'
+             else 'user'
+           end
+      from auth.users u
+     where not exists (select 1 from public.profiles p where p.id = u.id)
+    on conflict (id) do nothing
+  $q$;
+
+  -- Profili bor, lekin pochtasi boʻsh qolganlar (eski shakldagi jadval).
+  execute $q$
+    update public.profiles p
+       set email = u.email
+      from auth.users u
+     where u.id = p.id
+       and u.email is not null
+       and coalesce(p.email, '') = ''
+  $q$;
+end $$;
+
+-- 4. Pochtasi egalik roʻyxatida boʻlganlar admin boʻlib qolsin.
+update public.profiles p
+   set role = 'admin'
+  from public.app_settings s
+ where s.key = 'admin_emails'
+   and s.value ? lower(coalesce(p.email, ''))
+   and coalesce(p.role, 'user') <> 'admin';
+
+-- 5. Krediti berilmagan mavjud foydalanuvchilarga rejasining kreditini beramiz.
 --    Eski bazada roʻyxatdan oʻtganlar boʻsh balans bilan qolgan boʻlishi mumkin.
 update public.credit_balances b
    set balance      = p.credit_grant,
@@ -71,7 +118,7 @@ update public.credit_balances b
    and coalesce(b.granted, 0) = 0
    and p.credit_grant > 0;
 
--- 4. Obunasi yoʻq foydalanuvchilarni standart rejaga biriktiramiz.
+-- 6. Obunasi yoʻq foydalanuvchilarni standart rejaga biriktiramiz.
 insert into public.subscriptions (user_id, plan_id, status, note)
 select pr.id, pl.id, 'active', 'taʼmirlashda biriktirildi'
   from public.profiles pr

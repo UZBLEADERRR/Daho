@@ -955,9 +955,105 @@ $$;
 revoke execute on function public.charge_usage(uuid, text, text, integer, integer, text, uuid, jsonb)
   from anon, authenticated;
 
+-- ---------------------------------------------------------------------------
+--  Profilni kafolatlash.
+--
+--  `auth.users` da qator bor, `public.profiles` da yoʻq — bu real holat:
+--  odam migratsiyalar ishga tushishidan OLDIN roʻyxatdan oʻtgan boʻlsa,
+--  `handle_new_user()` triggeri hali mavjud emas edi. Natijada ilova
+--  pochtani ham, rolni ham koʻrsatolmaydi («pochtasiz roʻyxatdan oʻtgan»).
+--
+--  Shuning uchun har kirishda profil bor-yoʻqligini tekshirib, kerak boʻlsa
+--  oʻsha zahoti yaratamiz. Pochta JWT ichidan olinadi — `auth.users` ga
+--  murojaat qilish shart emas.
+-- ---------------------------------------------------------------------------
+create or replace function public.ensure_profile()
+returns public.profiles language plpgsql volatile security definer set search_path = public as $$
+declare
+  v_user uuid := auth.uid();
+  v_email text;
+  v_name text := '';
+  v_admins jsonb;
+  v_profile public.profiles%rowtype;
+  v_plan public.plans%rowtype;
+begin
+  if v_user is null then
+    return v_profile;
+  end if;
+
+  select * into v_profile from public.profiles where id = v_user;
+
+  -- Pochta va ism: avval tokendan, boʻlmasa auth.users dan.
+  begin
+    v_email := nullif(coalesce(auth.jwt() ->> 'email', ''), '');
+    v_name  := coalesce(auth.jwt() -> 'user_metadata' ->> 'full_name', '');
+  exception when others then
+    v_email := null;
+  end;
+
+  if v_email is null and to_regclass('auth.users') is not null then
+    execute 'select u.email, coalesce(u.raw_user_meta_data ->> ''full_name'', '''') '
+            'from auth.users u where u.id = $1'
+      into v_email, v_name using v_user;
+  end if;
+
+  select value into v_admins from public.app_settings where key = 'admin_emails';
+
+  if v_profile.id is null then
+    insert into public.profiles (id, email, full_name, role)
+    values (
+      v_user,
+      v_email,
+      coalesce(v_name, ''),
+      case when v_admins is not null and v_admins ? lower(coalesce(v_email, ''))
+           then 'admin' else 'user' end
+    )
+    on conflict (id) do nothing;
+    select * into v_profile from public.profiles where id = v_user;
+  elsif coalesce(v_profile.email, '') = '' and v_email is not null then
+    update public.profiles set email = v_email where id = v_user;
+    v_profile.email := v_email;
+  end if;
+
+  -- Pochtasi egalik roʻyxatida boʻlsa — admin roli tiklanadi.
+  if v_admins is not null
+     and v_admins ? lower(coalesce(v_profile.email, ''))
+     and coalesce(v_profile.role, 'user') <> 'admin' then
+    update public.profiles set role = 'admin' where id = v_user;
+    v_profile.role := 'admin';
+  end if;
+
+  -- Balans va obuna ham yetishmasa — standart rejani biriktiramiz.
+  select * into v_plan from public.plans where is_default and is_active limit 1;
+  if v_plan.id is not null then
+    insert into public.credit_balances (user_id, balance, granted, period_start, period_end)
+    values (
+      v_user,
+      coalesce(v_plan.credit_grant, 0),
+      coalesce(v_plan.credit_grant, 0),
+      now(),
+      now() + interval '30 days'
+    )
+    on conflict (user_id) do nothing;
+
+    if not exists (
+      select 1 from public.subscriptions
+       where user_id = v_user and status in ('active', 'trial')
+    ) then
+      insert into public.subscriptions (user_id, plan_id, status, note)
+      values (v_user, v_plan.id, 'active', 'kirishda biriktirildi');
+    end if;
+  end if;
+
+  return v_profile;
+end;
+$$;
+
+grant execute on function public.ensure_profile() to authenticated;
+
 -- Mijoz uchun bir so'rovda hamma narsa: profil, reja, kredit, modellar, sarf.
 create or replace function public.my_account()
-returns jsonb language plpgsql stable security definer set search_path = public as $$
+returns jsonb language plpgsql volatile security definer set search_path = public as $$
 declare
   v_user uuid := auth.uid();
   v_profile public.profiles%rowtype;
@@ -973,7 +1069,8 @@ begin
     return jsonb_build_object('signed_in', false);
   end if;
 
-  select * into v_profile from public.profiles where id = v_user;
+  -- Profil yoʻq boʻlsa shu yerda yaratiladi (eski hisoblar uchun).
+  v_profile := public.ensure_profile();
   v_plan := public.active_plan(v_user);
 
   select * into v_sub from public.subscriptions
@@ -2299,7 +2396,54 @@ begin
   end if;
 end $$;
 
--- 3. Krediti berilmagan mavjud foydalanuvchilarga rejasining kreditini beramiz.
+-- 3. Profilsiz qolgan hisoblarni tiklaymiz.
+--    Migratsiyalar ishga tushishidan OLDIN roʻyxatdan oʻtgan odamda
+--    `auth.users` qatori bor, lekin `handle_new_user()` triggeri hali yoʻq
+--    edi — shuning uchun `public.profiles` boʻsh qoldi. Ilova esa pochtani
+--    ham, rolni ham koʻrsatolmaydi va «tizimda 0 ta admin bor» deb yozadi.
+do $$
+begin
+  if to_regclass('auth.users') is null then
+    return;
+  end if;
+
+  execute $q$
+    insert into public.profiles (id, email, full_name, role)
+    select u.id,
+           u.email,
+           coalesce(u.raw_user_meta_data ->> 'full_name', ''),
+           case
+             when coalesce(
+                    (select value from public.app_settings where key = 'admin_emails'),
+                    '[]'::jsonb
+                  ) ? lower(coalesce(u.email, '')) then 'admin'
+             else 'user'
+           end
+      from auth.users u
+     where not exists (select 1 from public.profiles p where p.id = u.id)
+    on conflict (id) do nothing
+  $q$;
+
+  -- Profili bor, lekin pochtasi boʻsh qolganlar (eski shakldagi jadval).
+  execute $q$
+    update public.profiles p
+       set email = u.email
+      from auth.users u
+     where u.id = p.id
+       and u.email is not null
+       and coalesce(p.email, '') = ''
+  $q$;
+end $$;
+
+-- 4. Pochtasi egalik roʻyxatida boʻlganlar admin boʻlib qolsin.
+update public.profiles p
+   set role = 'admin'
+  from public.app_settings s
+ where s.key = 'admin_emails'
+   and s.value ? lower(coalesce(p.email, ''))
+   and coalesce(p.role, 'user') <> 'admin';
+
+-- 5. Krediti berilmagan mavjud foydalanuvchilarga rejasining kreditini beramiz.
 --    Eski bazada roʻyxatdan oʻtganlar boʻsh balans bilan qolgan boʻlishi mumkin.
 update public.credit_balances b
    set balance      = p.credit_grant,
@@ -2313,7 +2457,7 @@ update public.credit_balances b
    and coalesce(b.granted, 0) = 0
    and p.credit_grant > 0;
 
--- 4. Obunasi yoʻq foydalanuvchilarni standart rejaga biriktiramiz.
+-- 6. Obunasi yoʻq foydalanuvchilarni standart rejaga biriktiramiz.
 insert into public.subscriptions (user_id, plan_id, status, note)
 select pr.id, pl.id, 'active', 'taʼmirlashda biriktirildi'
   from public.profiles pr

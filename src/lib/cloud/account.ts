@@ -106,6 +106,17 @@ export async function refreshAccount(): Promise<Account | null> {
         emit({ status: 'kirilmagan', account: null, error: '' });
         return null;
       }
+      /*
+       * Bazada profil qatori yoʻq boʻlsa pochta boʻsh kelardi — varaqda
+       * «pochtasiz roʻyxatdan oʻtgan» kabi koʻrinardi. Baza tuzatilgunicha
+       * sessiyaning oʻzidan olib turamiz.
+       */
+      const user = sessionData.session.user;
+      if (!account.email) account.email = user?.email ?? '';
+      if (!account.full_name) {
+        const meta = user?.user_metadata as { full_name?: string } | undefined;
+        account.full_name = meta?.full_name ?? '';
+      }
       emit({ status: 'kirgan', account, error: '' });
       return account;
     } catch (err) {
