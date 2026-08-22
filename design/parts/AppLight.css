@@ -1,0 +1,11 @@
+.accents { display: flex; gap: 9px; flex-wrap: wrap; }
+.ac {
+  width: 27px; height: 27px; border-radius: 50%; background: var(--c);
+  box-shadow: 0 0 0 0 var(--bg), 0 0 0 0 var(--c);
+}
+.ac.on { box-shadow: 0 0 0 2.5px var(--surface), 0 0 0 4.5px var(--c); }
+.line { display: flex; align-items: center; gap: 11px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.bars { display: flex; align-items: flex-end; gap: 5px; height: 46px; margin: 14px 0 12px; }
+.bars i { flex: 1 1 0; background: var(--accent-soft); border-radius: 3px; }
+.bars i:nth-child(6) { background: var(--accent); }
+.cost { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }

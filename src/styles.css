@@ -3670,3 +3670,59 @@ textarea {
     display: none;
   }
 }
+
+/* ================================================================== */
+/*  Mobil: sahifa qimirlamasin                                         */
+/* ================================================================== */
+
+/*
+ * Ikki muammo tuzatiladi.
+ *
+ * 1. Yon siljish. Bitta keng element (jadval, kod bloki, uzun havola)
+ *    butun sahifani surib yuboradi va ilova «oʻynab» koʻrinadi.
+ * 2. Balandlik. `height: 100%` mobil brauzerda manzil paneli yashiringanda
+ *    sakraydi — `dvh` ekranning haqiqiy koʻrinadigan balandligini beradi.
+ */
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+#root {
+  overflow-x: clip;
+}
+
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root,
+  .app {
+    height: 100dvh;
+  }
+}
+
+img,
+video,
+canvas,
+svg,
+iframe {
+  max-width: 100%;
+}
+
+/* Uzun soʻz va havola qatorni yorib chiqmasin */
+.msg,
+.md,
+.md p,
+.md li,
+.md a {
+  overflow-wrap: anywhere;
+}
+
+/* Keng mazmun sahifani emas, oʻz qutisini suradi */
+.md pre,
+.md table {
+  max-width: 100%;
+  overflow-x: auto;
+}
