@@ -4,11 +4,12 @@ import {
   isFreeModel,
   modelIsFree,
   parseRef,
-  priceLabel,
+  modelMeta,
   searchModels,
 } from '../lib/providers';
 import { useStore } from '../lib/store';
 import type { ModelInfo } from '../lib/models';
+import { Chevron } from './Icons';
 import { Sheet } from './ui';
 
 export type ModelFilter = 'hammasi' | 'sevimli' | 'bepul' | 'vositali';
@@ -67,9 +68,9 @@ export function ModelPickerSheet({
 
   const chips: Array<[ModelFilter, string]> = [
     ['hammasi', `Hammasi (${base.length})`],
-    ['sevimli', `⭐ Sevimli (${base.filter((m) => favorites.has(m.id)).length})`],
-    ['bepul', `🆓 Bepul (${base.filter(modelIsFree).length})`],
-    ['vositali', '🔧 Vositali'],
+    ['sevimli', `★ Sevimli (${base.filter((m) => favorites.has(m.id)).length})`],
+    ['bepul', `Bepul (${base.filter(modelIsFree).length})`],
+    ['vositali', 'Vositali'],
   ];
 
   return (
@@ -119,16 +120,14 @@ export function ModelPickerSheet({
               onClose();
             }}
           >
-            <span className="action-icon">{favorites.has(m.id) ? '⭐' : modelIsFree(m) ? '🆓' : '🤖'}</span>
+            <span className="action-icon model-mark-letter">
+              {m.label.slice(0, 1).toUpperCase()}
+            </span>
             <span className="grow" style={{ minWidth: 0 }}>
               <b style={{ wordBreak: 'break-word' }}>{m.label}</b>
-              <div className="tiny">
-                {m.providerLabel ?? 'Gemini'}
-                {modelIsFree(m) ? ' · bepul' : priceLabel(m) ? ` · ${priceLabel(m)}` : ''}
-                {m.tools === false ? ' · vositasiz' : ''}
-                {m.vision ? ' · 👁' : ''}
-              </div>
+              <div className="tiny">{modelMeta(m)}</div>
             </span>
+            {favorites.has(m.id) && <span className="star on">★</span>}
           </button>
         ))}
 
@@ -168,14 +167,9 @@ export function ModelPickButton({
       <button className="model-pick" onClick={() => setOpen(true)}>
         <span className="grow" style={{ minWidth: 0, textAlign: 'left' }}>
           <div style={{ wordBreak: 'break-word' }}>{label}</div>
-          {found && (
-            <div className="tiny">
-              {found.providerLabel ?? 'Gemini'}
-              {modelIsFree(found) ? ' · 🆓 bepul' : priceLabel(found) ? ` · ${priceLabel(found)}` : ''}
-            </div>
-          )}
+          {found && <div className="tiny">{modelMeta(found)}</div>}
         </span>
-        <span className="tiny">🔍</span>
+        <Chevron size={16} />
       </button>
 
       {open && (

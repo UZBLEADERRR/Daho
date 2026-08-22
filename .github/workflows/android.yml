@@ -36,7 +36,23 @@ jobs:
         run: npm ci
 
       - name: Veb qismini yigʻish
+        # Server manzili sirlardan olinadi. Berilmasa ilova ochilganda
+        # «Server sozlanmagan» degan ekran koʻrsatadi.
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          VITE_APK_URL: ${{ vars.APK_URL }}
+          VITE_EXTENSION_URL: ${{ vars.EXTENSION_URL }}
         run: npm run build
+
+      - name: Kengaytmani yigʻish
+        env:
+          DAHO_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          DAHO_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: npm run ext
+
+      - name: Kengaytmani arxivlash
+        run: cd extension/dist && zip -r ../../daho-kengaytma.zip .
 
       - name: Capacitor sinxronizatsiyasi
         run: npx cap sync android
@@ -56,5 +72,13 @@ jobs:
         with:
           name: daho-apk
           path: daho.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Kengaytmani yuklash
+        uses: actions/upload-artifact@v4
+        with:
+          name: daho-kengaytma
+          path: daho-kengaytma.zip
           if-no-files-found: error
           retention-days: 90

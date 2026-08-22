@@ -440,6 +440,14 @@ function errorDetail(body: string): { text: string; raw: string } {
 
 function humanHttpError(status: number, body: string, label: string): string {
   const detail = errorDetail(body).text || body.slice(0, 300);
+
+  // Daho serveri xatoni oʻzbekcha va tushunarli qilib yuboradi —
+  // uni oʻrab, «kalitni tekshiring» kabi keraksiz maslahat qoʻshmaymiz.
+  if (label === 'Daho') {
+    if (status === 401) return 'Hisobingizga qaytadan kiring.';
+    return detail || `Xato (HTTP ${status}).`;
+  }
+
   switch (status) {
     case 401:
     case 403:
@@ -710,7 +718,20 @@ export async function streamAny(opts: StreamOptions): Promise<StreamResult> {
       0,
     );
   }
-  return streamOpenAi(cfg, opts, ref.model);
+  const result = await streamOpenAi(cfg, opts, ref.model);
+  // Javob tugagach oylik token holatini yangilaymiz — hisoblagich jonli tursin.
+  if (ref.provider === DAHO) scheduleQuotaRefresh();
+  return result;
+}
+
+let quotaTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Kvotani darhol emas, biroz kutib soʻraydi — ketma-ket soʻrovlar birlashsin. */
+function scheduleQuotaRefresh(): void {
+  if (quotaTimer) clearTimeout(quotaTimer);
+  quotaTimer = setTimeout(() => {
+    void import('./account').then((m) => m.refreshQuota()).catch(() => undefined);
+  }, 1500);
 }
 
 /** Streamsiz qisqa soʻrov — sarlavha, xulosa kabi mayda ishlar uchun. */
@@ -1019,6 +1040,30 @@ export function modelIsFree(m: {
 export function isFreeModel(m: { id: string; inPrice?: number; outPrice?: number }): boolean {
   if (/:free\b|-free\b/i.test(m.id)) return true;
   return m.inPrice === 0 && m.outPrice === 0;
+}
+
+/**
+ * Model roʻyxatida koʻrinadigan izoh qatori.
+ *
+ * Daho modellarida narx koʻrsatilmaydi — foydalanuvchi tokenlar bilan
+ * ishlaydi, dollar bilan emas. Shuning uchun u yerda modelning oʻz izohi
+ * va tarif darajasi yoziladi.
+ */
+export function modelMeta(m: ModelInfo): string {
+  const parts: string[] = [];
+
+  if (m.provider === DAHO) {
+    if (m.description) parts.push(m.description);
+    else parts.push((m.tier ?? 0) === 0 ? 'Bepul tarifda ham ochiq' : 'Obuna bilan');
+  } else {
+    parts.push(m.providerLabel ?? 'Gemini');
+    const price = modelIsFree(m) ? 'bepul' : priceLabel(m);
+    if (price) parts.push(price);
+  }
+
+  if (m.tools === false) parts.push('vositasiz');
+  if (m.vision) parts.push('rasmni koʻradi');
+  return parts.join(' · ');
 }
 
 /** Narxni odam oʻqiydigan koʻrinishda: "$0.15 / 1M" yoki "bepul". */

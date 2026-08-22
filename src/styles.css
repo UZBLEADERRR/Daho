@@ -3650,3 +3650,20 @@ svg {
   word-break: break-word;
   margin-top: 1px;
 }
+
+.model-mark-letter {
+  font-size: 14px;
+  font-weight: 640;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.star {
+  font-size: 14px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.star.on {
+  color: var(--accent);
+}
