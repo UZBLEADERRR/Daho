@@ -6,6 +6,8 @@ export const CORS: Record<string, string> = {
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type, x-goog-api-key, x-worker-secret',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+  // Brauzer bu sarlavhalarni klientga koʻrsatishi uchun ochiq deb belgilanadi.
+  'Access-Control-Expose-Headers': 'X-Daho-Notice, X-Daho-Model',
   'Access-Control-Max-Age': '86400',
 };
 

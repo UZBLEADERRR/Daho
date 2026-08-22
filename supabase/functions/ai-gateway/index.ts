@@ -26,6 +26,12 @@ import {
 const PLATFORM_KEY = Deno.env.get('GEMINI_API_KEY') ?? '';
 
 interface Allowed {
+  /** Limit tugaganda ishlatiladigan zaxira model */
+  use_model?: string;
+  /** Qaysi hamyondan yechiladi: plan | wallet | daily */
+  source?: string;
+  /** Foydalanuvchiga koʻrsatiladigan izoh */
+  note?: string;
   allowed: boolean;
   reason?: string;
   balance?: number;
@@ -70,22 +76,30 @@ Deno.serve(async (req) => {
   const match = path.match(/^\/v1beta\/models\/(.+):([A-Za-z]+)$/);
   if (!match || req.method !== 'POST') return apiError('Bunday manzil yo‘q.', 404);
 
-  const model = decodeURIComponent(match[1]);
+  const requested = decodeURIComponent(match[1]);
   const method = match[2];
 
   // ---- ruxsat va kredit
   const { data: check, error: checkError } = await admin.rpc('can_use_model', {
     p_user: caller.id,
-    p_model: model,
+    p_model: requested,
   });
   if (checkError) return apiError(checkError.message, 500);
   const verdict = (check ?? {}) as Allowed;
   if (!verdict.allowed) {
     return apiError(
-      `${verdict.reason ?? 'ruxsat yo‘q'}. Obunani yangilang yoki Sozlamalarda o‘z API kalitingizni kiriting.`,
+      `${verdict.reason ?? 'ruxsat yo‘q'}. Obunani yangilang yoki hisobingizni toʻldiring.`,
       402,
     );
   }
+
+  /*
+   * Limit tugagan boʻlsa can_use_model boshqa modelni taklif qiladi:
+   * ish toʻxtamaydi, bepul «Daho Daily» ga oʻtadi. Qaysi hamyondan
+   * yechilishi ham shu yerdan keladi (obuna krediti / hisobdagi pul).
+   */
+  const model = verdict.use_model ?? requested;
+  const chargeSource = verdict.source ?? 'plan';
 
   let body: Record<string, unknown> = {};
   const raw = await req.text();
@@ -120,16 +134,22 @@ Deno.serve(async (req) => {
       p_output: usage.output,
       p_source: 'gateway',
       p_job: null,
-      p_meta: { method },
+      p_meta: { method, charge_source: chargeSource, requested },
     });
     if (error) console.error('charge_usage:', error.message);
   };
+
+  // Zaxira modelga oʻtilgan boʻlsa klient buni bilishi kerak — javob
+  // sifati boshqacha boʻladi va foydalanuvchiga sababini aytish kerak.
+  const notice: Record<string, string> = verdict.note
+    ? { 'X-Daho-Notice': encodeURIComponent(verdict.note), 'X-Daho-Model': model }
+    : {};
 
   if (!upstream.ok) {
     const text = await upstream.text();
     return new Response(text, {
       status: upstream.status,
-      headers: { 'Content-Type': 'application/json', ...CORS },
+      headers: { 'Content-Type': 'application/json', ...CORS, ...notice },
     });
   }
 
@@ -147,7 +167,7 @@ Deno.serve(async (req) => {
     await charge(usage);
     return new Response(text, {
       status: upstream.status,
-      headers: { 'Content-Type': 'application/json', ...CORS },
+      headers: { 'Content-Type': 'application/json', ...CORS, ...notice },
     });
   }
 
@@ -195,6 +215,7 @@ Deno.serve(async (req) => {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
       ...CORS,
+      ...notice,
     },
   });
 });

@@ -58,6 +58,27 @@ export class AiRouteError extends Error {
   }
 }
 
+/**
+ * Zaxira modelga oʻtilgani haqida xabar.
+ *
+ * Bir suhbatda koʻp soʻrov ketadi — har biriga xabar chiqarsak bezor
+ * qiladi, shuning uchun bir xil matn 5 daqiqada bir marta koʻrsatiladi.
+ */
+const noticeSeen = new Map<string, number>();
+const noticeListeners = new Set<(text: string) => void>();
+
+export function onFallbackNotice(listener: (text: string) => void): () => void {
+  noticeListeners.add(listener);
+  return () => noticeListeners.delete(listener);
+}
+
+function announceFallback(text: string): void {
+  const last = noticeSeen.get(text) ?? 0;
+  if (Date.now() - last < 5 * 60_000) return;
+  noticeSeen.set(text, Date.now());
+  noticeListeners.forEach((l) => l(text));
+}
+
 interface FetchOptions {
   method?: string;
   body?: string;
@@ -98,6 +119,15 @@ export async function aiFetch(
     });
     // Balans o'zgardi — hisobni jimgina yangilaymiz.
     scheduleAccountRefresh();
+
+    /*
+     * Limit tugab, zaxira modelga oʻtilgan boʻlsa foydalanuvchi buni
+     * bilishi kerak: javob sifati boshqacha boʻladi. Server sababini
+     * sarlavhada yuboradi, biz uni bir marta koʻrsatamiz.
+     */
+    const notice = res.headers.get('X-Daho-Notice');
+    if (notice) announceFallback(decodeURIComponent(notice));
+
     return res;
   }
 

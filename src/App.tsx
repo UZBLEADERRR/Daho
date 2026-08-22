@@ -17,11 +17,12 @@ import { AuthScreen } from './components/site/AuthScreen';
 import { Landing } from './components/site/Landing';
 import { SECTION_LABEL, isSection, type AgentSection } from './components/agent/sections';
 import { TaskBar } from './components/TaskBar';
-import { ToastHost } from './components/ui';
+import { ToastHost, toast } from './components/ui';
 import { startScheduler } from './lib/automation';
 import { onOpenSite } from './lib/browserbus';
 import { cloudEnabled, initCloud, useCloud } from './lib/cloud';
 import { installDeviceBridge } from './lib/devicebridge';
+import { onFallbackNotice } from './lib/route';
 import { getModels, pickModel } from './lib/models';
 import { allModels, cachedProviderModels } from './lib/providers';
 import { installSandboxStore } from './lib/sandbox';
@@ -93,6 +94,9 @@ export default function App() {
 
   // Qumboxdagi ilovalar saqlagan maʼlumotni qabul qilamiz.
   useEffect(() => installSandboxStore(), []);
+
+  // Limit tugab zaxira modelga oʻtilsa — foydalanuvchiga aytamiz.
+  useEffect(() => onFallbackNotice((text) => toast(text)), []);
 
   // Avtomatlashtirilgan topshiriqlar soati.
   useEffect(() => startScheduler(), []);
