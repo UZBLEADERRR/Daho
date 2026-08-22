@@ -221,3 +221,22 @@ export const Cpu = ({ size = 19, className }: IconProps) => (
     <path d="M10 3v3.5M14 3v3.5M10 17.5V21M14 17.5V21M3 10h3.5M3 14h3.5M17.5 10H21M17.5 14H21" />
   </svg>
 );
+
+export const Chart = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
+  </svg>
+);
+
+export const Globe = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M3.5 12h17M12 3.5c4.5 5 4.5 12 0 17-4.5-5-4.5-12 0-17z" />
+  </svg>
+);
+
+export const Puzzle = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M10 4.5a2 2 0 1 1 4 0V6h3.5A1.5 1.5 0 0 1 19 7.5V11h-1.5a2 2 0 1 0 0 4H19v3.5a1.5 1.5 0 0 1-1.5 1.5H14v-1.5a2 2 0 1 0-4 0V20H6.5A1.5 1.5 0 0 1 5 18.5V15h1.5a2 2 0 1 0 0-4H5V7.5A1.5 1.5 0 0 1 6.5 6H10z" />
+  </svg>
+);

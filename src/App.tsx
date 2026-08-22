@@ -13,6 +13,8 @@ import { VideoStudio } from './components/VideoStudio';
 import { Browser } from './components/Browser';
 import { AccountSheet } from './components/cloud/AccountSheet';
 import { AdminPanel } from './components/cloud/AdminPanel';
+import { AuthScreen } from './components/site/AuthScreen';
+import { Landing } from './components/site/Landing';
 import { SECTION_LABEL, isSection, type AgentSection } from './components/agent/sections';
 import { TaskBar } from './components/TaskBar';
 import { ToastHost } from './components/ui';
@@ -78,6 +80,7 @@ export default function App() {
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'kirish' | 'royxat' | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
 
@@ -210,6 +213,29 @@ export default function App() {
   }, [artifact, videoId, browserUrl, settingsOpen, accountOpen, adminOpen, sidebar, tab, section]);
 
   const showSidebar = wide || sidebar;
+
+  /**
+   * Kirish darvozasi.
+   *
+   * Faqat bulut yoqilgan (build vaqtida manzil berilgan) va foydalanuvchi
+   * kirmagan holatda koʻrsatiladi. Bulutsiz yigʻilgan nusxa avvalgidek —
+   * toʻgʻridan-toʻgʻri ilovaga kiraveradi, oʻz kaliti bilan ishlaydi.
+   *
+   * Vebda avval rasmiy bosh sahifa, telefonda esa darhol kirish oynasi:
+   * ilovani ataylab oʻrnatgan odamga reklama sahifasi ortiqcha.
+   */
+  if (cloudEnabled && cloud.status === 'kirilmagan') {
+    const native = Capacitor.isNativePlatform();
+    if (native || authMode) {
+      return (
+        <AuthScreen
+          initial={authMode ?? 'kirish'}
+          onBack={native ? undefined : () => setAuthMode(null)}
+        />
+      );
+    }
+    return <Landing onStart={setAuthMode} />;
+  }
 
   return (
     <div className={wide ? 'shell wide' : 'shell'}>
