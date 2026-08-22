@@ -97,7 +97,7 @@ async function readError(res) {
 
 export async function signIn(email, password) {
   const cfg = await cloudConfig();
-  if (!cfg) throw new Error('Avval Sozlamalarda Daho serveri manzilini kiriting.');
+  if (!cfg) throw new Error('Daho serveriga ulanib boʻlmadi. Internetni tekshiring.');
 
   const res = await fetch(`${cfg.supabaseUrl}/auth/v1/token?grant_type=password`, {
     method: 'POST',
@@ -109,6 +109,48 @@ export async function signIn(email, password) {
   const next = adopt(await res.json());
   await save(next);
   return next;
+}
+
+/**
+ * Roʻyxatdan oʻtish.
+ *
+ * Kengaytmadan ham hisob ochilsin — foydalanuvchini avval ilovaga
+ * yuborib, keyin qaytishga majburlash ortiqcha qadam.
+ */
+export async function signUp(email, password, fullName = '') {
+  const cfg = await cloudConfig();
+  if (!cfg) throw new Error('Daho serveriga ulanib boʻlmadi.');
+
+  const res = await fetch(`${cfg.supabaseUrl}/auth/v1/signup`, {
+    method: 'POST',
+    headers: { apikey: cfg.supabaseAnonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      password,
+      data: fullName.trim() ? { full_name: fullName.trim() } : {},
+    }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+
+  const data = await res.json();
+  // Pochta tasdiqlash yoqilgan boʻlsa token darrov kelmaydi.
+  if (!data?.access_token) return null;
+
+  const next = adopt(data);
+  await save(next);
+  return next;
+}
+
+/** Parolni tiklash xati. */
+export async function resetPassword(email) {
+  const cfg = await cloudConfig();
+  if (!cfg) throw new Error('Daho serveriga ulanib boʻlmadi.');
+  const res = await fetch(`${cfg.supabaseUrl}/auth/v1/recover`, {
+    method: 'POST',
+    headers: { apikey: cfg.supabaseAnonKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
 }
 
 export async function signOut() {

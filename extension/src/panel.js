@@ -1,4 +1,12 @@
-import { account, limits, session, signIn, signOut } from './cloud.js';
+import {
+  account,
+  limits,
+  resetPassword,
+  session,
+  signIn,
+  signOut,
+  signUp,
+} from './cloud.js';
 /*
  * Panel — kengaytmaning yuzi.
  *
@@ -32,6 +40,15 @@ function show(name) {
   });
   // Yozish maydoni faqat suhbatda kerak.
   $('composer-wrap').hidden = name !== 'chat';
+
+  /*
+   * Kirish ekranida boshqa hech narsa koʻrinmasin — ilovaning oʻzida
+   * ham shunday: avval hisob, keyin qolgani.
+   */
+  const kirishda = name === 'setup';
+  document.querySelector('.tabs').hidden = kirishda;
+  $('model').hidden = kirishda;
+  $('open-settings').hidden = kirishda;
 
   if (name === 'code') void renderCode();
   if (name === 'tools') void renderTools();
@@ -329,18 +346,47 @@ $('model').addEventListener('change', async (e) => {
 /*  Sozlamalar                                                         */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Kirish va roʻyxatdan oʻtish.
+ *
+ * Hech qanday manzil yoki token soʻralmaydi: server manzili kengaytma
+ * ichidagi `config.json` da, qolgan hammasi hisob orqali.
+ */
+let authMode = 'kirish';
+
+document.querySelectorAll('#auth-mode button').forEach((button) => {
+  button.addEventListener('click', () => {
+    authMode = button.dataset.mode;
+    document.querySelectorAll('#auth-mode button').forEach((b) => {
+      b.classList.toggle('on', b === button);
+    });
+    $('name-field').hidden = authMode !== 'royxat';
+    $('do-login').textContent = authMode === 'royxat' ? 'Hisob ochish' : 'Kirish';
+    $('login-pass').autocomplete = authMode === 'royxat' ? 'new-password' : 'current-password';
+    $('login-note').textContent = '';
+  });
+});
+
 $('do-login').addEventListener('click', async () => {
   const note = $('login-note');
-  const server = $('server-url0').value.trim();
-  if (!server) {
-    note.textContent = 'Server manzilini kiriting.';
+  const email = $('login-email').value.trim();
+  const pass = $('login-pass').value;
+  if (!email || !pass) {
+    note.textContent = 'Pochta va parolni kiriting.';
     return;
   }
-  await chrome.storage.local.set({ serverUrl: server.replace(/\/+$/, '') });
 
-  note.textContent = 'Kirilmoqda…';
+  note.textContent = authMode === 'royxat' ? 'Hisob ochilmoqda…' : 'Kirilmoqda…';
   try {
-    await signIn($('login-email').value, $('login-pass').value);
+    if (authMode === 'royxat') {
+      const done = await signUp(email, pass, $('login-name').value);
+      if (!done) {
+        note.textContent = 'Pochtangizga tasdiqlash xati yuborildi. Tasdiqlab, keyin kiring.';
+        return;
+      }
+    } else {
+      await signIn(email, pass);
+    }
     note.textContent = '';
     await fillModels();
     await renderAccount();
@@ -350,29 +396,38 @@ $('do-login').addEventListener('click', async () => {
   }
 });
 
-$('save-key').addEventListener('click', async () => {
-  const key = $('key').value.trim();
-  if (!key) return;
-  await chrome.storage.local.set({ apiKey: key });
-  // Kalit almashsa modellar roʻyxati ham boshqacha boʻlishi mumkin.
-  await chrome.storage.local.remove(['models', 'modelsAt']);
-  await fillModels();
-  show('chat');
+$('do-reset').addEventListener('click', async () => {
+  const note = $('login-note');
+  const email = $('login-email').value.trim();
+  if (!email) {
+    note.textContent = 'Avval pochtangizni yozing.';
+    return;
+  }
+  try {
+    await resetPassword(email);
+    note.textContent = 'Tiklash havolasi pochtangizga yuborildi.';
+  } catch (err) {
+    note.textContent = String(err?.message ?? err);
+  }
 });
 
-$('save-settings').addEventListener('click', async () => {
-  const key = $('key2').value.trim();
-  await chrome.storage.local.set({
-    ...(key ? { apiKey: key } : {}),
-    serverUrl: $('server-url').value.trim(),
-    serverSecret: $('server-secret').value.trim(),
-    tgToken: $('tg-token').value.trim(),
+/* Koʻrinish — ilovadagidek uch holat. */
+document.querySelectorAll('#theme-seg button').forEach((button) => {
+  button.addEventListener('click', async () => {
+    const theme = button.dataset.theme;
+    document.querySelectorAll('#theme-seg button').forEach((b) => {
+      b.classList.toggle('on', b === button);
+    });
+    applyTheme(theme);
+    await chrome.storage.local.set({ theme });
   });
-  if (key) await chrome.storage.local.remove(['models', 'modelsAt']);
-  await fillModels();
-  $('settings-note').textContent = '✅ Saqlandi';
-  setTimeout(() => ($('settings-note').textContent = ''), 2000);
 });
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'tizim' || !theme) root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', theme);
+}
 
 $('clear-chat').addEventListener('click', async () => {
   thread = [];
@@ -424,22 +479,33 @@ $('do-logout')?.addEventListener('click', async () => {
 });
 
 async function fillSettings() {
-  const s = await settings();
-  $('key2').value = s.apiKey;
-  $('server-url').value = s.serverUrl;
-  if ($('server-url0')) $('server-url0').value = s.serverUrl;
-  $('server-secret').value = s.serverSecret;
-  $('tg-token').value = s.tgToken;
+  const { theme } = await chrome.storage.local.get('theme');
+  applyTheme(theme ?? 'tizim');
+  document.querySelectorAll('#theme-seg button').forEach((b) => {
+    b.classList.toggle('on', b.dataset.theme === (theme ?? 'tizim'));
+  });
+
+  // Hisob kartasi — pochta va tarif.
+  const s = await session();
+  if (!s) return;
+  try {
+    const acc = await account();
+    if (acc?.email) $('acc-email').textContent = acc.email;
+    $('acc-plan').textContent = acc?.plan?.name
+      ? `${acc.plan.name} tarifi`
+      : 'tarif biriktirilmagan';
+  } catch {
+    $('acc-plan').textContent = 'hisob maʼlumoti olinmadi';
+  }
 }
 
 /* ------------------------------------------------------------------ */
 
 (async () => {
-  const { apiKey } = await settings();
   const signedIn = Boolean(await session());
   await loadThread();
   await fillSettings();
   await fillModels();
   await renderAccount();
-  show(apiKey || signedIn ? 'chat' : 'setup');
+  show(signedIn ? 'chat' : 'setup');
 })();

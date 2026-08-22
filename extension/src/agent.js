@@ -285,7 +285,8 @@ Qanday ishlaysan:
   qilma. Javobda kerakli joyning vaqtini koʻrsat, masalan «[4:12] da».
   \`hozirgi_vaqt\` — foydalanuvchi hozir koʻrayotgan joy; «shu yerda nima
   dedi?» degan savolda shundan boshla.
-  \`subtitr\` boʻsh boʻlsa — videoda subtitr yoʻqligini ochiq ayt va
+  \`subtitr\` boʻsh boʻlsa — videoning OʻZI havola sifatida qoʻshiladi:
+  uni koʻrib javob ber. Baribir koʻra olmasang, buni ochiq ayt va
   mazmunini oʻzingdan toʻqima.
 - Topshiriqni OXIRIGACHA bajar. Yarim javob berma, «davom etaymi?» deb
   soʻrama — qilib, keyin natijani koʻrsat.
@@ -361,6 +362,19 @@ export async function runAgent(history, ui = {}) {
         result = { xato: String(err?.message ?? err) };
       }
       responses.push({ functionResponse: { name: call.name, response: result } });
+
+      /*
+       * Subtitri yoʻq video ham tahlil qilinsin.
+       *
+       * Baʼzi videoda subtitr umuman yoqilmagan. Bunday holda Google
+       * modellariga YouTube havolasining OʻZINI berish mumkin — model
+       * videoni koʻradi va eshitadi. Boshqa provayderlarda bu qism
+       * oddiy matnga aylanadi va zarar qilmaydi.
+       */
+      const sahifa = result?.sahifa;
+      if (sahifa?.manba === 'youtube' && !sahifa.subtitr && sahifa.havola) {
+        responses.push({ fileData: { fileUri: sahifa.havola, mimeType: 'video/mp4' } });
+      }
     }
     contents.push({ role: 'user', parts: responses });
   }

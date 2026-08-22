@@ -12,73 +12,16 @@ const clean = (text) => (text || '').replace(/\s+/g, ' ').trim();
 /*  YouTube subtitrlari                                                */
 /* ------------------------------------------------------------------ */
 
-/**
- * Video matnini (subtitrlarini) oladi.
+/*
+ * Nega bu qism murakkab.
  *
- * Avval faqat sarlavha, tavsif va izohlar yigʻilardi — model videoning
- * ichida nima deyilganini BILMASDAN javob berardi va shuning uchun
- * xato aytardi. Endi haqiqiy subtitr matni olinadi.
- *
- * Yoʻli: sahifaning oʻz HTML ida `ytInitialPlayerResponse` bor, uning
- * ichida subtitr fayllarining manzili turadi. Content script sahifa
- * oʻzgaruvchilarini oʻqiy olmaydi, lekin HTML ni qayta oʻqiy oladi —
- * u brauzer keshidan keladi, qoʻshimcha yuk tushmaydi.
+ * Model videoning ICHIDA nima deyilganini bilmasa, sarlavha va izohlarga
+ * qarab taxmin qiladi — va xato aytadi. Shuning uchun haqiqiy subtitr
+ * matni kerak. Lekin YouTube uni bitta ishonchli yoʻl bilan bermaydi:
+ * baʼzi videoda sahifa HTML ida turadi, baʼzida faqat ichki API
+ * (InnerTube) qaytaradi, baʼzida esa faqat ekrandagi transkript panelida
+ * boʻladi. Shuning uchun tartib bilan hammasi sinab koʻriladi.
  */
-async function fetchTranscript() {
-  try {
-    const html = await (await fetch(location.href, { credentials: 'include' })).text();
-    const marker = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\})\s*;\s*(?:var|<\/script>)/s);
-    if (!marker) return null;
-
-    let player;
-    try {
-      player = JSON.parse(marker[1]);
-    } catch {
-      return null;
-    }
-
-    const tracks =
-      player?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
-    if (!tracks.length) return null;
-
-    // Avval sahifa tili, keyin oʻzbek/rus/ingliz, boʻlmasa birinchisi.
-    const wanted = [document.documentElement.lang, 'uz', 'ru', 'en'];
-    const track =
-      wanted.map((code) => tracks.find((t) => (t.languageCode ?? '').startsWith(code)))
-        .find(Boolean) ?? tracks[0];
-
-    const url = `${track.baseUrl}&fmt=json3`;
-    const data = await (await fetch(url, { credentials: 'include' })).json();
-
-    const lines = (data?.events ?? [])
-      .filter((e) => e.segs)
-      .map((e) => ({
-        vaqt: Math.round((e.tStartMs ?? 0) / 1000),
-        matn: e.segs.map((seg) => seg.utf8 ?? '').join('').replace(/\s+/g, ' ').trim(),
-      }))
-      .filter((l) => l.matn);
-
-    if (!lines.length) return null;
-
-    // Har 30 soniyani bitta boʻlakka yigʻamiz — model uchun ham oʻqishli,
-    // ham token tejaydi (har qatorga vaqt yozilsa sarf ikki barobar oshadi).
-    const chunks = [];
-    for (const line of lines) {
-      const slot = Math.floor(line.vaqt / 30);
-      const last = chunks[chunks.length - 1];
-      if (last && last.slot === slot) last.matn += ' ' + line.matn;
-      else chunks.push({ slot, vaqt: line.vaqt, matn: line.matn });
-    }
-
-    return {
-      til: track.languageCode ?? '',
-      avtomatik: Boolean(track.kind === 'asr'),
-      qatorlar: chunks.map((c) => `[${mmss(c.vaqt)}] ${c.matn}`),
-    };
-  } catch {
-    return null;
-  }
-}
 
 function mmss(sec) {
   const m = Math.floor(sec / 60);
@@ -86,18 +29,236 @@ function mmss(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-/** Sahifadagi ochiq transkript panelidan oʻqish — zaxira yoʻl. */
-function transcriptFromPanel() {
-  const rows = [...document.querySelectorAll('ytd-transcript-segment-renderer')];
-  if (!rows.length) return null;
-  const qatorlar = rows
-    .map((row) => {
-      const t = clean(row.querySelector('.segment-timestamp')?.textContent);
-      const x = clean(row.querySelector('.segment-text')?.textContent);
-      return x ? `[${t}] ${x}` : '';
-    })
-    .filter(Boolean);
-  return qatorlar.length ? { til: '', avtomatik: false, qatorlar } : null;
+/** Havoladan video id sini oladi (watch, shorts, embed, youtu.be). */
+function videoId() {
+  const url = new URL(location.href);
+  const v = url.searchParams.get('v');
+  if (v) return v;
+  const m = url.pathname.match(/\/(shorts|embed|v)\/([\w-]{6,})/);
+  if (m) return m[2];
+  if (url.hostname === 'youtu.be') return url.pathname.slice(1);
+  return '';
+}
+
+/**
+ * `nom = { … }` koʻrinishidagi JSON ni HTML dan ajratib oladi.
+ *
+ * Oddiy regex bu yerda ishlamaydi: JSON ichida ham `}` va `;` bor.
+ * Shuning uchun qavslar sanaladi — satr ichidagilari hisobga olinmaydi.
+ */
+function jsonAfter(html, marker) {
+  const at = html.indexOf(marker);
+  if (at < 0) return null;
+  const open = html.indexOf('{', at);
+  if (open < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = open; i < html.length; i += 1) {
+    const ch = html[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(html.slice(open, i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** Sahifa HTML i — bir marta olinadi, brauzer keshidan keladi. */
+let pageHtml = null;
+async function watchHtml() {
+  if (pageHtml !== null) return pageHtml;
+  try {
+    pageHtml = await (await fetch(location.href, { credentials: 'include' })).text();
+  } catch {
+    pageHtml = '';
+  }
+  return pageHtml;
+}
+
+/** 1-yoʻl: sahifa HTML idagi player javobi. */
+async function tracksFromHtml() {
+  const html = await watchHtml();
+  if (!html) return [];
+  const player = jsonAfter(html, 'ytInitialPlayerResponse');
+  return player?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+}
+
+/**
+ * 2-yoʻl: YouTube ning ichki API si.
+ *
+ * Sahifa HTML ida subtitr roʻyxati boʻlmasligi mumkin (masalan video
+ * SPA orqali almashtirilgan boʻlsa — HTML eskisiniki). API esa aynan
+ * shu video uchun javob beradi.
+ */
+async function tracksFromApi() {
+  const id = videoId();
+  if (!id) return [];
+  const html = await watchHtml();
+  const key = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1];
+  const version = html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/)?.[1] ?? '2.20240101.00.00';
+  if (!key) return [];
+
+  try {
+    const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${key}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoId: id,
+        context: { client: { clientName: 'WEB', clientVersion: version, hl: 'uz', gl: 'UZ' } },
+      }),
+    });
+    const data = await res.json();
+    return data?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Sahifa tili → oʻzbek → rus → ingliz → birinchisi. */
+function pickTrack(tracks) {
+  const wanted = [document.documentElement.lang, 'uz', 'ru', 'en'];
+  for (const code of wanted) {
+    if (!code) continue;
+    const found = tracks.find((t) => (t.languageCode ?? '').startsWith(code));
+    if (found) return found;
+  }
+  return tracks[0];
+}
+
+/** Subtitr faylini oʻqiydi: avval json3, boʻlmasa XML. */
+async function readTrack(track) {
+  const base = track?.baseUrl;
+  if (!base) return [];
+
+  try {
+    const res = await fetch(`${base}&fmt=json3`, { credentials: 'include' });
+    const data = await res.json();
+    const lines = (data?.events ?? [])
+      .filter((e) => e.segs)
+      .map((e) => ({
+        vaqt: Math.round((e.tStartMs ?? 0) / 1000),
+        matn: e.segs.map((seg) => seg.utf8 ?? '').join('').replace(/\s+/g, ' ').trim(),
+      }))
+      .filter((l) => l.matn);
+    if (lines.length) return lines;
+  } catch {
+    /* XML ga oʻtamiz */
+  }
+
+  // json3 boʻsh qaytishi mumkin — eski XML koʻrinishi koʻpincha ishlaydi.
+  try {
+    const xml = await (await fetch(base, { credentials: 'include' })).text();
+    const doc = new DOMParser().parseFromString(xml, 'text/xml');
+    return [...doc.querySelectorAll('text')]
+      .map((node) => ({
+        vaqt: Math.round(Number(node.getAttribute('start') ?? 0)),
+        matn: clean(
+          new DOMParser().parseFromString(
+            `<x>${node.textContent ?? ''}</x>`,
+            'text/html',
+          ).body.textContent,
+        ),
+      }))
+      .filter((l) => l.matn);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 3-yoʻl: ekrandagi transkript paneli.
+ *
+ * Bu yerda panelni OCHAMIZ ham. Odatda skript hech narsa bosmaydi, lekin
+ * bu istisno: foydalanuvchi aynan «shu videoni tahlil qil» deb soʻragan,
+ * panel esa faqat koʻrsatiladi — hech narsa oʻzgarmaydi va yuborilmaydi.
+ */
+async function transcriptFromPanel(openIt = true) {
+  const oqi = () =>
+    [...document.querySelectorAll('ytd-transcript-segment-renderer')]
+      .map((row) => {
+        const t = clean(row.querySelector('.segment-timestamp')?.textContent);
+        const x = clean(row.querySelector('.segment-text')?.textContent);
+        return x ? `[${t}] ${x}` : '';
+      })
+      .filter(Boolean);
+
+  let qatorlar = oqi();
+  if (qatorlar.length) return { til: '', avtomatik: false, qatorlar };
+  if (!openIt) return null;
+
+  // «Transkriptni koʻrsatish» tugmasi — tilga qarab matni har xil,
+  // shuning uchun harakat (aria-label) boʻyicha qidiramiz.
+  const button = [...document.querySelectorAll('button, tp-yt-paper-button, yt-button-shape button')]
+    .find((el) => /transcript|transkript|расшифровк/i.test(
+      `${el.getAttribute('aria-label') ?? ''} ${el.textContent ?? ''}`,
+    ));
+  if (!button) return null;
+
+  button.click();
+  for (let i = 0; i < 20; i += 1) {
+    await new Promise((r) => setTimeout(r, 250));
+    qatorlar = oqi();
+    if (qatorlar.length) return { til: '', avtomatik: false, qatorlar };
+  }
+  return null;
+}
+
+/** 30 soniyalik boʻlaklarga yigʻadi — oʻqishli va token tejaydi. */
+function toChunks(lines) {
+  const chunks = [];
+  for (const line of lines) {
+    const slot = Math.floor(line.vaqt / 30);
+    const last = chunks[chunks.length - 1];
+    if (last && last.slot === slot) last.matn += ' ' + line.matn;
+    else chunks.push({ slot, vaqt: line.vaqt, matn: line.matn });
+  }
+  return chunks.map((c) => `[${mmss(c.vaqt)}] ${c.matn}`);
+}
+
+/** Video matnini oladi — barcha yoʻllarni tartib bilan sinaydi. */
+async function fetchTranscript() {
+  try {
+    let tracks = await tracksFromHtml();
+    if (!tracks.length) tracks = await tracksFromApi();
+
+    if (tracks.length) {
+      // Tanlangan til boʻsh chiqsa boshqalarini ham sinaymiz.
+      const order = [pickTrack(tracks), ...tracks].filter(
+        (t, i, arr) => t && arr.indexOf(t) === i,
+      );
+      for (const track of order.slice(0, 3)) {
+        const lines = await readTrack(track);
+        if (lines.length) {
+          return {
+            til: track.languageCode ?? '',
+            avtomatik: track.kind === 'asr',
+            qatorlar: toChunks(lines),
+          };
+        }
+      }
+    }
+
+    return await transcriptFromPanel();
+  } catch {
+    return null;
+  }
 }
 
 /** YouTube — sarlavha, kanal, tavsif, subtitr va izohlar. */
@@ -114,7 +275,7 @@ async function collectYouTube() {
     .map((el) => clean(el.textContent))
     .filter(Boolean);
 
-  const transcript = (await fetchTranscript()) ?? transcriptFromPanel();
+  const transcript = await fetchTranscript();
 
   // Video hozir qayerda turgani — «shu joyda nima dedi?» degan savol uchun.
   const video = document.querySelector('video');

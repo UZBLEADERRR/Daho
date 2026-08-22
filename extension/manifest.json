@@ -1,11 +1,22 @@
 {
   "manifest_version": 3,
   "name": "Daho",
-  "version": "1.1.0",
-  "description": "Daho — sahifani tahlil qiladi, kod yozadi, serverni kuzatadi va Telegramga xabar yuboradi.",
+  "version": "1.2.0",
+  "description": "Ochiq sahifani oʻqiydi va tushuntiradi — YouTube videosining subtitrigacha. Daho hisobingiz bilan ishlaydi.",
+  "author": "Daho",
+  "homepage_url": "https://daho-production-82e9.up.railway.app",
+  "minimum_chrome_version": "114",
   "permissions": ["activeTab", "scripting", "storage", "contextMenus", "sidePanel"],
   "host_permissions": ["https://*/*"],
-  "action": { "default_title": "Daho bilan tahlil qilish" },
+  "action": {
+    "default_title": "Daho bilan tahlil qilish",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
   "background": { "service_worker": "src/background.js", "type": "module" },
   "content_scripts": [
     {
@@ -19,5 +30,10 @@
     }
   ],
   "side_panel": { "default_path": "src/panel.html" },
-  "icons": { "128": "icons/icon128.png" }
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }

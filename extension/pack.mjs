@@ -42,8 +42,11 @@ if (!/^\d+(\.\d+){0,3}$/.test(manifest.version ?? '')) problems.push('version no
 if (!manifest.description) problems.push('description yoʻq — Doʻkon talab qiladi');
 if ((manifest.description ?? '').length > 132) problems.push('description 132 belgidan uzun');
 
-// Doʻkon 128px ikonkani majburiy soʻraydi.
-for (const size of ['128']) {
+/*
+ * Doʻkon 128px ni majburiy soʻraydi; 16/32/48 boʻlmasa brauzer
+ * kattasini kichraytiradi va panel yonidagi belgi xira chiqadi.
+ */
+for (const size of ['16', '32', '48', '128']) {
   const path = manifest.icons?.[size];
   if (!path) problems.push(`icons.${size} yoʻq`);
   else if (!existsSync(join(here, path))) problems.push(`ikonka topilmadi: ${path}`);
