@@ -3275,6 +3275,9 @@ svg {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* `min-width: 0` boʻlmasa ichidagi keng qator (masalan boʻlim chiplari)
+     butun panelni kengaytirib yuboradi. */
+  min-width: 0;
   padding-top: var(--safe-top);
 }
 
@@ -3470,11 +3473,13 @@ svg {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 
 .admin-seg {
   overflow-x: auto;
   scrollbar-width: none;
+  min-width: 0;
 }
 
 .admin-seg::-webkit-scrollbar {
@@ -3666,4 +3671,34 @@ svg {
 
 .star.on {
   color: var(--accent);
+}
+
+.account-row .b,
+.account-row .tiny {
+  display: block;
+}
+
+.account-row .tiny {
+  margin-top: 2px;
+}
+
+.model-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px 2px;
+  flex: 0 0 auto;
+}
+
+.model-strip .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.strip-model {
+  max-width: 60vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

@@ -10,6 +10,7 @@ import { CodeView } from './components/CodeView';
 import { Menu, Settings as SettingsIcon, User } from './components/Icons';
 import { AuthScreen } from './components/auth/AuthScreen';
 import { Landing } from './components/Landing';
+import { ModelStrip } from './components/ModelStrip';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { VideoStudio } from './components/VideoStudio';
@@ -22,7 +23,7 @@ import { startScheduler } from './lib/automation';
 import { hasServer } from './lib/config';
 import { useSession } from './lib/useAccount';
 import { getModels, pickModel } from './lib/models';
-import { allModels, cachedProviderModels } from './lib/providers';
+import { DAHO, allModels, cachedProviderModels } from './lib/providers';
 import { installSandboxStore } from './lib/sandbox';
 import { startSync } from './lib/sync';
 import { getState, updateSettings, updateView, useStore } from './lib/store';
@@ -77,9 +78,38 @@ export default function App() {
   // Sessiya muddati tugab qolmasin.
   useEffect(() => startAuthKeeper(), []);
 
-  // Kirilgach hisob maʼlumotlari va Daho modellari olinadi.
+  /**
+   * Kirilgach hisob maʼlumotlari va Daho modellari olinadi.
+   *
+   * Model roʻyxati keshga tushmasa tanlash oynasi boʻsh koʻrinadi va Auto
+   * ishlamaydi — shuning uchun bu yerda majburan yangilaymiz. Joriy model
+   * Daho modeli boʻlmasa (masalan eski Gemini nomi qolgan boʻlsa) uni ham
+   * birinchi ochiq modelga almashtiramiz.
+   */
   useEffect(() => {
-    if (session) void refreshAccount();
+    if (!session) return;
+    let cancelled = false;
+
+    void (async () => {
+      await refreshAccount();
+      try {
+        const list = await allModels(true);
+        if (cancelled) return;
+        const daho = list.filter((m) => m.provider === DAHO && m.role === 'chat');
+        if (!daho.length) return;
+
+        const current = getState().settings.model;
+        if (!daho.some((m) => m.id === current)) {
+          updateSettings({ model: daho[0].id });
+        }
+      } catch {
+        /* internet yoʻq — keyingi ochilishda qaytadan urinamiz */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [session]);
 
   // Suhbatlar qurilmalar orasida sinxron turadi.
@@ -263,6 +293,8 @@ export default function App() {
       </header>
 
       <TaskBar />
+
+      {tab !== 'agent' && <ModelStrip />}
 
       <main className="main">
         {tab === 'chat' && (

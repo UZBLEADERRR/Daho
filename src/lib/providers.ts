@@ -1031,7 +1031,12 @@ export function modelIsFree(m: {
   free?: boolean;
   inPrice?: number;
   outPrice?: number;
+  provider?: string;
+  tier?: number;
 }): boolean {
+  // Daho modellarida narx koʻrsatilmaydi (hammasi 0 boʻlib koʻrinadi),
+  // shuning uchun «bepul» degani — bepul tarifda ham ochiq, yaʼni daraja 0.
+  if (m.provider === DAHO) return (m.tier ?? 0) === 0;
   if (m.free) return true;
   return isFreeModel({ id: m.label ?? m.id, inPrice: m.inPrice, outPrice: m.outPrice });
 }
