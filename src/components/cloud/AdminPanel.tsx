@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { formatCredits, formatPrice, useCloud, type CloudPlan } from '../../lib/cloud';
 import {
   addCredits,
+  addWallet,
   adminPlans,
   adminStats,
   adminUsers,
@@ -116,6 +117,7 @@ function Users() {
   const [open, setOpen] = useState<string>('');
   const [planId, setPlanId] = useState('');
   const [days, setDays] = useState(30);
+  const [money, setMoney] = useState(10000);
   const [credits, setCredits] = useState(10000);
 
   const load = () => {
@@ -217,6 +219,30 @@ function Users() {
                   }}
                 >
                   Kredit qoʻshish
+                </button>
+              </div>
+
+              <div className="row" style={{ marginTop: 8 }}>
+                <input
+                  className="grow"
+                  type="number"
+                  value={money}
+                  onChange={(e) => setMoney(Number(e.target.value))}
+                  placeholder="soʻm"
+                />
+                <button
+                  className="btn mini"
+                  onClick={async () => {
+                    try {
+                      const left = await addWallet(user.id, money, 'admin toʻldirdi');
+                      toast(`Hisobda: ${Math.round(left).toLocaleString('ru-RU')}`);
+                      load();
+                    } catch (err) {
+                      fail(err);
+                    }
+                  }}
+                >
+                  Hisobga pul
                 </button>
               </div>
 

@@ -147,6 +147,23 @@ export async function addCredits(userId: string, amount: number, note = ''): Pro
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Hisobga pul tushirish (pay-as-you-go uchun).
+ *
+ * Kredit obuna bilan beriladi va davr almashganda kuyadi. Pul esa
+ * foydalanuvchi toʻlagan mablagʻ — kuymaydi va obuna limiti tugagach
+ * shundan yechiladi. Shuning uchun ular alohida turadi.
+ */
+export async function addWallet(userId: string, amount: number, reason = ''): Promise<number> {
+  const { data, error } = await client().rpc('admin_add_wallet', {
+    p_user: userId,
+    p_amount: amount,
+    p_reason: reason,
+  });
+  if (error) throw new Error(error.message);
+  return Number((data as { wallet?: number } | null)?.wallet ?? 0);
+}
+
 export async function setRole(userId: string, role: 'user' | 'admin'): Promise<void> {
   const { error } = await client().rpc('admin_set_role', { p_user: userId, p_role: role });
   if (error) throw new Error(error.message);
