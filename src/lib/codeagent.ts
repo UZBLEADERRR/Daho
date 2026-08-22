@@ -75,6 +75,7 @@ import {
 import { askUser, drainInterjections } from './ask';
 import { isModelReadable } from './attach';
 import { getState, setState } from './store';
+import { imageAny } from './providers';
 import { templateById } from './templates';
 import {
   connectable,
@@ -295,6 +296,36 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
         },
       },
       required: ['attachment', 'path'],
+    },
+  },
+  {
+    name: 'generate_asset',
+    description:
+      'Loyiha uchun RASM CHIZADI va uni fayl qilib saqlaydi — logotip, ikonka, '
+      + 'fon, banner, illyustratsiya.\n'
+      + 'Foydalanuvchi rasm yubormagan boʻlsa va sayt/ilova uchun tasvir kerak '
+      + 'boʻlsa shuni ishlat: `<img src="assets/logo.png">` odatdagidek ishlaydi.\n'
+      + 'Foydalanuvchi OʻZ rasmini yuborgan boʻlsa — `add_asset` ni ishlat, '
+      + 'yangisini chizma.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        prompt: {
+          type: 'STRING',
+          description: 'Rasm tavsifi — ingliz tilida aniqroq chiqadi',
+        },
+        path: {
+          type: 'STRING',
+          description: 'Loyihadagi yoʻl, masalan "assets/logo.png"',
+        },
+        from_attachment: {
+          type: 'STRING',
+          description:
+            'Ixtiyoriy: foydalanuvchi yuborgan rasmni asos qilib oʻzgartirish '
+            + '(fayl nomi yoki tartib raqami)',
+        },
+      },
+      required: ['prompt', 'path'],
     },
   },
   {
@@ -1387,6 +1418,62 @@ async function runTool(
           izoh: `HTML da shunday havola qil: src="${path}"`,
         },
       };
+    }
+
+    /*
+     * Loyiha uchun rasm chizish.
+     *
+     * `generate_image` chatda rasmni koʻrsatadi, bu esa uni loyihaga FAYL
+     * qilib qoʻyadi — shunda u nashr qilinganda ham, GitHubʼda ham
+     * ishlaydi. Foydalanuvchi yuborgan rasmni asos qilib ham boʻladi.
+     */
+    case 'generate_asset': {
+      const prompt = str(args.prompt);
+      if (!prompt) {
+        return { ok: false, summary: 'Rasm tavsifi yoʻq', payload: { xato: 'prompt kerak' } };
+      }
+
+      // Asos rasm — foydalanuvchi yuborganini oʻzgartirish uchun.
+      const refs: Attachment[] = [];
+      const wanted = str(args.from_attachment);
+      if (wanted) {
+        const list = projectAttachments(project);
+        const byIndex = Number(wanted);
+        const picked =
+          Number.isFinite(byIndex) && byIndex >= 1 && byIndex <= list.length
+            ? list[byIndex - 1]
+            : list.find((a) => (a.name ?? '').toLowerCase().includes(wanted.toLowerCase()));
+        if (picked) refs.push(picked);
+      }
+
+      try {
+        const images = await imageAny(prompt, refs, signal);
+        if (!images.length) {
+          return { ok: false, summary: 'Rasm chiqmadi', payload: { xato: 'model rasm qaytarmadi' } };
+        }
+        const image = images[0];
+        const ext = (image.mimeType.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        let path = str(args.path) || `assets/rasm.${ext}`;
+        if (!/\.[a-z0-9]{2,4}$/i.test(path)) path = `${path}.${ext}`;
+
+        writeProjectFile(projectId, path, image.data, { mimeType: image.mimeType });
+        return {
+          ok: true,
+          summary: `Rasm chizildi → ${path}`,
+          payload: {
+            yoʻl: path,
+            turi: image.mimeType,
+            izoh: `HTML da shunday havola qil: src="${path}"`,
+          },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Rasm chizilmadi: ${(err as Error).message}`,
+          payload: { xato: String((err as Error)?.message ?? err) },
+        };
+      }
     }
 
     case 'apply_patch': {

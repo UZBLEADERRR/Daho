@@ -130,7 +130,7 @@ export const CODE_GROUPS: Record<string, string[]> = {
     'write_workflow', 'run_workflow', 'check_workflow',
   ],
   supabase: ['supabase', 'sb_admin'],
-  media: ['add_asset', 'list_attachments', 'send_file', 'send_zip'],
+  media: ['add_asset', 'generate_asset', 'list_attachments', 'send_file', 'send_zip'],
   ulanish: ['connect_app', 'connect_list'],
   yordamchi: ['spawn_agent'],
 };
@@ -138,7 +138,7 @@ export const CODE_GROUPS: Record<string, string[]> = {
 export const CODE_GROUP_NOTE: Record<string, string> = {
   github: 'GitHub: repo ochish, push, PR, issue, release, Actions workflow, deploy',
   supabase: 'Supabase: jadval, RLS, edge funksiya, admin amallari',
-  media: 'rasm/fayl biriktirish: loyihaga rasm qoʻshish, fayl yoki zip yuborish',
+  media: 'rasm: loyihaga yuborilgan rasmni qoʻshish yoki yangisini chizish, fayl/zip yuborish',
   ulanish: 'tashqi xizmatga ulanish (Google, Notion…)',
   yordamchi: 'yordamchi agent chaqirish (uzun ishni boʻlish)',
 };
