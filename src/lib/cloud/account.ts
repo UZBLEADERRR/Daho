@@ -194,6 +194,42 @@ export async function resetPassword(email: string): Promise<{ ok: boolean; messa
   return { ok: true, message: 'Parolni tiklash havolasi yuborildi.' };
 }
 
+/**
+ * Ism-familyani oʻzgartiradi.
+ *
+ * Ikki joyda saqlanadi: `profiles` jadvalida (admin va qidiruv shu yerdan
+ * oʻqiydi) va Auth metadatasida (keyingi kirishda ham qolsin). Rol va
+ * blok holatiga tegib boʻlmaydi — buni baza tomonidagi qoʻriqchi
+ * (`guard_profile_update`) taʼminlaydi.
+ */
+export async function saveProfile(fullName: string): Promise<{ ok: boolean; message: string }> {
+  const sb = supa();
+  if (!sb) return { ok: false, message: 'Bulut sozlanmagan' };
+
+  const name = fullName.trim();
+  const { data: sessionData } = await sb.auth.getSession();
+  const uid = sessionData.session?.user?.id;
+  if (!uid) return { ok: false, message: 'Avval tizimga kiring' };
+
+  const { error } = await sb.from('profiles').update({ full_name: name }).eq('id', uid);
+  if (error) return { ok: false, message: error.message };
+
+  await sb.auth.updateUser({ data: { full_name: name } });
+  await refreshAccount();
+  return { ok: true, message: 'Saqlandi' };
+}
+
+/** Parolni almashtiradi. */
+export async function changePassword(password: string): Promise<{ ok: boolean; message: string }> {
+  const sb = supa();
+  if (!sb) return { ok: false, message: 'Bulut sozlanmagan' };
+  if (password.length < 6) return { ok: false, message: 'Parol kamida 6 ta belgi boʻlsin' };
+
+  const { error } = await sb.auth.updateUser({ password });
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, message: 'Parol almashtirildi' };
+}
+
 export async function signOut(): Promise<void> {
   const sb = supa();
   if (!sb) return;

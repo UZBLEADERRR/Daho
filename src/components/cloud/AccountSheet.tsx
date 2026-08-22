@@ -11,6 +11,8 @@ import {
   requestPlan,
   signIn,
   signInWithLink,
+  changePassword,
+  saveProfile,
   signOut,
   signUp,
   resetPassword,
@@ -268,6 +270,81 @@ function LimitBars() {
   );
 }
 
+/**
+ * Profil — ism, parol va chiqish.
+ *
+ * Avval ism faqat roʻyxatdan oʻtishda soʻralardi va keyin uni
+ * oʻzgartirishning iloji yoʻq edi; parolni almashtirish ham yoʻq edi.
+ */
+function ProfileBlock() {
+  const { account } = useCloud();
+  const [name, setName] = useState(account?.full_name ?? '');
+  const [pass, setPass] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+
+  if (!account) return null;
+
+  const save = async () => {
+    setBusy(true);
+    setNote('');
+    try {
+      if (name.trim() !== (account.full_name ?? '')) {
+        const res = await saveProfile(name);
+        if (!res.ok) throw new Error(res.message);
+      }
+      if (pass) {
+        const res = await changePassword(pass);
+        if (!res.ok) throw new Error(res.message);
+        setPass('');
+      }
+      setNote('Saqlandi');
+    } catch (err) {
+      setNote(String((err as Error)?.message ?? err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="section-label set-label">Profil</div>
+
+      <label className="field">
+        <span>Ism va familya</span>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Sarvarbek Sanjarivich"
+          autoComplete="name"
+        />
+      </label>
+
+      <label className="field">
+        <span>Pochta <i>— oʻzgartirib boʻlmaydi</i></span>
+        <input value={account.email} readOnly disabled />
+      </label>
+
+      <label className="field">
+        <span>Yangi parol</span>
+        <input
+          type="password"
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+          placeholder="Oʻzgartirmasangiz boʻsh qoldiring"
+          autoComplete="new-password"
+        />
+      </label>
+
+      {note && <div className="tiny set-hint">{note}</div>}
+
+      <button className="btn wide" disabled={busy} onClick={() => void save()}>
+        {busy ? 'Saqlanmoqda…' : 'Saqlash'}
+      </button>
+    </>
+  );
+}
+
 function AccountTab({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
   const { account } = useCloud();
   const [sync, setSync] = useState(getSyncState());
@@ -297,6 +374,8 @@ function AccountTab({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
       )}
 
       {!account.is_admin && <AdminHint />}
+
+      <ProfileBlock />
 
       <div className="stat-grid">
         <div className="stat">
