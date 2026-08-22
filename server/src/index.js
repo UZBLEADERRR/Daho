@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { mountAi, providerStatus } from './ai.js';
+import { loadStats, mountAi, providerStatus } from './ai.js';
 import { mountOauth, oauthStatus } from './oauth.js';
 import { env, missing } from './env.js';
 import { allowedHosts, proxyRequest } from './proxy.js';
@@ -56,10 +56,15 @@ mountAi(app);
 mountOauth(app);
 
 app.get('/health', (_req, res) => {
+  const mem = process.memoryUsage();
   res.json({
     ok: missing().length === 0,
     worker: workerStats(),
     terminal: shellLoad(),
+    // Yuk holati — 1000 foydalanuvchida nima boʻlayotganini koʻrish uchun.
+    yuk: loadStats(),
+    xotira_mb: Math.round(mem.rss / 1048576),
+    ish_vaqti_s: Math.round(process.uptime()),
     yetishmayapti: missing(),
   });
 });

@@ -16,11 +16,48 @@
  */
 
 import { env } from './env.js';
+import { createCache, createGate, rateLimit } from './limits.js';
 import { adminClient, userFromToken } from './supabase.js';
 import { fromOpenAi, streamTranslator, toOpenAi, usageFrom } from './translate.js';
 
 const GOOGLE_BASE = process.env.GEMINI_BASE || 'https://generativelanguage.googleapis.com/v1beta';
 const OPENROUTER_BASE = process.env.OPENROUTER_BASE || 'https://openrouter.ai/api/v1';
+
+/*
+ * Yuk boshqaruvi.
+ *
+ * `max` — provayderga bir vaqtda ochiladigan ulanish soni. Railway’dagi
+ * bitta nusxa uchun 24 tinch raqam: AI soʻrovi asosan kutish, protsessor
+ * emas. `perUser` — bitta odam navbatni egallab qolmasin.
+ *
+ * Muhit oʻzgaruvchisi bilan sozlanadi, chunki toʻgʻri raqam rejaga va
+ * provayder limitiga bogʻliq.
+ */
+const gate = createGate({
+  max: Number(process.env.AI_CONCURRENCY || 24),
+  perUser: Number(process.env.AI_PER_USER || 3),
+  maxWaitMs: Number(process.env.AI_QUEUE_WAIT_MS || 30_000),
+});
+
+/*
+ * Daqiqasiga nechta soʻrov.
+ *
+ * Agent sikli bir topshiriq uchun oʻnlab chaqiruv qilishi mumkin,
+ * shuning uchun chegara baland: maqsad — suiisteʼmolni toʻxtatish,
+ * halol ishni boʻlish emas.
+ */
+const RATE_PER_MIN = Number(process.env.AI_RATE_PER_MIN || 90);
+const RATE_BURST = Number(process.env.AI_RATE_BURST || 30);
+
+/*
+ * Model tavsifi kamdan-kam oʻzgaradi, lekin har soʻrovda bazadan
+ * olinardi. Bir daqiqalik kesh minglab soʻrovni tejaydi.
+ */
+const modelCache = createCache(60_000, 300);
+
+export function loadStats() {
+  return { ...gate.stats(), modelCache: modelCache.size() };
+}
 
 /** Provayder kaliti bormi. Panel shu roʻyxatni koʻrsatadi. */
 export function providerStatus() {
@@ -197,6 +234,15 @@ export function mountAi(app) {
     const requested = decodeURIComponent(match[1]);
     const method = match[2];
 
+    // ---- suiisteʼmolga qarshi
+    const limit = rateLimit(`ai:${user.id}`, RATE_PER_MIN, RATE_BURST);
+    if (!limit.ok) {
+      res.set('Retry-After', String(limit.retryAfter));
+      return res.status(429).json({
+        error: `Juda tez-tez soʻrov yuborilyapti. ${limit.retryAfter} soniyadan soʻng urining.`,
+      });
+    }
+
     const admin = adminClient();
 
     // ---- reja va kredit
@@ -215,12 +261,17 @@ export function mountAi(app) {
     const slug = verdict.use_model ?? requested;
     const chargeSource = verdict.source ?? 'plan';
 
-    // ---- slug ortida kim turadi
-    const { data: resolved, error: resolveError } = await admin.rpc('resolve_model', {
-      p_slug: slug,
-    });
-    if (resolveError) return res.status(500).json({ error: resolveError.message });
-    const target = resolved ?? { provider: 'google', upstream: slug };
+    // ---- slug ortida kim turadi (bir daqiqa keshlanadi)
+    let target;
+    try {
+      target = await modelCache.get(slug, async () => {
+        const { data, error } = await admin.rpc('resolve_model', { p_slug: slug });
+        if (error) throw new Error(error.message);
+        return data ?? { provider: 'google', upstream: slug };
+      });
+    } catch (err) {
+      return res.status(500).json({ error: String(err?.message ?? err) });
+    }
     const provider = target.provider === 'openrouter' ? 'openrouter' : 'google';
 
     if (!keyFor(provider)) {
@@ -268,6 +319,27 @@ export function mountAi(app) {
     const controller = new AbortController();
     req.on('close', () => controller.abort());
 
+    /*
+     * Navbat. Yuk koʻtarilganda soʻrov rad etilmaydi — bir necha soniya
+     * kutadi. AI javobi baribir soniyalarda keladi, foydalanuvchi farqni
+     * sezmaydi, server esa tiqilib qolmaydi.
+     */
+    let leave;
+    try {
+      leave = await gate.enter(user.id);
+    } catch (err) {
+      res.set('Retry-After', '5');
+      return res.status(503).json({ error: String(err?.message ?? err) });
+    }
+    let chiqdi = false;
+    const release = () => {
+      if (chiqdi) return;
+      chiqdi = true;
+      leave();
+    };
+    res.on('close', release);
+    res.on('finish', release);
+
     let upstreamRes;
     try {
       upstreamRes =
@@ -287,6 +359,7 @@ export function mountAi(app) {
               signal: controller.signal,
             });
     } catch (err) {
+      release();
       if (controller.signal.aborted) return;
       return res.status(502).json({ error: `Provayderga ulanib boʻlmadi: ${err?.message ?? err}` });
     }
@@ -300,6 +373,7 @@ export function mountAi(app) {
       } catch {
         /* xom matn qoladi */
       }
+      release();
       return res
         .status(upstreamRes.status)
         .json({ error: { message: String(message).slice(0, 2000), code: upstreamRes.status } });

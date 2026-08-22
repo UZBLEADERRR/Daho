@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { env } from './env.js';
+import { cachedUser } from './limits.js';
 
 let admin = null;
 
@@ -17,13 +18,22 @@ export function adminClient() {
  * Foydalanuvchi tokenini tekshiradi va uning id sini qaytaradi.
  * Token yaroqsiz boʻlsa null.
  */
+/*
+ * Tokenni tekshiradi.
+ *
+ * Natija keshlanadi: aks holda har bir soʻrov Supabase Auth’ga borardi
+ * va 1000 foydalanuvchida birinchi boʻlib oʻsha tiqilardi. Kesh
+ * tokenning oʻz muddatidan oshmaydi.
+ */
 export async function userFromToken(token) {
   if (!token) return null;
-  try {
-    const { data, error } = await adminClient().auth.getUser(token);
-    if (error || !data?.user) return null;
-    return data.user;
-  } catch {
-    return null;
-  }
+  return cachedUser(token, async (t) => {
+    try {
+      const { data, error } = await adminClient().auth.getUser(t);
+      if (error || !data?.user) return null;
+      return data.user;
+    } catch {
+      return null;
+    }
+  });
 }
