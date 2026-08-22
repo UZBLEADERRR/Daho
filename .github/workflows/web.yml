@@ -41,11 +41,14 @@ jobs:
           test -f index.html
           test -f vite.config.ts
 
-      - name: Yigʻish
+      - name: TypeScript tekshiruvi
+        run: npx tsc --noEmit
+
+      - name: Vite production build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-        run: npm run build
+        run: npx vite build
 
       - name: Pages uchun tayyorlash
         uses: actions/upload-pages-artifact@v3
