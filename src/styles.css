@@ -341,6 +341,12 @@ textarea {
   gap: 9px;
 }
 
+/* Koʻp tugma sigʻmaganda keyingi qatorga tushsin */
+.row.wrap {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
 .between {
   display: flex;
   align-items: center;
@@ -415,6 +421,19 @@ textarea {
   color: var(--muted);
   border: 1px solid var(--line);
   white-space: nowrap;
+}
+
+/* Admin: provayder kaliti bor / yoʻq */
+.chip.ok {
+  background: color-mix(in srgb, #16a34a 18%, transparent);
+  color: #16a34a;
+  border-color: transparent;
+}
+
+.chip.warn {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #f59e0b;
+  border-color: transparent;
 }
 
 .chip.accent {
@@ -2351,7 +2370,8 @@ textarea {
   min-width: 0;
 }
 
-.mini-field input {
+.mini-field input,
+.mini-field select {
   padding: 7px 9px;
   font-size: 13px;
 }

@@ -25,9 +25,10 @@ import {
   type PurchaseRequestRow,
 } from '../../lib/cloud/admin';
 import type { UsageRow } from '../../lib/cloud/types';
+import { ModelsAdmin } from './ModelsAdmin';
 import { Sheet, toast } from '../ui';
 
-type Tab = 'umumiy' | 'odamlar' | 'rejalar' | 'sorovlar' | 'sozlama';
+type Tab = 'umumiy' | 'odamlar' | 'modellar' | 'rejalar' | 'sorovlar' | 'sozlama';
 
 function fail(err: unknown): void {
   toast(String((err as Error)?.message ?? err));
@@ -851,6 +852,9 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
         <button className={tab === 'odamlar' ? 'on' : ''} onClick={() => setTab('odamlar')}>
           Odamlar
         </button>
+        <button className={tab === 'modellar' ? 'on' : ''} onClick={() => setTab('modellar')}>
+          Modellar
+        </button>
         <button className={tab === 'rejalar' ? 'on' : ''} onClick={() => setTab('rejalar')}>
           Rejalar
         </button>
@@ -864,6 +868,7 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
 
       {tab === 'umumiy' && <Overview />}
       {tab === 'odamlar' && <Users />}
+      {tab === 'modellar' && <ModelsAdmin />}
       {tab === 'rejalar' && <Plans />}
       {tab === 'sorovlar' && <Requests />}
       {tab === 'sozlama' && <Config />}
