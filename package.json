@@ -6,7 +6,7 @@
   "description": "Daho \u2014 universitet uchun offline-first AI chat va agent ilovasi",
   "scripts": {
     "dev": "vite",
-    "build": "node extension/pack.mjs && tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "sync": "npm run build && cap sync android",
     "apk": "npm run sync && cd android && ./gradlew assembleDebug",

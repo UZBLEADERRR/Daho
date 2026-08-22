@@ -49,8 +49,11 @@ COPY --from=web /build/dist ./public
 
 # Brauzer kengaytmasi — tayyor arxiv qilib qoʻyamiz, foydalanuvchi
 # repozitoriyni klonlamasdan bitta havoladan yuklab oladi.
+# `pack.mjs` manifestni Doʻkon talablari boʻyicha tekshiradi va arxivga
+# faqat kerakli fayllarni qoʻyadi (pack.mjs va README tushmaydi). Manifest
+# buzuq boʻlsa build shu yerda toʻxtaydi — buzuq arxiv tarqalmasin.
 COPY extension ./extension
-RUN cd extension && zip -qr ../public/daho-extension.zip . && cd .. && rm -rf extension
+RUN node extension/pack.mjs && rm -rf extension
 
 ENV NODE_ENV=production
 ENV WORK_DIR=/tmp/daho-work
