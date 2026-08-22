@@ -378,9 +378,11 @@ drop policy if exists chats_own on public.chats;
 create policy chats_own on public.chats
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
--- Sozlamalar: hamma oʻqiydi, admin yozadi.
+-- Sozlamalar: faqat ochiq kalitlar hammaga koʻrinadi.
+-- `owner_emails` kabi ichki qiymatlar chiqib ketmasligi kerak.
 drop policy if exists settings_read on public.app_settings;
-create policy settings_read on public.app_settings for select using (true);
+create policy settings_read on public.app_settings
+  for select using (key in ('contact', 'downloads') or public.is_admin());
 
 drop policy if exists settings_admin on public.app_settings;
 create policy settings_admin on public.app_settings
