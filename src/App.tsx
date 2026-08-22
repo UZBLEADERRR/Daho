@@ -24,6 +24,7 @@ import { useSession } from './lib/useAccount';
 import { getModels, pickModel } from './lib/models';
 import { allModels, cachedProviderModels } from './lib/providers';
 import { installSandboxStore } from './lib/sandbox';
+import { startSync } from './lib/sync';
 import { getState, updateSettings, updateView, useStore } from './lib/store';
 import type { Artifact } from './lib/types';
 
@@ -79,6 +80,12 @@ export default function App() {
   // Kirilgach hisob maʼlumotlari va Daho modellari olinadi.
   useEffect(() => {
     if (session) void refreshAccount();
+  }, [session]);
+
+  // Suhbatlar qurilmalar orasida sinxron turadi.
+  useEffect(() => {
+    if (!session) return;
+    return startSync();
   }, [session]);
 
   useEffect(() => {

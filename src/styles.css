@@ -3562,3 +3562,91 @@ svg {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ================================================================== */
+/*  Sozlamalar — guruhlar                                              */
+/* ================================================================== */
+
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.set-row:last-of-type {
+  border-bottom: none;
+}
+
+.set-row .b {
+  display: block;
+  color: var(--text);
+}
+
+.set-row .tiny {
+  display: block;
+  margin-top: 2px;
+}
+
+.set-foot {
+  text-align: center;
+  padding-top: 18px;
+}
+
+.set-gap {
+  margin-top: 12px;
+}
+
+.set-label {
+  display: block;
+  padding: 22px 0 10px;
+}
+
+.set-note {
+  margin: 16px 0 0;
+  line-height: 1.55;
+}
+
+.set-note-first {
+  margin: 0 0 14px;
+}
+
+.slider {
+  padding: 0;
+  background: none;
+  border: none;
+}
+
+.mic-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 0;
+}
+
+.mic-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex: 0 0 auto;
+  margin-top: 6px;
+}
+
+.mic-dot.ok {
+  background: var(--ok);
+}
+
+.mic-step {
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.mic-detail {
+  word-break: break-word;
+  margin-top: 1px;
+}

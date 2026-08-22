@@ -5,7 +5,7 @@ import { copyText, saveBackup } from '../lib/exporter';
 import { getRepo, whoAmI } from '../lib/github';
 import { sbPing } from '../lib/supabase';
 import { transcribeAudio } from '../lib/gemini';
-import { byRole, cachedModels, geminiModel, getModels, pickModel, type ModelInfo } from '../lib/models';
+import { geminiModel } from '../lib/models';
 import {
   VOICES,
   checkMicrophone,
@@ -18,7 +18,7 @@ import {
 import { exportState, getState, importState, resetState, updateSettings, useStore } from '../lib/store';
 import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
 import { UsagePanel } from './UsagePanel';
-import { Copy, Refresh } from './Icons';
+import { Chevron, Copy } from './Icons';
 import { Sheet, Switch, toast } from './ui';
 
 const ACCENTS = [
@@ -39,46 +39,177 @@ const TTS_LANGS = [
   { id: 'tr-TR', label: 'Turkcha' },
 ];
 
+type Group =
+  | 'korinish'
+  | 'suhbat'
+  | 'ovoz'
+  | 'shaxsiy'
+  | 'qiyofa'
+  | 'code'
+  | 'malumot'
+  | 'ilgor';
+
+const GROUPS: Array<{ id: Group; title: string; hint: string }> = [
+  { id: 'korinish', title: 'Koʻrinish', hint: 'Mavzu, rang, shrift' },
+  { id: 'suhbat', title: 'Suhbat', hint: 'Model va javob uslubi' },
+  { id: 'ovoz', title: 'Ovoz va mikrofon', hint: 'Diktor, til, nutqni tanish' },
+  { id: 'shaxsiy', title: 'Shaxsiy', hint: 'Ism va agent koʻrsatmasi' },
+  { id: 'qiyofa', title: 'Ilova qiyofasi', hint: 'Nom va ikonka' },
+  { id: 'code', title: 'Daho Code', hint: 'GitHub va nashr' },
+  { id: 'malumot', title: 'Maʼlumotlar', hint: 'Zaxira va tozalash' },
+  { id: 'ilgor', title: 'Ilgʻor', hint: 'Oʻz API kalitingiz bilan ishlash' },
+];
+
 export function Settings({ onClose }: { onClose: () => void }) {
+  const [group, setGroup] = useState<Group | null>(null);
+
+  if (group) {
+    const meta = GROUPS.find((g) => g.id === group)!;
+    return (
+      <Sheet title={meta.title} onClose={() => setGroup(null)}>
+        {group === 'korinish' && <LookGroup />}
+        {group === 'suhbat' && <ChatGroup />}
+        {group === 'ovoz' && <VoiceGroup />}
+        {group === 'shaxsiy' && <PersonalGroup />}
+        {group === 'qiyofa' && <AppLook />}
+        {group === 'code' && <CodeGroup />}
+        {group === 'malumot' && <DataGroup onDone={onClose} />}
+        {group === 'ilgor' && <AdvancedGroup />}
+      </Sheet>
+    );
+  }
+
+  return (
+    <Sheet title="Sozlamalar" onClose={onClose}>
+      {GROUPS.map((g) => (
+        <button className="set-row" key={g.id} onClick={() => setGroup(g.id)}>
+          <span className="grow">
+            <b className="b">{g.title}</b>
+            <span className="tiny">{g.hint}</span>
+          </span>
+          <Chevron size={16} />
+        </button>
+      ))}
+
+      <div className="tiny set-foot">Daho 2.0</div>
+    </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Koʻrinish                                                          */
+/* ------------------------------------------------------------------ */
+
+function LookGroup() {
   const settings = useStore((s) => s.settings);
-  const [models, setModels] = useState<ModelInfo[]>(cachedModels());
-  const [loadingModels, setLoadingModels] = useState(false);
+
+  return (
+    <>
+      <Switch
+        on={settings.theme === 'tun'}
+        onChange={(v) => updateSettings({ theme: v ? 'tun' : 'kun' })}
+        label="Tungi rejim"
+      />
+
+      <div className="field set-gap">
+        <span>Urgʻu rangi</span>
+        <div className="accent-picker">
+          {ACCENTS.map((a) => (
+            <button
+              key={a.hex}
+              className={settings.accent === a.hex ? 'on' : ''}
+              style={{ background: a.hex }}
+              onClick={() => updateSettings({ accent: a.hex })}
+              aria-label={a.name}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="field">
+        <span>Shrift oʻlchami — {Math.round(settings.fontScale * 100)}%</span>
+        <input
+          className="slider"
+          type="range"
+          min={0.85}
+          max={1.3}
+          step={0.05}
+          value={settings.fontScale}
+          onChange={(e) => updateSettings({ fontScale: Number(e.target.value) })}
+        />
+      </div>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Suhbat                                                             */
+/* ------------------------------------------------------------------ */
+
+function ChatGroup() {
+  const settings = useStore((s) => s.settings);
+
+  return (
+    <>
+      <div className="field">
+        <span>Model</span>
+        <ChatModelSelect value={settings.model} onChange={(id) => updateSettings({ model: id })} />
+      </div>
+
+      <div className="field">
+        <span>Ijodkorlik — {settings.temperature.toFixed(1)}</span>
+        <input
+          className="slider"
+          type="range"
+          min={0}
+          max={2}
+          step={0.1}
+          value={settings.temperature}
+          onChange={(e) => updateSettings({ temperature: Number(e.target.value) })}
+        />
+      </div>
+
+      <Switch
+        on={settings.autoPickModel !== false}
+        onChange={(v) => updateSettings({ autoPickModel: v })}
+        label="Modelni vazifaga qarab tanlash"
+      />
+
+      <Switch
+        on={settings.memoryEnabled !== false}
+        onChange={(v) => updateSettings({ memoryEnabled: v })}
+        label="Meni eslab qolsin"
+      />
+
+      <Switch
+        on={settings.autoContinue}
+        onChange={(v) => updateSettings({ autoContinue: v })}
+        label="Uzilgan javobni davom ettirish"
+      />
+
+      <Switch
+        on={Boolean(settings.freeOnly)}
+        onChange={(v) => updateSettings({ freeOnly: v })}
+        label="Faqat bepul modellar"
+      />
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Ovoz va mikrofon                                                   */
+/* ------------------------------------------------------------------ */
+
+function VoiceGroup() {
+  const settings = useStore((s) => s.settings);
   const [deviceVoices, setDeviceVoices] = useState<DeviceVoice[]>([]);
-  const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [ghChecking, setGhChecking] = useState(false);
   const [micChecks, setMicChecks] = useState<MicCheck[] | null>(null);
   const [micBusy, setMicBusy] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void listDeviceVoices().then(setDeviceVoices);
   }, []);
-
-  const refreshModels = async (force = true) => {
-    if (!settings.apiKey) {
-      toast('Avval API kalitni kiriting');
-      return;
-    }
-    setLoadingModels(true);
-    try {
-      const list = await getModels(settings.apiKey, force);
-      setModels(list);
-      updateSettings({
-        model: pickModel(list, 'chat', settings.model) ?? settings.model,
-        imageModel: pickModel(list, 'image', settings.imageModel) ?? settings.imageModel,
-        ttsModel: pickModel(list, 'tts', settings.ttsModel) ?? settings.ttsModel,
-      });
-      toast(`${list.length} ta model topildi`);
-    } catch (err) {
-      toast(String((err as Error)?.message ?? err));
-    } finally {
-      setLoadingModels(false);
-    }
-  };
-
-  const imageModels = byRole(models, 'image');
-  const ttsModels = byRole(models, 'tts');
 
   const deviceMatching = deviceVoices.filter((v) =>
     v.lang?.toLowerCase().startsWith(settings.ttsLang.slice(0, 2).toLowerCase()),
@@ -87,7 +218,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const tryVoice = async () => {
     if (testing) return;
     setTesting(true);
-    const sample = 'Salom! Men Daho — sizning oʻquv yordamchingizman. Keling, birga oʻrganamiz.';
+    const sample = 'Salom! Men Daho — sizning oʻquv yordamchingizman.';
     try {
       if (settings.ttsEngine === 'gemini' && settings.apiKey) {
         playWavBase64(await synthesize(sample));
@@ -101,164 +232,39 @@ export function Settings({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const onImport = async (file: File | undefined) => {
-    if (!file) return;
-    const text = await file.text();
-    toast(importState(text) ? 'Maʼlumotlar tiklandi' : 'Fayl notoʻgʻri');
-  };
-
-  const modelOptions = (list: ModelInfo[], current: string) => {
-    const known = list.some((m) => m.id === current);
-    return (
-      <>
-        {!known && <option value={current}>{current} (roʻyxatda yoʻq)</option>}
-        {list.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.label}
-            {m.preview ? ' · sinov' : ''}
-          </option>
-        ))}
-      </>
-    );
-  };
-
   return (
-    <Sheet title="Sozlamalar" onClose={onClose}>
-      <div className="section-label" style={{ padding: '0 0 6px' }}>
-        Gemini (ixtiyoriy)
-      </div>
-
-      <div className="tiny" style={{ marginBottom: 10, lineHeight: 1.55 }}>
-        Ilova <b>faqat OpenRouter</b> (yoki boshqa provayder) bilan ham toʻliq
-        gaplashadi — pastdagi «AI modellar» boʻlimiga qarang. Google kaliti
-        quyidagilar uchun kerak: <b>internet qidiruvi</b>, <b>tabiiy ovoz</b>{' '}
-        (Gemini TTS) va <b>mikrofonni matnga oʻgirish</b>. Kalitsiz ovoz
-        telefonning oʻz xizmati bilan ishlaydi. Rasm yasash uchun OpenRouter’da
-        rasm modeli qoʻshsangiz kifoya.
-      </div>
-
+    <>
       <div className="field">
-        <label>API kalit</label>
-        <div className="row">
-          <input
-            className="grow"
-            type={showKey ? 'text' : 'password'}
-            value={settings.apiKey}
-            onChange={(e) => updateSettings({ apiKey: e.target.value.trim() })}
-            placeholder="AIza…"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          <button className="btn mini ghost" onClick={() => setShowKey((v) => !v)}>
-            {showKey ? 'Yashir' : 'Koʻrsat'}
-          </button>
-        </div>
-        <div className="tiny" style={{ marginTop: 6 }}>
-          Kalitni bepul olish: aistudio.google.com/apikey. Kalit faqat shu telefonda saqlanadi.
-        </div>
-      </div>
-
-      <button
-        className="btn ghost wide"
-        onClick={() => void refreshModels()}
-        disabled={loadingModels}
-        style={{ marginBottom: 12 }}
-      >
-        <Refresh size={15} /> {loadingModels ? 'Qidirilmoqda…' : 'Modellarni yangilash'}
-      </button>
-      <div className="tiny" style={{ margin: '-6px 0 12px' }}>
-        Roʻyxat Google’dan jonli olinadi — yangi model chiqsa shu yerda oʻzi paydo boʻladi.
-        Eski model ishlamay qolsa ham shu tugma tuzatadi.
-      </div>
-
-      <div className="field">
-        <label>Suhbat modeli</label>
-        <ChatModelSelect value={settings.model} onChange={(id) => updateSettings({ model: id })} />
-      </div>
-
-      <ModelsPanel />
-
-      <UsagePanel />
-
-      <div className="field">
-        <label>Rasm modeli</label>
-        {imageModels.length ? (
-          <select
-            value={settings.imageModel}
-            onChange={(e) => updateSettings({ imageModel: e.target.value })}
-          >
-            {modelOptions(imageModels, settings.imageModel)}
-          </select>
-        ) : (
-          <input
-            value={settings.imageModel}
-            onChange={(e) => updateSettings({ imageModel: e.target.value.trim() })}
-          />
-        )}
-      </div>
-
-      <div className="field">
-        <label>Ijodkorlik: {settings.temperature.toFixed(1)}</label>
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={0.1}
-          value={settings.temperature}
-          onChange={(e) => updateSettings({ temperature: Number(e.target.value) })}
-          style={{ padding: 0, background: 'none', border: 'none' }}
-        />
-      </div>
-
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
-        Ovoz
-      </div>
-
-      <div className="field">
-        <label>Ovoz manbai</label>
+        <span>Ovoz manbai</span>
         <select
           value={settings.ttsEngine}
           onChange={(e) => updateSettings({ ttsEngine: e.target.value as 'gemini' | 'qurilma' })}
         >
-          <option value="gemini">Gemini — tabiiy, jonli ovoz</option>
-          <option value="qurilma">Telefon ovozi — internetsiz, lekin robotroq</option>
+          <option value="gemini">Tabiiy ovoz</option>
+          <option value="qurilma">Telefon ovozi — internetsiz</option>
         </select>
       </div>
 
       {settings.ttsEngine === 'gemini' ? (
-        <>
-          <div className="field">
-            <label>Diktor</label>
-            <div className="voice-grid">
-              {VOICES.map((v) => (
-                <button
-                  key={v.id}
-                  className={settings.ttsVoice === v.id ? 'voice-tile on' : 'voice-tile'}
-                  onClick={() => updateSettings({ ttsVoice: v.id })}
-                >
-                  <b>{v.name}</b>
-                  <span>{v.note}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          {ttsModels.length > 0 && (
-            <div className="field">
-              <label>Ovoz modeli</label>
-              <select
-                value={settings.ttsModel}
-                onChange={(e) => updateSettings({ ttsModel: e.target.value })}
+        <div className="field">
+          <span>Diktor</span>
+          <div className="voice-grid">
+            {VOICES.map((v) => (
+              <button
+                key={v.id}
+                className={settings.ttsVoice === v.id ? 'voice-tile on' : 'voice-tile'}
+                onClick={() => updateSettings({ ttsVoice: v.id })}
               >
-                {modelOptions(ttsModels, settings.ttsModel)}
-              </select>
-            </div>
-          )}
-        </>
+                <b>{v.name}</b>
+                <span>{v.note}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       ) : (
         <>
           <div className="field">
-            <label>Ovoz tili</label>
+            <span>Ovoz tili</span>
             <select
               value={settings.ttsLang}
               onChange={(e) => updateSettings({ ttsLang: e.target.value, ttsVoiceUri: '' })}
@@ -270,9 +276,10 @@ export function Settings({ onClose }: { onClose: () => void }) {
               ))}
             </select>
           </div>
+
           {deviceMatching.length > 0 && (
             <div className="field">
-              <label>Ovoz</label>
+              <span>Ovoz</span>
               <select
                 value={settings.ttsVoiceUri}
                 onChange={(e) => updateSettings({ ttsVoiceUri: e.target.value })}
@@ -286,16 +293,17 @@ export function Settings({ onClose }: { onClose: () => void }) {
               </select>
             </div>
           )}
+
           <div className="field">
-            <label>Oʻqish tezligi: {settings.ttsRate.toFixed(1)}×</label>
+            <span>Oʻqish tezligi — {settings.ttsRate.toFixed(1)}×</span>
             <input
+              className="slider"
               type="range"
               min={0.5}
               max={2}
               step={0.1}
               value={settings.ttsRate}
               onChange={(e) => updateSettings({ ttsRate: Number(e.target.value) })}
-              style={{ padding: 0, background: 'none', border: 'none' }}
             />
           </div>
         </>
@@ -304,34 +312,28 @@ export function Settings({ onClose }: { onClose: () => void }) {
       <Switch
         on={settings.autoSpeak}
         onChange={(v) => updateSettings({ autoSpeak: v })}
-        label="Javoblarni avtomatik oʻqib berish"
+        label="Javoblarni oʻqib berish"
       />
 
-      <button className="btn ghost wide" onClick={() => void tryVoice()} disabled={testing}>
-        {testing ? 'Tayyorlanmoqda…' : 'Ovozni sinab koʻrish'}
+      <button className="btn ghost wide set-gap" onClick={() => void tryVoice()} disabled={testing}>
+        {testing ? 'Tayyorlanmoqda…' : 'Ovozni sinash'}
       </button>
 
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
-        Mikrofon
-      </div>
+      <div className="section-label set-label">Mikrofon</div>
 
       <div className="field">
-        <label>Nutqni tanish</label>
+        <span>Nutqni tanish</span>
         <select
           value={settings.sttEngine}
           onChange={(e) => updateSettings({ sttEngine: e.target.value as 'gemini' | 'qurilma' })}
         >
-          <option value="gemini">Gemini — oʻzbekchani yaxshi tushunadi</option>
-          <option value="qurilma">Telefon xizmati — tezroq, lekin aniqligi past</option>
+          <option value="gemini">Aniq — oʻzbekchani yaxshi tushunadi</option>
+          <option value="qurilma">Tez — telefon xizmati</option>
         </select>
-        <div className="tiny" style={{ marginTop: 5 }}>
-          Gemini rejimida gapirib boʻlgach mikrofon tugmasini yana bosing — yozuv matnga
-          aylanadi.
-        </div>
       </div>
 
       <div className="field">
-        <label>Gapirish tili</label>
+        <span>Gapirish tili</span>
         <select
           value={settings.sttLang}
           onChange={(e) => updateSettings({ sttLang: e.target.value })}
@@ -346,7 +348,6 @@ export function Settings({ onClose }: { onClose: () => void }) {
 
       <button
         className="btn ghost wide"
-        style={{ marginTop: 4 }}
         disabled={micBusy}
         onClick={async () => {
           setMicBusy(true);
@@ -358,44 +359,88 @@ export function Settings({ onClose }: { onClose: () => void }) {
           }
         }}
       >
-        {micBusy ? 'Tekshirilmoqda…' : '🎤 Mikrofonni tekshirish'}
+        {micBusy ? 'Tekshirilmoqda…' : 'Mikrofonni tekshirish'}
       </button>
 
       {micChecks && (
-        <div className="card" style={{ marginTop: 10 }}>
+        <div className="card set-gap">
           {micChecks.map((c) => (
-            <div key={c.step} className="between" style={{ marginBottom: 6, gap: 10 }}>
-              <span style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13.5 }}>
-                  {c.ok ? '✅' : '❌'} {c.step}
-                </div>
-                <div className="tiny" style={{ wordBreak: 'break-word' }}>
-                  {c.detail}
-                </div>
+            <div key={c.step} className="mic-line">
+              <span className={c.ok ? 'mic-dot ok' : 'mic-dot'} />
+              <span className="grow">
+                <div className="mic-step">{c.step}</div>
+                <div className="tiny mic-detail">{c.detail}</div>
               </span>
             </div>
           ))}
           <button
-            className="btn mini ghost"
-            style={{ marginTop: 6 }}
+            className="btn mini ghost set-gap"
             onClick={async () => {
               const text = micChecks
                 .map((c) => `${c.ok ? 'OK' : 'XATO'} — ${c.step}: ${c.detail}`)
                 .join('\n');
-              toast((await copyText(text)) ? 'Nusxalandi — menga yuboring' : 'Nusxalab boʻlmadi');
+              toast((await copyText(text)) ? 'Nusxalandi' : 'Nusxalab boʻlmadi');
             }}
           >
             <Copy size={12} /> Natijani nusxalash
           </button>
         </div>
       )}
+    </>
+  );
+}
 
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
-        GitHub (Daho Code uchun)
+/* ------------------------------------------------------------------ */
+/*  Shaxsiy                                                            */
+/* ------------------------------------------------------------------ */
+
+function PersonalGroup() {
+  const settings = useStore((s) => s.settings);
+
+  return (
+    <>
+      <div className="field-row">
+        <label className="field">
+          <span>Ismingiz</span>
+          <input
+            value={settings.userName}
+            onChange={(e) => updateSettings({ userName: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Universitet</span>
+          <input
+            value={settings.university}
+            onChange={(e) => updateSettings({ university: e.target.value })}
+          />
+        </label>
       </div>
 
-      <div className="field">
-        <label>Shaxsiy token</label>
+      <label className="field">
+        <span>Agent uchun koʻrsatma</span>
+        <textarea
+          value={settings.customInstructions}
+          rows={4}
+          onChange={(e) => updateSettings({ customInstructions: e.target.value })}
+          placeholder="Masalan: men 2-kurs dasturchiman, javoblarda kod misollari koʻp boʻlsin."
+        />
+      </label>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Daho Code                                                          */
+/* ------------------------------------------------------------------ */
+
+function CodeGroup() {
+  const settings = useStore((s) => s.settings);
+  const [checking, setChecking] = useState(false);
+
+  return (
+    <>
+      <label className="field">
+        <span>GitHub tokeni</span>
         <input
           type="password"
           value={settings.githubToken}
@@ -405,15 +450,10 @@ export function Settings({ onClose }: { onClose: () => void }) {
           autoCorrect="off"
           spellCheck={false}
         />
-        <div className="tiny" style={{ marginTop: 6 }}>
-          github.com → Settings → Developer settings → Personal access tokens →
-          <b> Tokens (classic)</b> → Generate new token. <b>repo</b> va{' '}
-          <b>workflow</b> ruxsatlarini belgilang. Token faqat shu telefonda saqlanadi.
-        </div>
-      </div>
+      </label>
 
-      <div className="field">
-        <label>Domeningiz (ixtiyoriy)</label>
+      <label className="field">
+        <span>Domeningiz</span>
         <input
           value={settings.publishDomain}
           onChange={(e) => updateSettings({ publishDomain: e.target.value.trim() })}
@@ -421,128 +461,62 @@ export function Settings({ onClose }: { onClose: () => void }) {
           autoCapitalize="off"
           spellCheck={false}
         />
-        <div className="tiny" style={{ marginTop: 6 }}>
-          Loyihani chiqarganda shu domen ishlatiladi. DNS sozlash koʻrsatmasi Daho Code →
-          Nashr boʻlimida.
-        </div>
-      </div>
+      </label>
 
       <button
         className="btn ghost wide"
-        disabled={ghChecking}
+        disabled={checking}
         onClick={async () => {
           if (!settings.githubToken) {
             toast('Avval tokenni kiriting');
             return;
           }
-          setGhChecking(true);
+          setChecking(true);
           try {
             const user = await whoAmI(settings.githubToken);
             toast(`Ulandi: ${user.login}`);
           } catch (err) {
             toast(String((err as Error)?.message ?? err));
           } finally {
-            setGhChecking(false);
+            setChecking(false);
           }
         }}
       >
-        {ghChecking ? 'Tekshirilmoqda…' : 'GitHub ulanishini tekshirish'}
+        {checking ? 'Tekshirilmoqda…' : 'Ulanishni tekshirish'}
       </button>
 
-      <SupabasePanel />
+      <p className="tiny set-note">
+        Token github.com → Settings → Developer settings → Personal access tokens
+        boʻlimidan olinadi. <b>repo</b> va <b>workflow</b> ruxsatlari kerak.
+      </p>
+    </>
+  );
+}
 
-      <MicCheck />
+/* ------------------------------------------------------------------ */
+/*  Maʼlumotlar                                                        */
+/* ------------------------------------------------------------------ */
 
-      <AppLook />
+function DataGroup({ onDone }: { onDone: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
 
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
-        Shaxsiy
-      </div>
-
-      <div className="field-row">
-        <div className="field">
-          <label>Ismingiz</label>
-          <input
-            value={settings.userName}
-            onChange={(e) => updateSettings({ userName: e.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label>Universitet</label>
-          <input
-            value={settings.university}
-            onChange={(e) => updateSettings({ university: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="field">
-        <label>Agent uchun qoʻshimcha koʻrsatma</label>
-        <textarea
-          value={settings.customInstructions}
-          onChange={(e) => updateSettings({ customInstructions: e.target.value })}
-          placeholder="Masalan: men 2-kurs dasturchiman, javoblarda kod misollari koʻp boʻlsin."
-        />
-      </div>
-
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
-        Koʻrinish
-      </div>
-
-      <Switch
-        on={settings.theme === 'tun'}
-        onChange={(v) => updateSettings({ theme: v ? 'tun' : 'kun' })}
-        label="Tungi rejim"
-      />
-
-      <div className="field" style={{ marginTop: 10 }}>
-        <label>Urgʻu rangi</label>
-        <div className="accent-picker">
-          {ACCENTS.map((a) => (
-            <button
-              key={a.hex}
-              className={settings.accent === a.hex ? 'on' : ''}
-              style={{ background: a.hex }}
-              onClick={() => updateSettings({ accent: a.hex })}
-              aria-label={a.name}
-            />
-          ))}
-        </div>
-        <input
-          type="color"
-          value={settings.accent}
-          onChange={(e) => updateSettings({ accent: e.target.value })}
-          style={{ height: 44, padding: 4, marginTop: 8 }}
-        />
-      </div>
-
-      <div className="field">
-        <label>Shrift oʻlchami: {Math.round(settings.fontScale * 100)}%</label>
-        <input
-          type="range"
-          min={0.85}
-          max={1.3}
-          step={0.05}
-          value={settings.fontScale}
-          onChange={(e) => updateSettings({ fontScale: Number(e.target.value) })}
-          style={{ padding: 0, background: 'none', border: 'none' }}
-        />
-      </div>
-
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
-        Maʼlumotlar
-      </div>
-
+  return (
+    <>
       <input
         ref={fileRef}
         type="file"
         accept="application/json"
         hidden
         onChange={(e) => {
-          void onImport(e.target.files?.[0]);
+          void (async () => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            toast(importState(await file.text()) ? 'Maʼlumotlar tiklandi' : 'Fayl notoʻgʻri');
+          })();
           e.target.value = '';
         }}
       />
+
       <div className="row">
         <button
           className="btn ghost grow"
@@ -562,23 +536,75 @@ export function Settings({ onClose }: { onClose: () => void }) {
       </div>
 
       <button
-        className="btn ghost wide"
-        style={{ marginTop: 9, color: 'var(--danger)' }}
+        className="btn ghost wide danger-text set-gap"
         onClick={() => {
           if (window.confirm('Barcha suhbat, kurs, ilova va jadval oʻchiriladi. Davom etamizmi?')) {
             resetState();
             toast('Hammasi tozalandi');
-            onClose();
+            onDone();
           }
         }}
       >
         Hamma maʼlumotni oʻchirish
       </button>
+    </>
+  );
+}
 
-      <div className="tiny" style={{ textAlign: 'center', marginTop: 16 }}>
-        Daho 2.0 · maʼlumotlar faqat shu telefonda saqlanadi
-      </div>
-    </Sheet>
+/* ------------------------------------------------------------------ */
+/*  Ilgʻor — oʻz kaliti bilan ishlash                                  */
+/* ------------------------------------------------------------------ */
+
+function AdvancedGroup() {
+  const settings = useStore((s) => s.settings);
+  const [open, setOpen] = useState(Boolean(settings.apiKey || settings.providers?.length));
+  const [showKey, setShowKey] = useState(false);
+
+  if (!open) {
+    return (
+      <>
+        <p className="tiny set-note set-note-first">
+          Odatda bu boʻlim kerak emas: Daho hisobingizdagi modellar tayyor holda
+          ishlaydi. Oʻz API kalitingiz bilan ishlamoqchi boʻlsangiz shu yerdan yoqing.
+        </p>
+        <button className="btn ghost wide" onClick={() => setOpen(true)}>
+          Oʻz kalitim bilan ishlash
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <label className="field">
+        <span>
+          Google kaliti <i>— qidiruv va tabiiy ovoz uchun</i>
+        </span>
+        <div className="row">
+          <input
+            className="grow"
+            type={showKey ? 'text' : 'password'}
+            value={settings.apiKey}
+            onChange={(e) => updateSettings({ apiKey: e.target.value.trim() })}
+            placeholder="AIza…"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <button className="btn mini ghost" onClick={() => setShowKey((v) => !v)}>
+            {showKey ? 'Yashir' : 'Koʻrsat'}
+          </button>
+        </div>
+      </label>
+
+      <ModelsPanel />
+
+      <UsagePanel />
+
+      <SupabasePanel />
+
+      <p className="tiny set-note">Kalitlar faqat shu qurilmada saqlanadi.</p>
+    </>
   );
 }
 
