@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import express from 'express';
+import { mountAi, providerStatus } from './ai.js';
 import { env, missing } from './env.js';
 import { allowedHosts, proxyRequest } from './proxy.js';
 import { runCommand, shellLoad } from './shell.js';
@@ -8,7 +9,8 @@ import { adminClient, userFromToken } from './supabase.js';
 import { startPolling, tick, workerStats } from './worker.js';
 
 const app = express();
-app.use(express.json({ limit: '8mb' }));
+// Rasm biriktirilgan soʻrov katta boʻladi (base64 ~1.37×).
+app.use(express.json({ limit: '25mb' }));
 
 // Ilova boshqa manzildan (GitHub Pages, Capacitor) soʻrov yuboradi.
 app.use((req, res, next) => {
@@ -38,11 +40,18 @@ function serviceInfo(_req, res) {
     holat: missing().length ? 'sozlanmagan' : 'tayyor',
     yetishmayapti: missing(),
     terminal: env.shellEnabled,
+    provayderlar: providerStatus(),
     veb: hasWeb ? 'ildizda' : 'yigʻilmagan',
   });
 }
 
 app.get('/api', serviceInfo);
+
+/*
+ * AI shlyuzi — /api/ai/... . Boshqa yoʻllardan oldin ulanadi, chunki
+ * pastdagi `app.get('*')` SPA javobini beradi.
+ */
+mountAi(app);
 
 app.get('/health', (_req, res) => {
   res.json({
@@ -198,12 +207,19 @@ app.post('/run', async (req, res) => {
  * Shuning uchun kengaytmaga qoʻlda hech narsa yozilmaydi: u serveridan
  * soʻraydi va shu bilan hisobga kira oladi.
  */
-app.get('/api/public-config', (_req, res) => {
+app.get('/api/public-config', (req, res) => {
   res.set('Cache-Control', 'public, max-age=300');
+  const base = `${req.protocol}://${req.get('host')}`;
   res.json({
     supabaseUrl: env.supabaseUrl,
     supabaseAnonKey: env.anonKey,
-    gateway: env.supabaseUrl ? `${env.supabaseUrl}/functions/v1/ai-gateway` : '',
+    /*
+     * Shlyuz endi shu serverda: bitta manzil ortida ham Google, ham
+     * OpenRouter turadi. Edge funksiyasi zaxira sifatida qoladi.
+     */
+    gateway: `${base}/api/ai`,
+    server: base,
+    providers: providerStatus(),
   });
 });
 

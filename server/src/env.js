@@ -9,6 +9,12 @@ export const env = {
   storeUrl: process.env.EXTENSION_STORE_URL || '',
 
   geminiKey: process.env.GEMINI_API_KEY || '',
+  /*
+   * OpenRouter kaliti — bitta kalit bilan 300+ model (Kimi, Qwen,
+   * DeepSeek, GPT, Claude, Llama). Railway muhit oʻzgaruvchisiga
+   * qoʻyiladi va SHU YERDAN chiqmaydi: brauzerga ham, bazaga ham emas.
+   */
+  openrouterKey: process.env.OPENROUTER_API_KEY || '',
 
   /** Worker chaqiruvlari va terminal uchun umumiy maxfiy soʻz */
   workerSecret: process.env.WORKER_SECRET || '',
@@ -28,7 +34,8 @@ export function missing() {
   const gaps = [];
   if (!env.supabaseUrl) gaps.push('SUPABASE_URL');
   if (!env.serviceKey) gaps.push('SUPABASE_SERVICE_ROLE_KEY');
-  if (!env.geminiKey) gaps.push('GEMINI_API_KEY');
+  // Kamida bitta AI provayderi kerak — ikkalasi ham boʻlishi shart emas.
+  if (!env.geminiKey && !env.openrouterKey) gaps.push('GEMINI_API_KEY yoki OPENROUTER_API_KEY');
   if (!env.workerSecret) gaps.push('WORKER_SECRET');
   return gaps;
 }

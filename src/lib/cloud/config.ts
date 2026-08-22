@@ -8,8 +8,36 @@ export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
 /** Bulut xizmati yoqilganmi (build vaqtida hal bo'ladi). */
 export const cloudEnabled = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 
-/** Gemini proksisi — obunachilar so'rovi shu yerdan o'tadi. */
-export const GATEWAY_URL = `${SUPABASE_URL}/functions/v1/ai-gateway`;
+/**
+ * Daho serveri (Railway).
+ *
+ * Veb ilova ODATDA shu serverning oʻzidan beriladi, shuning uchun manzil
+ * oʻzidan olinadi — foydalanuvchi hech nima kiritmaydi. Android ilovasi
+ * `https://localhost` ichida ishlaydi, u yerda yigʻilish paytida
+ * qoʻyilgan manzil ishlatiladi.
+ */
+function guessServer(): string {
+  const fromEnv = String(import.meta.env.VITE_DAHO_SERVER_URL ?? '').trim();
+  if (fromEnv) return fromEnv.replace(/\/+$/, '');
+  if (import.meta.env.DEV) return '';
+  if (typeof location === 'undefined') return '';
+  // Capacitor ichida `localhost` — u yerda server yoʻq.
+  if (location.hostname === 'localhost' || location.protocol === 'capacitor:') return '';
+  return location.origin.replace(/\/+$/, '');
+}
+
+export const SERVER_URL = guessServer();
+
+/**
+ * AI proksisi — obunachilar soʻrovi shu yerdan oʻtadi.
+ *
+ * Railway serveri koʻp provayderni biladi (Google + OpenRouter), Supabase
+ * Edge funksiyasi esa faqat Google’ni. Shuning uchun server bor boʻlsa
+ * oʻsha, boʻlmasa edge funksiyasi ishlatiladi.
+ */
+export const GATEWAY_URL = SERVER_URL
+  ? `${SERVER_URL}/api/ai`
+  : `${SUPABASE_URL}/functions/v1/ai-gateway`;
 
 /** Kreditni odam o'qiydigan ko'rinishga keltiradi. */
 export function formatCredits(value: number): string {
