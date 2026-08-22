@@ -3,13 +3,15 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Daho — universitet uchun offline-first AI chat va agent ilovasi",
+  "description": "Daho \u2014 universitet uchun offline-first AI chat va agent ilovasi",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc --noEmit -p extension/tsconfig.json && vite build",
     "preview": "vite preview",
     "sync": "npm run build && cap sync android",
-    "apk": "npm run sync && cd android && ./gradlew assembleDebug"
+    "apk": "npm run sync && cd android && ./gradlew assembleDebug",
+    "ext": "node extension/build.mjs",
+    "ext:check": "tsc --noEmit -p extension/tsconfig.json"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^6.0.1",
@@ -31,6 +33,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^6.2.0",
+    "@types/chrome": "^0.2.7",
     "@types/dompurify": "^3.0.5",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",

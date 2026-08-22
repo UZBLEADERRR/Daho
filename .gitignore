@@ -17,3 +17,6 @@ android/app/src/main/assets/capacitor.plugins.json
 *.iml
 *.keystore
 *.jks
+
+# Kengaytma yigʻilishi
+extension/dist/
