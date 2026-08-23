@@ -2563,6 +2563,16 @@ drop policy if exists ai_models_admin on public.ai_models;
 create policy ai_models_admin on public.ai_models
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
+/*
+ * Jadval huquqlari.
+ *
+ * RLS siyosati oʻzi yetmaydi: PostgREST avval oddiy SQL huquqini
+ * tekshiradi. Grant boʻlmasa «permission denied for table ai_models»
+ * qaytadi — panel esa buni boʻsh roʻyxat deb koʻrsatadi va model
+ * qoʻshish jimgina ishlamaydi. Aynan shu xato boʻlgan edi.
+ */
+grant select, insert, update, delete on public.ai_models to authenticated;
+
 -- ---------------------------------------------------------------------------
 --  Kredit kursi: tannarxdan sotuv narxini hisoblash
 -- ---------------------------------------------------------------------------
