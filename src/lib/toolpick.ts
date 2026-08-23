@@ -166,7 +166,7 @@ export function closedGroupsNote(open: Iterable<string>): string {
 export const CODE_GROUPS: Record<string, string[]> = {
   yadro: [
     'read_file', 'write_file', 'write_files', 'edit_file', 'apply_patch',
-    'find_files', 'list_files', 'grep', 'delete_file', 'move_file',
+    'find_files', 'list_files', 'grep', 'find_code', 'delete_file', 'move_file',
     'changes', 'undo', 'checkpoint',
     'run_cmd', 'run_js', 'test_app', 'screenshot',
     'todo', 'plan_write', 'plan_check', 'save_spec',

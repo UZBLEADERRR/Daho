@@ -38,7 +38,6 @@ import { cachedModels, getModels } from './models';
 import {
   bundlePreview,
   deleteProjectFile,
-  fileTree,
   getCodeProject,
   patchCodeProject,
   writeProjectFile,
@@ -76,6 +75,7 @@ import { askUser, drainInterjections } from './ask';
 import { isModelReadable } from './attach';
 import { getState, setState } from './store';
 import { imageAny, searchAny } from './providers';
+import { buildIndex, findRelevant, hitsToText, symbolMap } from './context/codeindex';
 import { templateById } from './templates';
 import {
   connectable,
@@ -175,10 +175,34 @@ export const CODE_TOOLS: FunctionDeclaration[] = [
       type: 'OBJECT',
       properties: {
         path: { type: 'STRING', description: 'Fayl yoʻli, masalan "src/app.js"' },
+        symbol: {
+          type: 'STRING',
+          description:
+            'Faqat shu funksiya/klass oʻqilsin (nomi boʻyicha) — butun fayl kerak boʻlmasa',
+        },
         offset: { type: 'NUMBER', description: 'Nechanchi qatordan boshlab (0 dan)' },
         limit: { type: 'NUMBER', description: 'Nechta qator oʻqilsin' },
       },
       required: ['path'],
+    },
+  },
+  {
+    name: 'find_code',
+    description:
+      'Loyihadan soʻrovga MOS joylarni topadi va kodning aynan kerakli qismini beradi '
+      + '(butun faylni emas). Uch bosqichda qidiradi: nom boʻyicha, import bogʻliqligi '
+      + 'boʻyicha va mazmun boʻyicha.\n'
+      + 'Ish boshlashda SHUNI ishlat — fayllarni bittalab oʻqib chiqishdan ancha tez va arzon.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: {
+          type: 'STRING',
+          description: 'Nima qidirilyapti — funksiya nomi, xato matni yoki tavsif',
+        },
+        limit: { type: 'NUMBER', description: 'Nechta joy (standart 8)' },
+      },
+      required: ['query'],
     },
   },
   {
@@ -1062,6 +1086,24 @@ function projectAttachments(project: CodeProject): Attachment[] {
   return out;
 }
 
+/**
+ * Terminal chiqishini qisqartiradi.
+ *
+ * Muvaffaqiyatli buyruqda modelga «nima boʻldi» degan javob yetadi:
+ * necha qator boʻlgani va oxirgi bir necha qator. Toʻliq chiqish
+ * kerak boʻlsa buyruqni qayta ishga tushirish arzonroq.
+ */
+function shortOutput(text: string): string {
+  const clean = (text ?? '').trimEnd();
+  if (!clean) return '(chiqish yoʻq)';
+  const lines = clean.split('\n');
+  if (lines.length <= 12 && clean.length <= 900) return clean;
+  return [
+    `(${lines.length} qator, oxirgi 10 tasi)`,
+    ...lines.slice(-10),
+  ].join('\n');
+}
+
 async function runTool(
   projectId: string,
   name: string,
@@ -1191,6 +1233,38 @@ async function runTool(
       };
     }
 
+    /*
+     * Butun loyihani modelga yubormaslikning asosiy vositasi.
+     *
+     * Agent «Login ishlamayapti» desa, indeks unga Login.tsx →
+     * useAuth → supabase zanjirini topib beradi va faqat kerakli
+     * funksiyalarni kontekstga qoʻyadi.
+     */
+    case 'find_code': {
+      const query = str(args.query);
+      if (!query) return { ok: false, summary: 'Soʻrov boʻsh', payload: { xato: 'query kerak' } };
+
+      const hits = findRelevant(project, query, Math.max(3, Math.min(20, num(args.limit, 8))));
+      if (!hits.length) {
+        return {
+          ok: true,
+          summary: 'Mos joy topilmadi',
+          payload: {
+            eslatma: 'Nom boʻyicha topilmadi — `grep` bilan matn boʻyicha qidirib koʻring.',
+            xarita: symbolMap(project, 1200),
+          },
+        };
+      }
+      return {
+        ok: true,
+        summary: `${hits.length} ta joy topildi`,
+        payload: {
+          joylar: hits.map((h) => `${h.symbol.file}:${h.symbol.start}-${h.symbol.end} ${h.symbol.name} (${h.via})`),
+          kod: hitsToText(project, hits, 6000),
+        },
+      };
+    }
+
     case 'read_file': {
       const path = str(args.path);
       const file = project.files.find((f) => f.path === path);
@@ -1201,6 +1275,37 @@ async function runTool(
           payload: { error: 'topilmadi', mavjud: project.files.map((f) => f.path) },
         };
       }
+      /*
+       * Simvol boʻyicha oʻqish.
+       *
+       * 1000 qatorli faylni butunlay oʻqish — bir necha ming token.
+       * Indeks har bir funksiya qaysi qatorlarda turganini biladi,
+       * shuning uchun faqat oʻsha qismni beramiz.
+       */
+      const wanted = str(args.symbol);
+      if (wanted) {
+        const entry = buildIndex(project).files.get(path);
+        const sym = entry?.symbols.find(
+          (x) => x.name.toLowerCase() === wanted.toLowerCase(),
+        );
+        if (sym) {
+          const body = file.content
+            .split('\n')
+            .slice(sym.start - 1, sym.end)
+            .join('\n');
+          return {
+            ok: true,
+            summary: `${path}:${sym.start}-${sym.end} — ${sym.name}`,
+            payload: { content: body, qator: `${sym.start}-${sym.end}`, turi: sym.kind },
+          };
+        }
+        return {
+          ok: false,
+          summary: `«${wanted}» topilmadi`,
+          payload: { bor: (entry?.symbols ?? []).map((x) => x.name).slice(0, 40) },
+        };
+      }
+
       const offset = Math.max(0, num(args.offset, 0));
       const limit = Math.max(0, num(args.limit, 0));
       if (!offset && !limit) {
@@ -1276,6 +1381,7 @@ async function runTool(
     }
 
     case 'run_cmd': {
+      /* Chiqish qisqartiruvchisi quyida — `shortOutput`. */
       const command = str(args.command);
       if (!command) return { ok: false, summary: 'Buyruq boʻsh', payload: { error: 'command kerak' } };
       if (!serverReady()) {
@@ -1304,7 +1410,14 @@ async function runTool(
             : `$ ${command.slice(0, 50)} — xato (${res.code})`,
           payload: {
             kod: res.code,
-            chiqish: res.stdout.slice(-6000) || '(chiqish yoʻq)',
+            /*
+             * Muvaffaqiyatli buyruqning chiqishini toʻliq bermaymiz.
+             *
+             * `npm install` yuzlab qator yozadi va ularning hammasi
+             * har keyingi qadamda qayta yuboriladi — sof isrof.
+             * Xato boʻlsa boshqa gap: sabab aynan oʻsha matnda.
+             */
+            chiqish: res.ok ? shortOutput(res.stdout) : res.stdout.slice(-6000),
             ...(res.stderr ? { xato: res.stderr.slice(-3000) } : {}),
             ...(res.dir ? { papka: res.dir } : {}),
           },
@@ -2721,8 +2834,8 @@ function subSystemPrompt(project: CodeProject, role: SubRole, task: string, file
 ${project.name}${project.description ? ` — ${project.description}` : ''}
 ${project.spec ? `\n## Loyiha talablari\n${project.spec}` : ''}
 
-Fayllar:
-${fileTree(project) || '(boʻsh)'}
+Loyiha xaritasi (fayl → asosiy simvollar):
+${symbolMap(project) || '(boʻsh)'}
 ${files.length ? `\n## Senga tegishli fayllar\n${files.map((f) => `- ${f}`).join('\n')}` : ''}
 
 ## Vazifang
@@ -2920,8 +3033,8 @@ Supabase: ${supabaseLink() ? 'ulangan — `supabase` vositasi ishlaydi' : 'ulanm
 Shablon: ${template.name}
 ${template.brief}
 
-Fayllar:
-${fileTree(project) || '(boʻsh)'}
+Loyiha xaritasi (fayl → asosiy simvollar):
+${symbolMap(project) || '(boʻsh)'}
 ${project.spec ? `\n## Kelishilgan talablar — QATʼIY amal qil\n${project.spec}` : ''}
 ${planBlock(project)}
 ${yopiq ? `\n${yopiq}` : ''}
