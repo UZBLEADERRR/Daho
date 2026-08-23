@@ -1,0 +1,25 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 390, "h": 844, "title": "Suhbat" },
+    { "file": "Fayllar.dc.html", "x": 490, "y": 0, "w": 390, "h": 844 },
+    { "file": "Guruh.dc.html", "x": 980, "y": 0, "w": 390, "h": 844 },
+    { "file": "Nashr.dc.html", "x": 1470, "y": 0, "w": 390, "h": 844 }
+  ],
+  "annotations": [
+    {
+      "id": "sarlavha",
+      "x": 0,
+      "y": -150,
+      "w": 470,
+      "text": "Loyiha ichi — minimalist\n\nUch qavat panel bitta qatorga tushdi: nom, hajm va ⋯ menyusi bir satrda.\nBo‘limlar endi pill emas — tinch matn, tagida ingichka urg‘u chizig‘i."
+    },
+    {
+      "id": "modellar",
+      "x": 980,
+      "y": -150,
+      "w": 470,
+      "text": "Model nomi ko‘rinmaydi\n\nYuqoridagi model chipi olib tashlandi. Admin ruxsat bergan modellar\nfaqat suhbat tepasidagi tanlagichda, admin qo‘ygan nom bilan chiqadi."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
