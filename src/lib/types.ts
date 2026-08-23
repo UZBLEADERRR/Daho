@@ -470,6 +470,14 @@ export interface CodeProject {
   description: string;
   /** Shu loyiha uchun tanlangan model (boʻsh boʻlsa umumiy sozlama) */
   model?: string;
+  /**
+   * Shu loyiha uchun ochilgan guruh.
+   *
+   * Guruh har doim BITTA loyiha uchun tuziladi. Egasida bu maydon
+   * guruh ochilganda toʻldiriladi; taklifni qabul qilgan aʼzoda esa
+   * loyiha shu id bilan yaratiladi.
+   */
+  groupId?: string;
   /** Agentning koʻrinadigan reja roʻyxati — nima qilingan, nima qolgan */
   plan?: ProjectStep[];
   /** Loyiha talablari — savol-javobdan chiqqan xulosa */

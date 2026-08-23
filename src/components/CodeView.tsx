@@ -31,7 +31,8 @@ import { ToolLine, splitByTools } from './ToolLine';
 import { Back, Check, Close, Copy, Download, Mic, Plus, Refresh, Send, Stop, Trash } from './Icons';
 import { copyText } from '../lib/exporter';
 import { Empty, Sheet, toast } from './ui';
-import { GroupPanel } from './cloud/GroupPanel';
+import { ProjectGroup } from './cloud/GroupPanel';
+import { pullGroup, pushGroup } from '../lib/cloud/groupsync';
 import { RoleBar } from './RoleBar';
 import { cloudEnabled } from '../lib/cloud';
 
@@ -262,6 +263,28 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
   const settings = useStore((s) => s.settings);
   // Barcha ulangan provayderlarning modellari — Gemini, Kimi, Qwen, GPT…
   const chatModels = usableChatModels();
+
+  /*
+   * Guruh loyihasini sinxronlash.
+   *
+   * Tortish 8 soniyada bir: aʼzo nima yozgan boʻlsa koʻrinadi.
+   * Itarish esa fayllar oʻzgargach 2.5 soniya kutib — bir necha
+   * tahrir bitta yozuvga birlashadi va baza behuda urilmaydi.
+   */
+  const imzo = JSON.stringify(project.files.map((f) => [f.path, f.content.length]));
+
+  useEffect(() => {
+    if (!project.groupId) return;
+    void pullGroup(project);
+    const timer = setInterval(() => void pullGroup(project), 8000);
+    return () => clearInterval(timer);
+  }, [project.groupId, project.id]);
+
+  useEffect(() => {
+    if (!project.groupId) return;
+    const timer = setTimeout(() => void pushGroup(project), 2500);
+    return () => clearTimeout(timer);
+  }, [imzo, project.groupId]);
   // AVTO yoqilgan boʻlsa Avto ustun — yorliqda ham aynan shu koʻrinsin,
   // aks holda foydalanuvchi «avtoni yoqdim, lekin eski model turibdi» deb
   // oʻylaydi.
@@ -380,7 +403,14 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
       {tab === 'fayllar' && <Files project={project} />}
       {tab === 'korinish' && <Preview project={project} />}
       {tab === 'nashr' && <Publish project={project} onDeleted={onBack} />}
-      {tab === 'guruh' && <GroupPanel embedded />}
+      {tab === 'guruh' && (
+        <ProjectGroup
+          projectId={project.id}
+          projectName={project.name}
+          groupId={project.groupId}
+          onLinked={(id) => patchCodeProject(project.id, { groupId: id })}
+        />
+      )}
     </>
   );
 }

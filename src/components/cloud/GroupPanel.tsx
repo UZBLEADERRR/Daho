@@ -4,7 +4,7 @@
  * Loyihada birga ishlash uchun kerak boʻlgan hamma narsa bitta joyda:
  * kimni chaqirish, kim bor, nima deyilgan va kredit qanchaligi.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatCredits, useCloud } from '../../lib/cloud';
 import {
   createGroup,
@@ -14,7 +14,9 @@ import {
   invitePerson,
   leaveGroup,
   moveCreditsToGroup,
-  myGroups,
+  groupById,
+  groupForProject,
+  loadGroupProject,
   myInvites,
   postGroupMessage,
   respondInvite,
@@ -25,11 +27,40 @@ import {
   type Person,
 } from '../../lib/cloud/groups';
 import { setActiveGroup } from '../../lib/cloud/groupctx';
-import { Sheet, toast } from '../ui';
+import { createCodeProject, getCodeProject, patchCodeProject } from '../../lib/codeproject';
+import { getState } from '../../lib/store';
+import type { CodeProject } from '../../lib/types';
+import { toast } from '../ui';
 
 type Tab = 'azolar' | 'suhbat' | 'kredit';
 
 /* ---------------------------------------------------------------- taklif */
+
+/**
+ * Taklif qabul qilingach umumiy loyihani oʻzimizga olib qoʻyamiz.
+ *
+ * Aks holda odam guruhga qoʻshilardi-yu, loyihaning oʻzi unda
+ * koʻrinmasdi — «birga ishlash» degani shundan boshlanadi.
+ * Loyiha allaqachon bogʻlangan boʻlsa qaytadan yaratilmaydi.
+ */
+async function loyihaniOl(groupId: string, groupName: string): Promise<void> {
+  const bor = getState().code.find((p: CodeProject) => p.groupId === groupId);
+  if (bor) return;
+
+  const umumiy = await loadGroupProject(groupId).catch(() => null);
+  const manba = (umumiy?.project ?? {}) as Partial<CodeProject>;
+
+  const loyiha = createCodeProject(manba.name || groupName, manba.template || 'statik');
+  patchCodeProject(loyiha.id, {
+    groupId,
+    // Egasi allaqachon fayl yozgan boʻlsa — oʻshani olamiz.
+    ...(Array.isArray(manba.files) && manba.files.length ? { files: manba.files } : {}),
+    ...(manba.description ? { description: manba.description } : {}),
+    ...(manba.spec ? { spec: manba.spec } : {}),
+  });
+  // Yaratilgani darhol ochilsin deb emas: odam oʻzi kirganda koʻradi.
+  void getCodeProject(loyiha.id);
+}
 
 /** Menga kelgan takliflar — profil va guruh panelida koʻrinadi. */
 export function InviteList({ onJoined }: { onJoined?: () => void }) {
@@ -46,7 +77,9 @@ export function InviteList({ onJoined }: { onJoined?: () => void }) {
 
   const javob = async (id: string, ha: boolean) => {
     try {
+      const row = rows.find((r) => r.id === id);
       await respondInvite(id, ha);
+      if (ha && row) await loyihaniOl(row.group_id, row.group_name);
       toast(ha ? 'Guruhga qoʻshildingiz' : 'Taklif rad etildi');
       load();
       if (ha) onJoined?.();
@@ -331,43 +364,63 @@ function Wallet({ group, onChanged }: { group: GroupRow; onChanged: () => void }
 /* ---------------------------------------------------------------- asosiy */
 
 /**
- * `embedded` — sahifa ichida (Daho Code'ning «Guruh» boʻlimi) turadi:
- * oyna emas, oddiy mazmun. Aks holda ustma-ust oyna ochilib,
- * foydalanish noqulay boʻlardi.
+ * Loyihaning guruhi.
+ *
+ * Guruh mustaqil roʻyxat emas — u HAR BIR LOYIHA uchun alohida.
+ * Shuning uchun bu yerda tanlash yoʻq: ochiq loyihaning guruhi
+ * koʻrsatiladi, boʻlmasa bitta tugma bilan ochiladi.
  */
-export function GroupPanel({ onClose, embedded }: { onClose?: () => void; embedded?: boolean }) {
-  const [groups, setGroups] = useState<GroupRow[]>([]);
-  const [openId, setOpenId] = useState<string | null>(null);
+export function ProjectGroup({
+  projectId,
+  projectName,
+  groupId,
+  onLinked,
+}: {
+  projectId: string;
+  projectName: string;
+  /** Loyihada saqlangan guruh (aʼzo uchun — taklif orqali kelgan). */
+  groupId?: string;
+  /** Guruh ochilganda loyihaga yozib qoʻyish uchun. */
+  onLinked: (id: string) => void;
+}) {
+  const [group, setGroup] = useState<GroupRow | null>(null);
+  const [holat, setHolat] = useState<'yuklanmoqda' | 'yoʻq' | 'bor'>('yuklanmoqda');
   const [tab, setTab] = useState<Tab>('azolar');
-  const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = () => {
-    void myGroups()
-      .then(setGroups)
-      .catch((err) => toast(String((err as Error)?.message ?? err)));
+    const soʻrov = groupId ? groupById(groupId) : groupForProject(projectId);
+    void soʻrov
+      .then((g) => {
+        setGroup(g);
+        setHolat(g ? 'bor' : 'yoʻq');
+        if (g && !groupId) onLinked(g.id);
+      })
+      .catch((err) => {
+        setHolat('yoʻq');
+        toast(String((err as Error)?.message ?? err));
+      });
   };
-  useEffect(load, []);
 
-  const group = groups.find((g) => g.id === openId) ?? null;
+  useEffect(load, [projectId, groupId]);
 
-  // Ochiq guruh — soʻrovlar shu hisobdan toʻlansin.
+  /*
+   * Ochiq guruh — shu loyihadagi soʻrovlar guruh hisobidan toʻlansin.
+   * Boʻlim yopilganda kontekst tozalanadi.
+   */
   useEffect(() => {
     setActiveGroup(group?.id ?? null);
     return () => setActiveGroup(null);
   }, [group?.id]);
 
   const och = async () => {
-    if (name.trim().length < 2) {
-      toast('Guruh nomini yozing');
-      return;
-    }
     setBusy(true);
     try {
-      const g = await createGroup(name.trim());
-      setName('');
-      load();
-      setOpenId(g.id);
+      const g = await createGroup(projectName || 'Loyiha', 'kod', projectId);
+      onLinked(g.id);
+      setGroup(g);
+      setHolat('bor');
+      toast('Guruh ochildi — endi odam chaqiring');
     } catch (err) {
       toast(String((err as Error)?.message ?? err));
     } finally {
@@ -375,30 +428,56 @@ export function GroupPanel({ onClose, embedded }: { onClose?: () => void; embedd
     }
   };
 
-  const ichki = (mazmun: ReactNode, sarlavha: string, orqaga: () => void) =>
-    embedded ? (
+  if (holat === 'yuklanmoqda') {
+    return (
       <div className="scroll">
         <div className="pad">
-          <div className="row" style={{ alignItems: 'center', marginBottom: 10 }}>
-            {sarlavha !== 'Guruhlar' && (
-              <button className="icon-btn" onClick={orqaga} aria-label="Orqaga">
-                <span style={{ fontSize: 22 }}>‹</span>
-              </button>
-            )}
-            <b className="grow">{sarlavha}</b>
-          </div>
-          {mazmun}
+          <div className="tiny">Yuklanmoqda…</div>
         </div>
       </div>
-    ) : (
-      <Sheet title={sarlavha} onClose={orqaga}>
-        {mazmun}
-      </Sheet>
     );
+  }
 
-  if (group) {
-    return ichki(
-      <>
+  if (holat === 'yoʻq' || !group) {
+    return (
+      <div className="scroll">
+        <div className="pad">
+          <InviteList onJoined={load} />
+
+          <div className="cloud-card">
+            <b>Bu loyihada yolgʻiz ishlayapsiz</b>
+            <div className="tiny" style={{ marginTop: 4 }}>
+              Guruh ochsangiz boshqalarni chaqira olasiz: loyiha ham, suhbat
+              ham umumiy boʻladi. Guruh hamyoniga kredit qoʻysangiz, krediti
+              tugagan aʼzo ham ishlay oladi.
+            </div>
+            <button
+              className="btn wide"
+              style={{ marginTop: 10 }}
+              disabled={busy}
+              onClick={() => void och()}
+            >
+              {busy ? 'Ochilmoqda…' : 'Shu loyiha uchun guruh ochish'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="scroll">
+      <div className="pad">
+        <div className="between" style={{ marginBottom: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <b>{group.name}</b>
+            <div className="tiny">
+              {group.members} aʼzo · {formatCredits(group.credits)} kredit
+              {group.my_role === 'owner' ? ' · egasi sizsiz' : ` · egasi: ${group.owner_name}`}
+            </div>
+          </div>
+        </div>
+
         <div className="seg">
           <button className={tab === 'azolar' ? 'on' : ''} onClick={() => setTab('azolar')}>
             Aʼzolar
@@ -411,62 +490,10 @@ export function GroupPanel({ onClose, embedded }: { onClose?: () => void; embedd
           </button>
         </div>
 
-        {tab === 'azolar' && (
-          <Members
-            group={group}
-            onChanged={() => {
-              load();
-              setOpenId(null);
-            }}
-          />
-        )}
+        {tab === 'azolar' && <Members group={group} onChanged={load} />}
         {tab === 'suhbat' && <Chat group={group} />}
         {tab === 'kredit' && <Wallet group={group} onChanged={load} />}
-      </>,
-      group.name,
-      () => setOpenId(null),
-    );
-  }
-
-  return ichki(
-    <>
-      <InviteList onJoined={load} />
-
-      <div className="section-label">Guruhlarim</div>
-      {!groups.length && (
-        <div className="tiny">
-          Hali guruh yoʻq. Nom yozib guruh oching, soʻng odam qidirib chaqiring.
-        </div>
-      )}
-      {groups.map((g) => (
-        <button className="cloud-card as-row" key={g.id} onClick={() => setOpenId(g.id)}>
-          <div className="between">
-            <div>
-              <b>{g.name}</b>
-              <div className="tiny">
-                {g.members} aʼzo · {formatCredits(g.credits)} kredit
-                {g.my_role === 'owner' ? ' · egasi sizsiz' : ` · egasi: ${g.owner_name}`}
-              </div>
-            </div>
-            <span className="prof-chevron">›</span>
-          </div>
-        </button>
-      ))}
-
-      <div className="section-label">Yangi guruh</div>
-      <div className="row">
-        <input
-          className="grow"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Guruh nomi"
-        />
-        <button className="btn mini" disabled={busy} onClick={() => void och()}>
-          Ochish
-        </button>
       </div>
-    </>,
-    'Guruhlar',
-    () => onClose?.(),
+    </div>
   );
 }

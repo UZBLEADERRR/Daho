@@ -73,8 +73,34 @@ export async function myGroups(): Promise<GroupRow[]> {
   return (await rpc<GroupRow[]>('my_groups')) ?? [];
 }
 
-export async function createGroup(name: string, kind = 'kod'): Promise<GroupRow> {
-  return rpc<GroupRow>('create_group', { p_name: name, p_kind: kind });
+/**
+ * Loyiha uchun guruh ochadi.
+ *
+ * `projectRef` berilsa shu loyihaga BOGʻLANADI va ikkinchi marta
+ * chaqirilsa yangisi ochilmaydi — borini qaytaradi.
+ */
+export async function createGroup(
+  name: string,
+  kind = 'kod',
+  projectRef?: string,
+): Promise<GroupRow> {
+  return rpc<GroupRow>('create_group', {
+    p_name: name,
+    p_kind: kind,
+    p_project_ref: projectRef ?? null,
+  });
+}
+
+/** Egasi uchun: shu loyihaning guruhi bormi. */
+export async function groupForProject(projectRef: string): Promise<GroupRow | null> {
+  const rows = (await rpc<GroupRow[]>('group_for_project', { p_ref: projectRef })) ?? [];
+  return rows[0] ?? null;
+}
+
+/** Aʼzo uchun: guruh id si boʻyicha. */
+export async function groupById(groupId: string): Promise<GroupRow | null> {
+  const rows = (await rpc<GroupRow[]>('group_by_id', { p_group: groupId })) ?? [];
+  return rows[0] ?? null;
 }
 
 export async function groupPeople(groupId: string): Promise<GroupMember[]> {

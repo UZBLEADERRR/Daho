@@ -8,7 +8,7 @@
  * Endi tanish tartib: yuqorida kim ekaningiz, pastda guruhlangan
  * qatorlar, har biri alohida sahifa. Bitta ekranda bitta ish.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   formatCredits,
   refreshAccount,
@@ -17,8 +17,7 @@ import {
 } from '../../lib/cloud';
 import { clearSyncShadow, getSyncState, syncNow } from '../../lib/cloud/sync';
 import { JobsTab, LimitBars, ModelList, PlansTab, ProfileBlock, UsageTab } from './AccountSheet';
-import { GroupPanel, InviteList } from './GroupPanel';
-import { myInvites } from '../../lib/cloud/groups';
+import { InviteList } from './GroupPanel';
 import { Close } from '../Icons';
 import { toast } from '../ui';
 
@@ -72,19 +71,6 @@ export function ProfileScreen({
 }) {
   const { account } = useCloud();
   const [page, setPage] = useState<Page>('bosh');
-  const [groups, setGroups] = useState(false);
-  /*
-   * Kutayotgan takliflar soni. Profil qatorida nishon boʻlib turadi —
-   * odam chaqirilganini bilmay qolmasin.
-   */
-  const [invites, setInvites] = useState(0);
-
-  useEffect(() => {
-    void myInvites()
-      .then((rows) => setInvites(rows.length))
-      .catch(() => setInvites(0));
-  }, []);
-
   if (!account) return null;
 
   const ism = account.full_name || account.email.split('@')[0];
@@ -122,7 +108,7 @@ export function ProfileScreen({
             </div>
 
             {/* Kelgan takliflar — koʻzga tashlanib tursin. */}
-            <InviteList onJoined={() => setInvites((n) => Math.max(0, n - 1))} />
+            <InviteList />
 
             <div className="prof-group">Hisob</div>
             <div className="prof-list">
@@ -143,12 +129,6 @@ export function ProfileScreen({
 
             <div className="prof-group">Ish</div>
             <div className="prof-list">
-              <Qator
-                emoji="👥"
-                label="Guruhlar"
-                qiymat={invites ? `${invites} ta taklif` : undefined}
-                onClick={() => setGroups(true)}
-              />
               <Qator emoji="📊" label="Sarf tarixi" onClick={() => setPage('sarf')} />
               <Qator
                 emoji="🗂"
@@ -222,7 +202,6 @@ export function ProfileScreen({
         )}
       </div>
 
-      {groups && <GroupPanel onClose={() => setGroups(false)} />}
     </div>
   );
 }
