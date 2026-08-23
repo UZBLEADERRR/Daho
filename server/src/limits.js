@@ -50,39 +50,43 @@ function peek(token) {
 /**
  * Tokenni tekshiradi — natija keshlanadi.
  *
+ * Natija `{ user, sabab }`: nosozlik boʻlsa SABABI ham qaytadi. Ilgari
+ * faqat `null` qaytardi va panelda hamma nosozlik «sessiya muddati
+ * tugagan» boʻlib koʻrinardi — hatto kalit notoʻgʻri boʻlganda ham.
+ *
  * @param {string} token
- * @param {(t: string) => Promise<object|null>} verify Haqiqiy tekshiruvchi
+ * @param {(t: string) => Promise<{user: object|null, sabab?: string}>} verify
  */
 export async function cachedUser(token, verify) {
-  if (!token) return null;
+  if (!token) return { user: null, sabab: 'token yoʻq' };
 
   const hit = tokenCache.get(token);
-  if (hit && hit.until > Date.now()) return hit.user;
+  if (hit && hit.until > Date.now()) return { user: hit.user };
 
   // Muddati oʻtgan token uchun tarmoqqa chiqmaymiz.
   const claims = peek(token);
   if (claims?.exp && claims.exp < Date.now()) {
     tokenCache.delete(token);
-    return null;
+    return { user: null, sabab: 'muddati oʻtgan' };
   }
 
   const pending = inFlight.get(token);
-  const user = pending
+  const out = pending
     ? await pending
     : await (() => {
         const task = verify(token).finally(() => inFlight.delete(token));
         inFlight.set(token, task);
         return task;
       })();
-  if (!user) return null;
+  if (!out?.user) return { user: null, sabab: out?.sabab ?? 'tekshiruvdan oʻtmadi' };
 
   // Xotira cheksiz oʻsmasin — eng eskisi chiqib ketadi.
   if (tokenCache.size >= TOKEN_CACHE_MAX) {
     tokenCache.delete(tokenCache.keys().next().value);
   }
   const until = Math.min(Date.now() + TOKEN_TTL, claims?.exp || Date.now() + TOKEN_TTL);
-  tokenCache.set(token, { user, until });
-  return user;
+  tokenCache.set(token, { user: out.user, until });
+  return { user: out.user };
 }
 
 /** Foydalanuvchi chiqqanda yoki bloklanganda keshni tozalash. */

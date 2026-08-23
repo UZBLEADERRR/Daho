@@ -4,9 +4,12 @@ import App from './App';
 import { finishGoogleAuth, listenGoogleRedirect } from './lib/google';
 import { hydrate } from './lib/store';
 import { registerPwa } from './lib/pwa';
+import { watchViewport } from './lib/viewport';
 import './styles.css';
 
 registerPwa();
+// Klaviatura ochilganda topbar ekrandan chiqib ketmasin.
+watchViewport();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('#root topilmadi');

@@ -521,13 +521,46 @@ textarea {
   margin-bottom: 0;
 }
 
+/*
+ * Sarlavhalar.
+ *
+ * Ilgari uchalasi ham 1.09em edi — matndan deyarli farq qilmasdi va
+ * uzun javobda bosqichlar koʻzga tashlanmasdi. Endi har daraja aniq
+ * ajralib turadi.
+ */
 .md h1,
 .md h2,
+.md h3,
+.md h4 {
+  font-weight: 660;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 20px 0 8px;
+}
+
+.md h1 {
+  font-size: 1.5em;
+  font-weight: 700;
+}
+
+.md h2 {
+  font-size: 1.28em;
+}
+
 .md h3 {
-  font-size: 1.09em;
-  font-weight: 640;
-  margin: 16px 0 7px;
-  letter-spacing: -0.01em;
+  font-size: 1.12em;
+}
+
+.md h4 {
+  font-size: 1em;
+  color: var(--muted);
+}
+
+/* Ketma-ket sarlavhalar orasida ortiqcha boʻshliq boʻlmasin. */
+.md h1 + h2,
+.md h2 + h3,
+.md h3 + h4 {
+  margin-top: 10px;
 }
 
 .md p {
@@ -3783,6 +3816,19 @@ body {
   .app {
     height: 100dvh;
   }
+}
+
+/*
+ * Klaviatura ochilganda. `--app-h` ni `lib/viewport.ts` qoʻyadi —
+ * koʻrinadigan balandlik. Shu boʻlsa `dvh` dan ustun turadi, chunki
+ * `dvh` klaviaturani hisobga olmaydi va topbar tepaga surilib
+ * ekrandan chiqib ketardi.
+ */
+html,
+body,
+#root,
+.app {
+  height: var(--app-h, 100dvh);
 }
 
 img,

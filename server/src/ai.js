@@ -17,7 +17,7 @@
 
 import { env, missing } from './env.js';
 import { createCache, createGate, rateLimit } from './limits.js';
-import { adminClient, userFromToken } from './supabase.js';
+import { adminClient, verifyToken } from './supabase.js';
 import { fromOpenAi, streamTranslator, toOpenAi, usageFrom } from './translate.js';
 
 const GOOGLE_BASE = process.env.GEMINI_BASE || 'https://generativelanguage.googleapis.com/v1beta';
@@ -257,8 +257,19 @@ export async function whoIs(req) {
     };
   }
 
-  const user = await userFromToken(token);
-  if (!user) return { status: 401, body: { error: 'Sessiya muddati tugagan — qaytadan kiring' } };
+  const { user, sabab } = await verifyToken(token);
+  if (!user) {
+    /*
+     * Sababni yashirmaymiz. «Muddati oʻtgan» — haqiqatan qayta kirish
+     * kerak; qolgani esa server tomonidagi nosozlik (masalan kalit
+     * notoʻgʻri) va uni «qayta kiring» deb koʻrsatish odamni behuda
+     * aylantiradi.
+     */
+    if (sabab === 'muddati oʻtgan') {
+      return { status: 401, body: { error: 'Sessiya muddati tugagan — qaytadan kiring' } };
+    }
+    return { status: 401, body: { error: `Tokenni tekshirib boʻlmadi: ${sabab}`, sabab } };
+  }
   return { user, token };
 }
 

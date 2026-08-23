@@ -11,7 +11,9 @@
 
 -- Bepul zaxira modelning nomi sozlamada turadi — admin istagancha almashtiradi.
 insert into public.app_settings (key, value)
-values ('daily_model', '{"model": "gemini-flash-latest", "label": "Daho Daily"}'::jsonb)
+-- Boshlang'ich holatda model YO'Q: nom qo'lda yozilsa eskirib qoladi.
+-- Admin katalogdan model tanlagach shu yerga uning slug'i yoziladi.
+values ('daily_model', '{"model": "", "label": "Daho Daily"}'::jsonb)
 on conflict (key) do nothing;
 
 -- ---------------------------------------------------------------------------
