@@ -11,7 +11,7 @@ import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { VideoStudio } from './components/VideoStudio';
 import { Browser } from './components/Browser';
-import { AccountSheet } from './components/cloud/AccountSheet';
+import { ProfileScreen } from './components/cloud/ProfileScreen';
 import { AdminPanel } from './components/cloud/AdminPanel';
 import { AuthScreen } from './components/site/AuthScreen';
 import { Landing } from './components/site/Landing';
@@ -387,11 +387,15 @@ export default function App() {
         />
       )}
       {accountOpen && (
-        <AccountSheet
+        <ProfileScreen
           onClose={() => setAccountOpen(false)}
           onOpenAdmin={() => {
             setAccountOpen(false);
             setAdminOpen(true);
+          }}
+          onOpenSettings={() => {
+            setAccountOpen(false);
+            setSettingsOpen(true);
           }}
         />
       )}

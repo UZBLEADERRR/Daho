@@ -5150,3 +5150,241 @@ iframe {
   font-size: 21px;
   white-space: nowrap;
 }
+
+/* ================================================================== */
+/*  Profil — toʻliq ekran                                              */
+/* ================================================================== */
+
+/*
+ * Nega alohida ekran: hisob ilgari tor oynada, toʻrtta segment ostida
+ * turardi va odam «profil» ni qidirib topolmasdi. Endi tanish tartib —
+ * yuqorida kim ekaningiz, pastda guruhlangan qatorlar.
+ */
+.prof-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--safe-top);
+  animation: fade 0.16s ease;
+}
+
+.prof-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--nav);
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.prof-title {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.prof-back {
+  font-size: 26px;
+  line-height: 1;
+  margin-top: -3px;
+}
+
+.prof-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 14px calc(28px + var(--safe-bottom));
+  max-width: 620px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.prof-hero {
+  text-align: center;
+  padding: 26px 0 18px;
+}
+
+.prof-avatar {
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 34px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(150deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000));
+}
+
+.prof-name {
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.prof-mail {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 3px;
+  word-break: break-all;
+}
+
+.prof-pills {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.pill.admin {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.prof-group {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 22px 0 8px 4px;
+}
+
+.prof-card,
+.prof-list {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.prof-card {
+  padding: 14px;
+}
+
+.prof-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  text-align: left;
+  color: var(--text);
+  font-size: 14.5px;
+}
+
+.prof-row + .prof-row {
+  border-top: 1px solid var(--line);
+}
+
+.prof-row:active {
+  background: var(--surface-2);
+}
+
+.prof-emoji {
+  font-size: 17px;
+  width: 22px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.prof-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.prof-value {
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prof-chevron {
+  color: var(--muted);
+  font-size: 19px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.prof-out {
+  display: block;
+  width: 100%;
+  margin: 26px 0 0;
+  padding: 13px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--danger, #f87171);
+  font-size: 14.5px;
+  font-weight: 500;
+}
+
+.prof-out:active {
+  background: var(--surface-2);
+}
+
+/* Yon paneldagi profil qatori */
+.side-me {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 11px;
+  text-align: left;
+  color: var(--text);
+}
+
+.side-me:active {
+  background: var(--surface-2);
+}
+
+.side-avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(150deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000));
+}
+
+.side-me-text {
+  flex: 1;
+  min-width: 0;
+  display: block;
+}
+
+.side-me-text b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-me-text .tiny {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pill.mini {
+  font-size: 10.5px;
+  padding: 2px 7px;
+  flex: 0 0 auto;
+}

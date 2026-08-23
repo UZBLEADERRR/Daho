@@ -164,7 +164,7 @@ const ROLE_WORD: Record<string, string> = {
  * Yopiq modellar ham koʻrsatiladi — «bu qaysi tarifda ochiladi?» degan
  * savol javobsiz qolmasin.
  */
-function ModelList() {
+export function ModelList() {
   const [list, setList] = useState<PublicModel[] | null>(null);
   const [hammasi, setHammasi] = useState(false);
 
@@ -308,7 +308,7 @@ function AdminHint({ email: sessionEmail }: { email: string }) {
   );
 }
 
-function LimitBars() {
+export function LimitBars() {
   const [win, setWin] = useState<UsageWindows | null>(null);
 
   useEffect(() => {
@@ -373,7 +373,7 @@ function LimitBars() {
  * Avval ism faqat roʻyxatdan oʻtishda soʻralardi va keyin uni
  * oʻzgartirishning iloji yoʻq edi; parolni almashtirish ham yoʻq edi.
  */
-function ProfileBlock() {
+export function ProfileBlock() {
   const { account } = useCloud();
   const [name, setName] = useState(account?.full_name ?? '');
   const [pass, setPass] = useState('');
@@ -521,7 +521,7 @@ function AccountTab({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
 
 /* ---------------------------------------------------------------- rejalar */
 
-function PlansTab() {
+export function PlansTab() {
   const { account } = useCloud();
   const [plans, setPlans] = useState<CloudPlan[]>([]);
   const [contact, setContact] = useState('');
@@ -610,7 +610,7 @@ function PlansTab() {
 
 /* ---------------------------------------------------------------- sarf */
 
-function UsageTab() {
+export function UsageTab() {
   const [rows, setRows] = useState<UsageRow[]>([]);
   const [error, setError] = useState('');
 
@@ -672,7 +672,7 @@ function UsageTab() {
 
 const KINDS: JobKind[] = ['chat', 'search', 'plan', 'json', 'image'];
 
-function JobsTab() {
+export function JobsTab() {
   const { account } = useCloud();
   const [jobs, setJobs] = useState<CloudJob[]>([]);
   const [kind, setKind] = useState<JobKind>('chat');

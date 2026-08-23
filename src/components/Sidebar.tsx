@@ -169,7 +169,38 @@ export function Sidebar({
         </div>
 
         <div className="sidebar-foot">
-          {cloudEnabled && (
+          {/*
+            * Profil qatori.
+            *
+            * Ilgari bu yerda «Daho Cloud · Pro» deb turardi — odam
+            * «profil» ni qidirib topolmasdi. Endi tanish koʻrinish:
+            * avatar, ism, pochta. Bosilsa profil ekrani ochiladi.
+            */}
+          {cloudEnabled && cloud.account && (
+            <button
+              className="side-me"
+              onClick={() => {
+                onOpenAccount();
+                onClose();
+              }}
+            >
+              <span className="side-avatar">
+                {(cloud.account.full_name || cloud.account.email || '?')
+                  .trim()
+                  .charAt(0)
+                  .toUpperCase()}
+              </span>
+              <span className="side-me-text">
+                <b>{cloud.account.full_name || cloud.account.email.split('@')[0]}</b>
+                <span className="tiny">{cloud.account.email}</span>
+              </span>
+              {cloud.account.plan?.name && (
+                <span className="pill mini">{cloud.account.plan.name}</span>
+              )}
+            </button>
+          )}
+
+          {cloudEnabled && !cloud.account && (
             <button
               className="side-link"
               onClick={() => {
@@ -178,9 +209,7 @@ export function Sidebar({
               }}
             >
               <Cloud size={17} />
-              {cloud.account?.plan?.name
-                ? `Daho Cloud · ${cloud.account.plan.name}`
-                : 'Daho Cloud'}
+              Hisobga kirish
             </button>
           )}
 
