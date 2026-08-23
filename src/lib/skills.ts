@@ -174,12 +174,50 @@ xulosa → foydalanilgan adabiyotlar.
     groups: ['ijod'],
     hint: /taqdimot|slayd|prezentatsiya|powerpoint|pptx|chiqish qilaman/i,
     instruction: `## Koʻnikma: taqdimot 🖼
-- **Bitta slayd — bitta fikr.** Slaydga matn toʻkma: 6 qatordan koʻp boʻlsa boʻl.
-- Tuzilma: sarlavha → muammo → yechim → dalil (raqam/grafik) → natija → keyingi qadam.
-- Har slaydga qisqa sarlavha yoz — u fikrni OʻZI aytib turishi kerak.
-- Raqam boʻlsa grafik qil, roʻyxat boʻlsa 3–5 banddan oshirma.
-- Notiq uchun izoh (speaker notes) yozib ber: slaydda yoʻq, lekin aytiladigan gap.
-- Tayyor boʻlgach \`send_file\` bilan .pptx qilib ber.`,
+Taqdimotni markdown bilan yozasan, keyin \`send_file\` bilan .pptx qilib berasan.
+Har bir \`##\` — bitta slayd.
+
+**Muhim:** slayd maketi MAZMUN SHAKLIGA qarab avtomatik tanlanadi.
+Shuning uchun quyidagi shakllarni ataylab ishlat — shunda taqdimot
+matn roʻyxati emas, haqiqiy dizaynga ega boʻladi:
+
+| Nima yozsang | Qanday chiqadi |
+| --- | --- |
+| \`##\` va punkt yoʻq | Boʻlim ajratkichi — katta sarlavha, tartib raqami |
+| Raqam bilan boshlanuvchi 2-4 punkt (\`68% — kompaniyalar\`) | Katta rangli raqam kartalari |
+| Sarlavhada «vs», «eski va yangi», «afzallik va kamchilik» | Ikki ustunli taqqoslash |
+| \`1.\` \`2.\` \`3.\` raqamlangan roʻyxat | Raqamlangan qadamlar zanjiri |
+| 3-6 ta qisqa punkt, har biri \`Nom — izoh\` | Kartalar toʻri |
+| Bitta uzun jumla | Katta iqtibos slaydi |
+| Rasm qoʻshilgan slayd | Matn chapda, rasm oʻngda |
+
+Qoidalar:
+- **Bitta slayd — bitta fikr.** Slaydga matn toʻkma.
+- Sarlavha fikrni OʻZI aytib tursin: «Sotuv 3 barobar oshdi», «Natijalar» emas.
+- Raqam boʻlsa uni ALBATTA raqam slaydiga chiqar — eng kuchli taʼsir shunda.
+- Har 4-5 slayddan keyin boʻlim ajratkichi qoʻy — taqdimot nafas olsin.
+- Birinchi slaydga muqova rasmi kerak boʻlsa \`generate_image\` bilan chiz.
+- Notiq uchun izohni slaydga yozma — javob matnida alohida ber.
+
+Namuna:
+
+\`\`\`
+## Bozor holati
+
+## Raqamlar
+- 68% — kompaniyalar AI ni sinab koʻrgan
+- 3.2 mln — dasturchi AI vositalarini ishlatadi
+- 12 soat — haftasiga tejaladi
+
+## Eski va yangi usul
+- Qoʻlda — koʻp vaqt, koʻp xato
+- AI bilan — tez, lekin tekshirish shart
+
+## Qanday boshlash
+1. Maqsadni aniqlang
+2. Kichik loyihada sinang
+3. Natijani oʻlchang
+\`\`\``,
   },
   {
     id: 'oqituvchi',

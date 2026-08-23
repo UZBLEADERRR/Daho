@@ -150,6 +150,14 @@ export interface Slide {
   image?: string;
   /** Rasm izohi */
   caption?: string;
+  /**
+   * Punktlar raqamlangan roʻyxatdan kelganmi.
+   *
+   * Markdown `1. …` koʻrinishida boʻlsa raqam matndan olib tashlanadi
+   * va taqdimotda «qadamlar» ekani bilinmay qolardi. Shu bayroq
+   * maketni toʻgʻri tanlash uchun.
+   */
+  ordered?: boolean;
 }
 
 /** Markdownni slaydlarga bo'ladi: har bir h1/h2 — yangi slayd. */
@@ -172,6 +180,7 @@ export function parseSlides(markdown: string): Slide[] {
       const text = runsToText(block.runs).trim();
       if (text) current.bullets.push(text);
     } else if (block.type === 'ul' || block.type === 'ol') {
+      if (block.type === 'ol' && !current.bullets.length) current.ordered = true;
       current.bullets.push(...block.items.map(runsToText));
     } else if (block.type === 'img' && !current.image) {
       // Slaydga birinchi rasm tushadi — qolganlari matnni siqib qoʻymasin.

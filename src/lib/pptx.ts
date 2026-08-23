@@ -109,6 +109,49 @@ function rect(id: number, x: number, y: number, cx: number, cy: number, color: s
 <p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`;
 }
 
+/** Yumaloq burchakli toʻldirilgan karta — punktlar va raqamlar uchun. */
+function card(
+  id: number,
+  x: number,
+  y: number,
+  cx: number,
+  cy: number,
+  fill: string,
+  alpha = 1,
+  line?: string,
+): string {
+  const border = line
+    ? `<a:ln w="12700"><a:solidFill><a:srgbClr val="${line}"/></a:solidFill></a:ln>`
+    : '<a:ln><a:noFill/></a:ln>';
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Karta ${id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+<p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>
+<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 8000"/></a:avLst></a:prstGeom>
+<a:solidFill><a:srgbClr val="${fill}"><a:alpha val="${Math.round(alpha * 100000)}"/></a:srgbClr></a:solidFill>
+${border}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`;
+}
+
+/**
+ * Fon — burchakdagi yumshoq dogʻ.
+ *
+ * Slaydlar bir xil qora toʻrtburchak boʻlib turmasin: har birida
+ * urgʻu rangidagi katta doira burchakdan chiqib turadi. Bu arzon,
+ * lekin taqdimotni «tayyor shablon»dek koʻrsatadi.
+ */
+function glow(id: number, corner: 'chap' | 'ong', color: string): string {
+  /*
+   * Dogʻ matn ustiga tushmasin: kattaroq qilib, koʻproq chetga va
+   * yuqoriga chiqaramiz — faqat burchagi koʻrinib tursin.
+   */
+  const size = 5600000;
+  const x = corner === 'chap' ? -size / 1.7 : W - size / 2.6;
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Fon"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+<p:spPr><a:xfrm><a:off x="${Math.round(x)}" y="${-Math.round(size / 2.2)}"/>
+<a:ext cx="${size}" cy="${size}"/></a:xfrm>
+<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom>
+<a:solidFill><a:srgbClr val="${color}"><a:alpha val="14000"/></a:srgbClr></a:solidFill>
+<a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`;
+}
+
 function para(text: string, size: number, color: string, opts: { bold?: boolean; bullet?: boolean; align?: string } = {}): string {
   const pPr = opts.bullet
     ? '<a:pPr marL="285750" indent="-285750"><a:buClr><a:srgbClr val="8B7CF6"/></a:buClr><a:buChar char="\u25CF"/></a:pPr>'
@@ -119,47 +162,254 @@ function para(text: string, size: number, color: string, opts: { bold?: boolean;
 
 const MARGIN_X = 838200;
 
+/* ------------------------------------------------------------------ */
+/*  Maketni tanlash                                                    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Avval har bir slayd bir xil edi: sarlavha + punktlar. Shuning uchun
+ * taqdimot «matn yozib qoʻyilgan» boʻlib koʻrinardi. Endi mazmunning
+ * shakliga qarab maket tanlanadi — raqamlar karta boʻlib chiqadi,
+ * taqqoslash ikki ustunga boʻlinadi, qadamlar raqamlangan zanjir
+ * boʻladi va hokazo.
+ */
+type Maket = 'boʻlim' | 'raqam' | 'taqqos' | 'iqtibos' | 'qadam' | 'karta' | 'roʻyxat';
+
+const RANGLAR = ['8B7CF6', '4EC98A', 'F0A93B', '3BA7F0', 'F4655F', '9B8AFB'];
+
+/** «45%» yoki «3.2 mln» kabi boshlanishni ajratadi. */
+function raqamlar(text: string): { son: string; izoh: string } | null {
+  const m = /^\s*([<>~≈]?\s*[\d][\d\s.,]*\s*(?:%|mln|mlrd|ming|soat|kun|yil|x|×|\$|soʻm)?)\s*[—–:-]?\s*(.*)$/iu.exec(
+    text,
+  );
+  if (!m) return null;
+  const son = m[1].trim();
+  if (son.length > 10) return null;
+  return { son, izoh: m[2].trim() };
+}
+
+function juftlik(text: string): [string, string] | null {
+  const m = /^(.{2,40}?)\s+[—–]\s+(.+)$/u.exec(text.trim());
+  return m ? [m[1].trim(), m[2].trim()] : null;
+}
+
+function maketOf(slide: Slide, media?: SlideMedia): Maket {
+  const b = slide.bullets.filter((t) => t.trim());
+  if (media) return 'roʻyxat';
+  if (!b.length) return 'boʻlim';
+
+  // Bitta uzun jumla — iqtibos qilib bersak kuchli koʻrinadi.
+  if (b.length === 1 && b[0].length > 60) return 'iqtibos';
+
+  // Yarmidan koʻpi raqam bilan boshlansa — koʻrsatkichlar slaydi.
+  const sonlar = b.filter((t) => raqamlar(t)).length;
+  if (b.length >= 2 && b.length <= 4 && sonlar >= Math.ceil(b.length / 2)) return 'raqam';
+
+  // «X — Y» juftliklari yoki sarlavhada taqqoslash belgisi.
+  const juftlar = b.filter((t) => juftlik(t)).length;
+  if (
+    /vs\.?|taqqos|farq|qarshi|yaxshi.*yomon|eski.*yangi|oldin.*keyin|ijobiy.*salbiy|afzal.*kamchi/i.test(
+      slide.title,
+    )
+    && b.length >= 2
+  ) {
+    return 'taqqos';
+  }
+  if (b.length >= 3 && b.length <= 6 && juftlar >= b.length - 1) return 'karta';
+
+  // Raqamlangan qadamlar — markdown `ol` yoki matnda «1.» boʻlsa.
+  if (b.length >= 3 && b.length <= 7 && (slide.ordered || b.every((t) => /^\s*\d+[.)]/.test(t)))) {
+    return 'qadam';
+  }
+
+  if (b.length >= 3 && b.length <= 6 && b.every((t) => t.length <= 90)) return 'karta';
+  return 'roʻyxat';
+}
+
 /**
- * Slayd chizish. Uch koʻrinish:
- *  - **muqova** (birinchi slayd, rasm bilan) — rasm butun slaydni qoplaydi;
- *  - **rasmli** — matn chapda, rasm oʻngda;
- *  - **oddiy** — sarlavha va punktlar.
+ * Slayd chizish.
+ *
+ * Maket mazmunga qarab tanlanadi (`maketOf`), shuning uchun taqdimot
+ * bir xil punktlar roʻyxatidan iborat boʻlib qolmaydi.
  */
 function slideXml(slide: Slide, index: number, media?: SlideMedia, cover = false): string {
   const shapes: string[] = [];
   let id = 10;
+  const next = () => (id += 1);
+  const urgu = RANGLAR[index % RANGLAR.length];
 
   if (cover && media) {
     // Muqova: rasm toʻliq, ustida qoraytirgich va katta sarlavha.
-    shapes.push(picture((id += 1), 0, 0, W, H, 'rId2'));
-    shapes.push(rect((id += 1), 0, H - 2600000, W, 2600000, '000000', 0.62));
+    shapes.push(picture(next(), 0, 0, W, H, 'rId2'));
+    shapes.push(rect(next(), 0, H - 2600000, W, 2600000, '000000', 0.62));
     shapes.push(
-      textBox((id += 1), 'Sarlavha', MARGIN_X, H - 2050000, W - MARGIN_X * 2, 1500000,
-        para(slide.title, 4400, 'FFFFFF', { bold: true }) +
-          (slide.bullets[0] ? para(slide.bullets[0].slice(0, 120), 1800, 'D6D6DE') : '')),
+      textBox(next(), 'Sarlavha', MARGIN_X, H - 2050000, W - MARGIN_X * 2, 1500000,
+        para(slide.title, 4400, 'FFFFFF', { bold: true })
+          + (slide.bullets[0] ? para(slide.bullets[0].slice(0, 120), 1800, 'D6D6DE') : '')),
     );
     return wrapSlide(shapes.join('\n'));
   }
 
-  // Chap tomondagi urgʻu chizigʻi + sarlavha.
-  shapes.push(rect((id += 1), MARGIN_X, 1050000, 900000, 60000, '8B7CF6'));
+  const maket = maketOf(slide, media);
+  const bullets = slide.bullets.filter((t) => t.trim());
 
+  // Fon dogʻi — slaydlar bir-biridan farq qilib tursin.
+  shapes.push(glow(next(), index % 2 ? 'chap' : 'ong', urgu));
+
+  /* ---------------- boʻlim ajratkichi ---------------- */
+  if (maket === 'boʻlim') {
+    shapes.push(rect(next(), MARGIN_X, H / 2 - 260000, 1400000, 90000, urgu));
+    shapes.push(
+      textBox(next(), 'Sarlavha', MARGIN_X, H / 2 - 100000, W - MARGIN_X * 2, 1600000,
+        para(slide.title, 5400, 'FFFFFF', { bold: true })),
+    );
+    shapes.push(
+      textBox(next(), 'Raqam', MARGIN_X, H / 2 - 900000, 2000000, 500000,
+        para(String(index + 1).padStart(2, '0'), 2000, urgu, { bold: true })),
+    );
+    return wrapSlide(shapes.join('\n'));
+  }
+
+  /* ---------------- iqtibos ---------------- */
+  if (maket === 'iqtibos') {
+    shapes.push(
+      textBox(next(), 'Tirnoq', MARGIN_X, 900000, 1200000, 1400000,
+        para('\u201C', 9000, urgu, { bold: true })),
+    );
+    shapes.push(
+      textBox(next(), 'Matn', MARGIN_X, 2000000, W - MARGIN_X * 2, 3000000,
+        para(bullets[0].slice(0, 320), 2800, 'FFFFFF')),
+    );
+    shapes.push(rect(next(), MARGIN_X, H - 1500000, 700000, 50000, urgu));
+    shapes.push(
+      textBox(next(), 'Manba', MARGIN_X, H - 1300000, W - MARGIN_X * 2, 500000,
+        para(slide.title, 1500, 'A6A6B2')),
+    );
+    return wrapSlide(shapes.join('\n'));
+  }
+
+  // Qolgan maketlarda umumiy sarlavha.
+  shapes.push(rect(next(), MARGIN_X, 1050000, 900000, 60000, urgu));
   const textWidth = media ? (W - MARGIN_X * 2) * 0.52 : W - MARGIN_X * 2;
   shapes.push(
-    textBox((id += 1), 'Sarlavha', MARGIN_X, 520000, textWidth, 900000,
+    textBox(next(), 'Sarlavha', MARGIN_X, 480000, textWidth, 900000,
       para(slide.title, 3200, 'FFFFFF', { bold: true })),
   );
 
-  const bullets = slide.bullets
+  const bodyY = 1560000;
+  const bodyH = H - bodyY - 800000;
+  const bodyW = W - MARGIN_X * 2;
+
+  /* ---------------- koʻrsatkichlar ---------------- */
+  if (maket === 'raqam') {
+    const n = bullets.length;
+    const gap = 260000;
+    const cw = Math.round((bodyW - gap * (n - 1)) / n);
+    bullets.forEach((text, i) => {
+      const parsed = raqamlar(text) ?? { son: '', izoh: text };
+      const x = MARGIN_X + i * (cw + gap);
+      const color = RANGLAR[(index + i) % RANGLAR.length];
+      shapes.push(card(next(), x, bodyY, cw, Math.min(bodyH, 2600000), 'FFFFFF', 0.05, '2A2A32'));
+      shapes.push(
+        textBox(next(), 'Son', x + 200000, bodyY + 420000, cw - 400000, 1000000,
+          para(parsed.son, 5400, color, { bold: true })),
+      );
+      shapes.push(
+        textBox(next(), 'Izoh', x + 200000, bodyY + 1500000, cw - 400000, 900000,
+          para(parsed.izoh.slice(0, 90), 1400, 'C9C9D4')),
+      );
+    });
+    shapes.push(nomer(next(), index));
+    return wrapSlide(shapes.join('\n'));
+  }
+
+  /* ---------------- taqqoslash ---------------- */
+  if (maket === 'taqqos') {
+    const half = Math.ceil(bullets.length / 2);
+    const cols = [bullets.slice(0, half), bullets.slice(half)];
+    const gap = 400000;
+    const cw = Math.round((bodyW - gap) / 2);
+    cols.forEach((items, i) => {
+      const x = MARGIN_X + i * (cw + gap);
+      const color = i === 0 ? RANGLAR[1] : RANGLAR[4];
+      shapes.push(card(next(), x, bodyY, cw, bodyH, 'FFFFFF', 0.05, '2A2A32'));
+      shapes.push(rect(next(), x, bodyY, cw, 70000, color));
+      // Juftliklar orasida boʻsh qator — aks holda matn qalashib ketadi.
+      const body = items
+        .map((t) => {
+          const j = juftlik(t);
+          return j
+            ? para(j[0], 1600, color, { bold: true }) + para(j[1].slice(0, 140), 1300, 'C9C9D4')
+            : para(t.slice(0, 160), 1400, 'C9C9D4', { bullet: true });
+        })
+        .join('<a:p><a:pPr/><a:endParaRPr sz="700"/></a:p>');
+      shapes.push(
+        textBox(next(), 'Ustun', x + 280000, bodyY + 380000, cw - 560000, bodyH - 600000,
+          body || '<a:p/>'),
+      );
+    });
+    shapes.push(nomer(next(), index));
+    return wrapSlide(shapes.join('\n'));
+  }
+
+  /* ---------------- qadamlar ---------------- */
+  if (maket === 'qadam') {
+    const n = bullets.length;
+    const rowH = Math.min(760000, Math.round(bodyH / n));
+    bullets.forEach((text, i) => {
+      const y = bodyY + i * rowH;
+      const color = RANGLAR[(index + i) % RANGLAR.length];
+      const clean = text.replace(/^\s*\d+[.)]\s*/, '');
+      shapes.push(card(next(), MARGIN_X, y, 520000, 520000, color, 0.18));
+      shapes.push(
+        textBox(next(), 'Qadam', MARGIN_X, y + 120000, 520000, 400000,
+          para(String(i + 1), 1800, color, { bold: true, align: 'ctr' })),
+      );
+      shapes.push(
+        textBox(next(), 'Matn', MARGIN_X + 700000, y + 90000, bodyW - 700000, rowH - 100000,
+          para(clean.slice(0, 200), 1600, 'D6D6DE')),
+      );
+    });
+    shapes.push(nomer(next(), index));
+    return wrapSlide(shapes.join('\n'));
+  }
+
+  /* ---------------- kartalar ---------------- */
+  if (maket === 'karta') {
+    const n = bullets.length;
+    const perRow = n <= 3 ? n : Math.ceil(n / 2);
+    const rows = Math.ceil(n / perRow);
+    const gap = 260000;
+    const cw = Math.round((bodyW - gap * (perRow - 1)) / perRow);
+    const ch = Math.round((bodyH - gap * (rows - 1)) / rows);
+    bullets.forEach((text, i) => {
+      const r = Math.floor(i / perRow);
+      const c = i % perRow;
+      const x = MARGIN_X + c * (cw + gap);
+      const y = bodyY + r * (ch + gap);
+      const color = RANGLAR[(index + i) % RANGLAR.length];
+      const j = juftlik(text);
+      shapes.push(card(next(), x, y, cw, ch, 'FFFFFF', 0.05, '2A2A32'));
+      shapes.push(rect(next(), x + 280000, y + 280000, 340000, 60000, color));
+      const body = j
+        ? para(j[0], 1700, 'FFFFFF', { bold: true }) + para(j[1].slice(0, 160), 1300, 'B8B8C4')
+        : para(text.slice(0, 180), 1500, 'D6D6DE');
+      shapes.push(
+        textBox(next(), 'Karta', x + 280000, y + 500000, cw - 560000, ch - 700000, body),
+      );
+    });
+    shapes.push(nomer(next(), index));
+    return wrapSlide(shapes.join('\n'));
+  }
+
+  /* ---------------- oddiy roʻyxat (rasm bilan yoki rasmsiz) ---------------- */
+  const list = bullets
     .slice(0, media ? 5 : 8)
     .map((t) => para(t.slice(0, media ? 150 : 220), media ? 1600 : 1800, 'D6D6DE', { bullet: true }))
     .join('');
-  shapes.push(
-    textBox((id += 1), 'Matn', MARGIN_X, 1400000, textWidth, H - 2200000, bullets || '<a:p/>'),
-  );
+  shapes.push(textBox(next(), 'Matn', MARGIN_X, bodyY, textWidth, bodyH, list || '<a:p/>'));
 
   if (media) {
-    // Oʻng tomonda rasm — nisbati saqlangan holda joyga sigʻdiriladi.
     const boxX = MARGIN_X + textWidth + 500000;
     const boxW = W - boxX - MARGIN_X;
     const boxY = 1300000;
@@ -171,22 +421,23 @@ function slideXml(slide: Slide, index: number, media?: SlideMedia, cover = false
       cy = boxH;
       cx = cy / ratio;
     }
-    shapes.push(picture((id += 1), boxX + (boxW - cx) / 2, boxY + (boxH - cy) / 2, cx, cy, 'rId2'));
+    shapes.push(picture(next(), boxX + (boxW - cx) / 2, boxY + (boxH - cy) / 2, cx, cy, 'rId2'));
     if (slide.caption?.trim()) {
       shapes.push(
-        textBox((id += 1), 'Izoh', boxX, boxY + boxH + 60000, boxW, 320000,
+        textBox(next(), 'Izoh', boxX, boxY + boxH + 60000, boxW, 320000,
           para(slide.caption.slice(0, 90), 1100, '8A8A96', { align: 'ctr' })),
       );
     }
   }
 
-  // Sahifa raqami.
-  shapes.push(
-    textBox((id += 1), 'Raqam', W - 1400000, H - 700000, 800000, 400000,
-      para(String(index + 1), 1200, '6A6A76', { align: 'r' })),
-  );
-
+  shapes.push(nomer(next(), index));
   return wrapSlide(shapes.join('\n'));
+}
+
+/** Sahifa raqami — oʻng pastda. */
+function nomer(id: number, index: number): string {
+  return textBox(id, 'Raqam', W - 1400000, H - 700000, 800000, 400000,
+    para(String(index + 1), 1200, '6A6A76', { align: 'r' }));
 }
 
 function wrapSlide(body: string): string {
