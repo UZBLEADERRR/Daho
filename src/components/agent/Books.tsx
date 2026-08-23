@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   askBookQuestions,
   bookProgress,
@@ -6,6 +6,7 @@ import {
   createBook,
   deleteBook,
   makeCover,
+  setCoverFromFile,
   rewriteChapter,
   writeBook,
   type BookQuestion,
@@ -56,7 +57,11 @@ export function Books({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => voi
             hint="Yuqoridagi tugmani bosing yoki chatda «kitob yozmoqchiman» deng. Daho savollar beradi, rejasini tuzadi, muqova chizadi va boblarni bittalab yozadi."
           />
         ) : (
-          books.map((b) => <BookCard key={b.id} book={b} onOpen={() => updateView({ bookId: b.id })} />)
+          <div className="card-grid">
+            {books.map((b) => (
+              <BookCard key={b.id} book={b} onOpen={() => updateView({ bookId: b.id })} />
+            ))}
+          </div>
         )}
       </div>
 
@@ -238,37 +243,28 @@ function BookCard({ book, onOpen }: { book: Book; onOpen: () => void }) {
   const pct = total ? Math.round((done / total) * 100) : 0;
 
   return (
-    <button
-      className="card book-card"
-      style={{ display: 'flex', width: '100%', textAlign: 'left', marginBottom: 9, gap: 12 }}
-      onClick={onOpen}
-    >
-      <div className="book-cover">
+    <button className="cover-card" onClick={onOpen}>
+      <div className="cover-art">
         {cover ? (
           <img src={`data:${cover.mimeType ?? 'image/png'};base64,${cover.content}`} alt="" />
         ) : (
           <span>📖</span>
         )}
+        {running ? (
+          <span className="cover-badge">⏳ yozilmoqda</span>
+        ) : book.stage !== 'tayyor' ? (
+          <span className="cover-badge">{STAGE_TEXT[book.stage]}</span>
+        ) : null}
       </div>
-      <div className="grow" style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 16, fontWeight: 580 }}>{book.title}</div>
-        {book.subtitle && (
-          <div className="muted" style={{ marginTop: 2 }}>
-            {book.subtitle}
-          </div>
-        )}
-        <div className="progress">
+      <div className="cover-body">
+        <div className="cover-title">{book.title}</div>
+        <div className="progress" style={{ marginTop: 6 }}>
           <i style={{ width: `${pct}%` }} />
         </div>
-        <div className="tiny" style={{ marginTop: 6 }}>
-          {running ? (
-            <span style={{ color: 'var(--accent)' }}>⏳ {running.note}</span>
-          ) : (
-            <>
-              {done} / {total} bob · {words.toLocaleString('uz-UZ')} soʻz ·{' '}
-              {STAGE_TEXT[book.stage]}
-            </>
-          )}
+        <div className="cover-sub">
+          {running
+            ? running.note
+            : `${done}/${total} bob · ${words.toLocaleString('uz-UZ')} soʻz`}
         </div>
       </div>
     </button>
@@ -289,6 +285,7 @@ function BookDetail({
   const [sheet, setSheet] = useState<BookChapter | null>(null);
   const [reading, setReading] = useState<BookChapter | null>(null);
   const [exportOpen, setExport] = useState(false);
+  const coverRef = useRef<HTMLInputElement>(null);
 
   const cover = artifacts.find((a) => a.id === book.coverArtifactId);
   const { done, total, words } = bookProgress(book);
@@ -420,15 +417,42 @@ function BookDetail({
           </div>
         ))}
 
-        {!book.coverArtifactId && !running && (
-          <button
-            className="btn ghost wide"
-            style={{ marginTop: 14 }}
-            onClick={() => void makeCover(book.id).then(() => toast('Muqova tayyor'))}
-          >
-            🎨 Muqova chizish
-          </button>
+        {/*
+          * Muqova ikki yoʻl bilan qoʻyiladi: Daho chizadi yoki
+          * foydalanuvchi galereyadan oʻz rasmini tanlaydi. Ikkinchisi
+          * ayniqsa kerak — koʻpincha tayyor muqova allaqachon bor.
+          */}
+        {!running && (
+          <div className="row" style={{ marginTop: 14, gap: 8 }}>
+            <button
+              className="btn ghost grow"
+              onClick={() => void makeCover(book.id).then(() => toast('Muqova tayyor'))}
+            >
+              🎨 {book.coverArtifactId ? 'Qayta chizish' : 'Muqova chizish'}
+            </button>
+            <button className="btn ghost grow" onClick={() => coverRef.current?.click()}>
+              🖼 Galereyadan
+            </button>
+          </div>
         )}
+
+        <input
+          ref={coverRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (!file) return;
+            try {
+              await setCoverFromFile(book.id, file);
+              toast('Muqova qoʻyildi');
+            } catch (err) {
+              toast(String((err as Error)?.message ?? err));
+            }
+          }}
+        />
 
         <button
           className="btn ghost wide"

@@ -21,6 +21,7 @@
 
 import { streamResilient } from './resilient';
 import { canMakeImages, completeAny, imageAny, jsonAny, pickForJob } from './providers';
+import { prepareFile } from './attach';
 import { getState, setState } from './store';
 import { noteTask, startTask } from './tasks';
 import type { Artifact, Book, BookBible, BookChapter } from './types';
@@ -472,6 +473,29 @@ Rasm ustiga HECH QANDAY matn, harf yoki yozuv chizma — faqat tasvir.`;
   const images = await imageAny(prompt, [], signal);
   const image = images[0];
   if (!image) return null;
+
+  const artifact = saveImageArtifact(`${book.title} — muqova`, image.data, image.mimeType);
+  patchBook(bookId, { coverArtifactId: artifact.id });
+  return artifact;
+}
+
+/**
+ * Galereyadan tanlangan rasmni muqova qilib qoʻyadi.
+ *
+ * Koʻpincha tayyor muqova allaqachon bor — uni qayta chizdirish ortiqcha
+ * ish va ortiqcha xarajat. Rasm katta boʻlsa kichraytiriladi: kitoblar
+ * qurilma xotirasida saqlanadi, bir necha megabaytlik muqova joyni
+ * bekorga egallaydi.
+ */
+export async function setCoverFromFile(bookId: string, file: File): Promise<Artifact | null> {
+  const book = getBook(bookId);
+  if (!book) return null;
+  if (!file.type.startsWith('image/')) throw new Error('Faqat rasm fayli boʻlishi kerak.');
+
+  // `prepareFile` rasmni 1400px gacha kichraytiradi va base64 qaytaradi.
+  const prepared = await prepareFile(file);
+  const image = prepared.attachment;
+  if (!image) throw new Error('Rasm oʻqilmadi.');
 
   const artifact = saveImageArtifact(`${book.title} — muqova`, image.data, image.mimeType);
   patchBook(bookId, { coverArtifactId: artifact.id });

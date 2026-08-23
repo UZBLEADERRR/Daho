@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { createChat, deleteChat } from '../lib/agent';
 import { cloudEnabled, useCloud } from '../lib/cloud';
 import { setState, useStore } from '../lib/store';
@@ -36,6 +37,13 @@ export function Sidebar({
 }: Props) {
   const chats = useStore((s) => s.chats);
   const activeChatId = useStore((s) => s.activeChatId);
+  const [agentOpen, setAgentOpen] = useState(() => {
+    try {
+      return localStorage.getItem('daho.side.agent') !== 'yigʻiq';
+    } catch {
+      return true;
+    }
+  });
   const cloud = useCloud();
 
   return (
@@ -88,8 +96,30 @@ export function Sidebar({
             Brauzer
           </button>
 
-          <div className="section-label">Agent</div>
-          {AGENT_SECTIONS.map((s) => (
+          {/*
+            * Agent boʻlimi yigʻiladi.
+            *
+            * Ichida oʻn beshdan ortiq havola bor va ular suhbatlar
+            * roʻyxatini ekrandan chiqarib yuborardi. Tanlov saqlanadi.
+            */}
+          <button
+            className="section-label section-toggle"
+            onClick={() => {
+              setAgentOpen((v) => {
+                try {
+                  localStorage.setItem('daho.side.agent', v ? 'yigʻiq' : 'ochiq');
+                } catch {
+                  /* xotira yopiq boʻlsa ham ishlayveradi */
+                }
+                return !v;
+              });
+            }}
+            aria-expanded={agentOpen}
+          >
+            <span className="grow">Agent</span>
+            <span className="side-caret">{agentOpen ? '▾' : '▸'}</span>
+          </button>
+          {agentOpen && AGENT_SECTIONS.map((s) => (
             <button
               key={s}
               className={tab === 'agent' && activeSection === s ? 'side-link on' : 'side-link'}

@@ -6,7 +6,7 @@ import { AgentView } from './components/AgentView';
 import { ArtifactViewer } from './components/ArtifactView';
 import { ChatView } from './components/ChatView';
 import { CodeView } from './components/CodeView';
-import { Cloud, Menu, Settings as SettingsIcon } from './components/Icons';
+import { Menu } from './components/Icons';
 import { Settings } from './components/Settings';
 import { Sidebar } from './components/Sidebar';
 import { VideoStudio } from './components/VideoStudio';
@@ -338,26 +338,12 @@ export default function App() {
           </button>
         </div>
 
-        <div className="topbar-right">
-          {cloudEnabled && (
-            <button
-              className={cloud.status === 'kirgan' ? 'icon-btn on' : 'icon-btn'}
-              onClick={() => setAccountOpen(true)}
-              aria-label="Daho Cloud"
-              title={cloud.account?.plan?.name ?? 'Daho Cloud'}
-            >
-              <Cloud size={19} />
-            </button>
-          )}
-
-          <button
-            className="icon-btn"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Sozlamalar"
-          >
-            <SettingsIcon size={20} />
-          </button>
-        </div>
+        {/*
+          * Hisob va Sozlamalar tugmalari bu yerdan olib tashlandi.
+          *
+          * Ikkalasi ham yon panelning pastida bor edi — yuqorida
+          * takrorlangani joyni yeb, sarlavhani siqib turardi.
+          */}
       </header>
 
       <main className="main">

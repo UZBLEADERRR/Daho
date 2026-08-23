@@ -31,36 +31,38 @@ export function Courses({ onOpenArtifact }: { onOpenArtifact: (a: Artifact) => v
             hint="Chatda + tugmasidan «Kurs ochish» ni tanlang va nimani oʻrganmoqchi ekaningizni yozing — masalan «IELTS 7.0 olmoqchiman»."
           />
         ) : (
-          courses.map((c) => {
-            const done = c.topics.filter((t) => t.done).length;
-            const pct = Math.round((done / c.topics.length) * 100);
-            return (
-              <button
-                className="card"
-                key={c.id}
-                style={{ display: 'block', width: '100%', textAlign: 'left', marginBottom: 9 }}
-                onClick={() => updateView({ courseId: c.id })}
-              >
-                <div className="between">
-                  <div className="grow" style={{ fontSize: 16, fontWeight: 580 }}>
-                    {c.title}
+          /*
+           * Kartalar toʻri — kitoblar bilan bir xil koʻrinish.
+           * Avval har bir kurs butun kenglikdagi qator edi va roʻyxat
+           * uzun boʻlganda faqat surish qolardi.
+           */
+          <div className="card-grid">
+            {courses.map((c) => {
+              const done = c.topics.filter((t) => t.done).length;
+              const pct = c.topics.length ? Math.round((done / c.topics.length) * 100) : 0;
+              return (
+                <button
+                  className="cover-card"
+                  key={c.id}
+                  onClick={() => updateView({ courseId: c.id })}
+                >
+                  <div className="cover-art" style={{ aspectRatio: '4 / 3' }}>
+                    <span>{pct === 100 ? '🏆' : '🎓'}</span>
+                    <span className="cover-badge">{c.level}</span>
                   </div>
-                  <span className="chip">{c.level}</span>
-                </div>
-                {c.goal && (
-                  <div className="muted" style={{ marginTop: 4 }}>
-                    {c.goal}
+                  <div className="cover-body">
+                    <div className="cover-title">{c.title}</div>
+                    <div className="progress" style={{ marginTop: 6 }}>
+                      <i style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="cover-sub">
+                      {done} / {c.topics.length} mavzu · {pct}%
+                    </div>
                   </div>
-                )}
-                <div className="progress">
-                  <i style={{ width: `${pct}%` }} />
-                </div>
-                <div className="tiny" style={{ marginTop: 6 }}>
-                  {done} / {c.topics.length} mavzu · {pct}%
-                </div>
-              </button>
-            );
-          })
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
