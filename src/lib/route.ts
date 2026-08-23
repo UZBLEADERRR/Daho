@@ -12,6 +12,7 @@
 import { accountSnapshot, scheduleAccountRefresh } from './cloud/account';
 import { accessToken } from './cloud/client';
 import { GATEWAY_URL, SUPABASE_ANON_KEY, cloudEnabled } from './cloud/config';
+import { activeGroup } from './cloud/groupctx';
 import { getState } from './store';
 
 export const GOOGLE_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -107,12 +108,19 @@ export async function aiFetch(
     for (const [key, value] of Object.entries(opts.query ?? {})) {
       url.searchParams.set(key, value);
     }
+    /*
+     * Guruh ichida ishlayotgan boʻlsak — id ni yuboramiz. Server uni
+     * hisobga oladi: guruh hamyonida kredit boʻlsa avval shundan
+     * yechiladi. Sarlavhaga ishonilmaydi, aʼzolikni baza tekshiradi.
+     */
+    const group = activeGroup();
     const res = await fetch(url.toString(), {
       method: opts.method ?? 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
         apikey: SUPABASE_ANON_KEY,
+        ...(group ? { 'X-Daho-Group': group } : {}),
       },
       body: opts.body,
       signal: opts.signal,

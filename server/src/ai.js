@@ -549,6 +549,13 @@ export function mountAi(app) {
     }
     res.set('X-Daho-Provider', provider);
 
+    // UUID shaklidagina qabul qilamiz — bazaga axlat bormasin.
+    const rawGroup = (req.get('x-daho-group') || '').trim();
+    const groupId =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawGroup)
+        ? rawGroup
+        : null;
+
     const charge = async (usage) => {
       if (!usage || (!usage.input && !usage.output)) return;
       const { error } = await admin.rpc('charge_usage', {
@@ -566,6 +573,13 @@ export function mountAi(app) {
           provider,
           upstream: target.upstream,
           ms: Date.now() - started,
+          /*
+           * Guruh ishi boʻlsa — avval guruh hamyonidan. Sarlavhaga
+           * ishonmaymiz: bazadagi `group_charge` chaqiruvchi oʻsha
+           * guruh aʼzosi ekanini tekshiradi, aks holda `false`
+           * qaytadi va oddiy yoʻl ishlaydi.
+           */
+          ...(groupId ? { group_id: groupId } : {}),
         },
       });
       if (error) console.error('charge_usage:', error.message);

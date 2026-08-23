@@ -31,6 +31,8 @@ import { ToolLine, splitByTools } from './ToolLine';
 import { Back, Check, Close, Copy, Download, Mic, Plus, Refresh, Send, Stop, Trash } from './Icons';
 import { copyText } from '../lib/exporter';
 import { Empty, Sheet, toast } from './ui';
+import { GroupPanel } from './cloud/GroupPanel';
+import { cloudEnabled } from '../lib/cloud';
 
 /* ------------------------------------------------------------------ */
 /*  Loyihalar roʻyxati                                                 */
@@ -248,6 +250,7 @@ function PlanCard({ project }: { project: CodeProject }) {
 function Workspace({ project, onBack }: { project: CodeProject; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>('suhbat');
   const [modelPicker, setModelPicker] = useState(false);
+  const [groups, setGroups] = useState(false);
   const settings = useStore((s) => s.settings);
   // Barcha ulangan provayderlarning modellari — Gemini, Kimi, Qwen, GPT…
   const chatModels = usableChatModels();
@@ -280,6 +283,17 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
               {project.repo ? ` · ${project.repo.owner}/${project.repo.repo}` : ''}
             </span>
           </div>
+          {/* Birga ishlash: odam chaqirish, guruh suhbati va guruh hamyoni. */}
+          {cloudEnabled && (
+            <button
+              className="icon-btn"
+              onClick={() => setGroups(true)}
+              aria-label="Guruhlar"
+              title="Guruh bo‘lib ishlash"
+            >
+              <span style={{ fontSize: 17 }}>👥</span>
+            </button>
+          )}
           <button className="model-chip" onClick={() => setModelPicker(true)}>
             {pinned ? '📌 ' : auto ? '⚡ ' : ''}
             {parseRef(activeModel).model.replace(/^gemini-/, '')}
@@ -365,6 +379,8 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
           ))}
         </div>
       </div>
+
+      {groups && <GroupPanel onClose={() => setGroups(false)} />}
 
       {tab === 'suhbat' && <CodeChat project={project} />}
       {tab === 'fayllar' && <Files project={project} />}
