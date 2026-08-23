@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { loadStats, mountAi, providerStatus } from './ai.js';
+import { loadStats, mountAi, projectRef, providerStatus } from './ai.js';
 import { mountOauth, oauthStatus } from './oauth.js';
 import { env, missing } from './env.js';
 import { allowedHosts, proxyRequest } from './proxy.js';
@@ -66,6 +66,13 @@ app.get('/health', (_req, res) => {
     xotira_mb: Math.round(mem.rss / 1048576),
     ish_vaqti_s: Math.round(process.uptime()),
     yetishmayapti: missing(),
+    /*
+     * Supabase loyihasining belgisi. Bu maxfiy emas — u allaqachon
+     * brauzerdagi VITE_SUPABASE_URL da turibdi. Bu yerda chiqarilishi
+     * admin panelga ikkala manzil bir loyihani koʻrsatayotganini
+     * tekshirish imkonini beradi.
+     */
+    supabase_loyiha: projectRef(env.supabaseUrl),
   });
 });
 

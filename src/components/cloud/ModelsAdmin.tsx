@@ -16,6 +16,7 @@ import {
   creditRate,
   deleteAiModel,
   openrouterCatalog,
+  projectRef,
   providerStatus,
   serverHealth,
   saveAiModel,
@@ -29,6 +30,7 @@ import {
   type ServerHealth,
   type UnlistedModel,
 } from '../../lib/cloud/catalog';
+import { SUPABASE_URL } from '../../lib/cloud/config';
 import { adminPlans } from '../../lib/cloud/admin';
 import type { CloudPlan } from '../../lib/cloud';
 import { toast } from '../ui';
@@ -436,6 +438,9 @@ export function ModelsAdmin() {
 
   useEffect(load, []);
 
+  /** Ilovaning oʻz Supabase loyihasi — server bilan solishtirish uchun. */
+  const ownRef = useMemo(() => projectRef(SUPABASE_URL), []);
+
   const pick = (m: CatalogModel) => {
     setShowCatalog(false);
     setEditing({
@@ -473,6 +478,26 @@ export function ModelsAdmin() {
             Railway → Variables da quyidagilar yoʻq:{' '}
             <b>{health.yetishmayapti.join(', ')}</b>. Ularni qoʻyib xizmatni qayta
             ishga tushiring — shusiz katalog va «Tez sozlash» ishlamaydi.
+          </div>
+        </div>
+      ) : null}
+
+      {/*
+        Ikkinchi tekshiruv: server va ilova BIR Supabase loyihasiga
+        qarayaptimi. Mos kelmasa hamma narsa «tizimga kiring» deb
+        rad etiladi, chunki server boshqa loyihaning tokenini
+        tanimaydi. Belgi maxfiy emas — u brauzerdagi manzilda bor.
+      */}
+      {health?.supabase_loyiha &&
+      ownRef &&
+      health.supabase_loyiha !== ownRef ? (
+        <div className="admin-alert">
+          <b>Ikki xil Supabase loyihasi</b>
+          <div className="tiny" style={{ marginTop: 4 }}>
+            Server «<b>{health.supabase_loyiha}</b>» loyihasiga, ilova esa «
+            <b>{ownRef}</b>» ga qaraydi. Shu sababli tizimga kirgan boʻlsangiz
+            ham server tokeningizni tanimaydi. Railway’dagi <b>SUPABASE_URL</b> va{' '}
+            <b>VITE_SUPABASE_URL</b> bir xil loyihani koʻrsatishi kerak.
           </div>
         </div>
       ) : null}

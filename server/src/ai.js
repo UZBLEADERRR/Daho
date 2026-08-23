@@ -178,6 +178,31 @@ function kindOf(method, body) {
 /*  Kim soʻrayapti                                                     */
 /* ------------------------------------------------------------------ */
 
+/** Supabase manzilidan loyiha belgisini ajratadi: `abcd.supabase.co` → `abcd`. */
+export function projectRef(url) {
+  const m = /^https?:\/\/([^./]+)\./.exec(String(url || ''));
+  return m ? m[1] : '';
+}
+
+/**
+ * JWT ichidagi `iss` ni oʻqiydi — TEKSHIRMAY, faqat tashxis uchun.
+ *
+ * Imzoni bu yerda tekshirmaymiz: haqiqiy tekshiruvni Supabase qiladi.
+ * Bizga faqat token QAYSI loyihadan kelgani kerak, chunki eng koʻp
+ * uchraydigan nosozlik shu: ilova bir loyihaga, server esa boshqasiga
+ * qaragan boʻladi va token har doim rad etiladi.
+ */
+function tokenRef(token) {
+  try {
+    const body = token.split('.')[1];
+    if (!body) return '';
+    const json = Buffer.from(body.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    return projectRef(JSON.parse(json)?.iss);
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Soʻrov egasini aniqlaydi va nosozlikni toʻgʻri nomlaydi.
  *
@@ -206,6 +231,25 @@ async function whoIs(req) {
 
   const token = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
   if (!token) return { status: 401, body: { error: 'Avval tizimga kiring' } };
+
+  /*
+   * Loyihalar mos kelmasa tokenni Supabase’ga yuborishning ham hojati
+   * yoʻq — javob har doim rad boʻladi. Sababini aytib qoʻyamiz.
+   */
+  const serverRef = projectRef(env.supabaseUrl);
+  const clientRef = tokenRef(token);
+  if (serverRef && clientRef && serverRef !== clientRef) {
+    return {
+      status: 401,
+      body: {
+        error:
+          `Ikki xil Supabase loyihasi: server «${serverRef}», ilova «${clientRef}». ` +
+          'Railway’dagi SUPABASE_URL va VITE_SUPABASE_URL bir loyihani koʻrsatishi kerak.',
+        server_loyiha: serverRef,
+        ilova_loyiha: clientRef,
+      },
+    };
+  }
 
   const user = await userFromToken(token);
   if (!user) return { status: 401, body: { error: 'Sessiya muddati tugagan — qaytadan kiring' } };

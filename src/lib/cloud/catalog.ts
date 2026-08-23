@@ -101,6 +101,13 @@ export interface ServerHealth {
   yetishmayapti: string[];
   xotira_mb?: number;
   ish_vaqti_s?: number;
+  /** Server qaysi Supabase loyihasiga qarayotgani (maxfiy emas). */
+  supabase_loyiha?: string;
+}
+
+/** `https://abcd.supabase.co` → `abcd`. */
+export function projectRef(url: string): string {
+  return /^https?:\/\/([^./]+)\./.exec(url ?? '')?.[1] ?? '';
 }
 
 /**
@@ -122,6 +129,7 @@ export async function serverHealth(): Promise<ServerHealth> {
     yetishmayapti: data.yetishmayapti ?? [],
     xotira_mb: data.xotira_mb,
     ish_vaqti_s: data.ish_vaqti_s,
+    supabase_loyiha: data.supabase_loyiha,
   };
 }
 
