@@ -8,7 +8,8 @@
  */
 import { useEffect, useState } from 'react';
 import { publicCatalog, type PublicModel } from '../lib/cloud/catalog';
-import { cloudEnabled } from '../lib/cloud';
+import { noteCatalogNames } from '../lib/agent';
+import { cloudEnabled, useCloud } from '../lib/cloud';
 import { updateSettings, useStore } from '../lib/store';
 import { usableChatModels } from '../lib/providers';
 import { Sheet, toast } from './ui';
@@ -23,6 +24,7 @@ const ROLE_EMOJI: Record<string, string> = {
 
 export function ChatModelBar() {
   const model = useStore((s) => s.settings.model);
+  const { account } = useCloud();
   const [list, setList] = useState<PublicModel[] | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -32,7 +34,11 @@ export function ChatModelBar() {
       return;
     }
     void publicCatalog()
-      .then(setList)
+      .then((rows) => {
+        setList(rows);
+        // Model oʻzini shu nom bilan tanitadi — provayder nomi bilan emas.
+        noteCatalogNames(rows.map((r) => ({ slug: r.slug, label: r.label })));
+      })
       .catch(() => setList([]));
   }, []);
 
@@ -42,7 +48,16 @@ export function ChatModelBar() {
    * modelni umuman almashtirib boʻlmasdi. Bunday holda ulangan
    * provayderlarning modellari koʻrsatiladi.
    */
-  const mahalliy: PublicModel[] = list?.length
+  /*
+   * Zaxira roʻyxat FAQAT ishlab chiquvchi uchun.
+   *
+   * Oddiy foydalanuvchi provayderdagi haqiqiy nomlarni koʻrmasligi
+   * kerak — unga faqat admin ochib bergan «Daho» modellari. Shuning
+   * uchun bulut yoqilgan va odam admin boʻlmasa zaxira ishlamaydi.
+   */
+  const ishlabChiquvchi = !cloudEnabled || Boolean(account?.is_admin);
+
+  const mahalliy: PublicModel[] = list?.length || !ishlabChiquvchi
     ? []
     : usableChatModels().map((m) => ({
         slug: m.id,

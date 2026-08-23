@@ -547,7 +547,14 @@ export function mountAi(app) {
       res.set('X-Daho-Notice', encodeURIComponent(verdict.note));
       res.set('X-Daho-Model', slug);
     }
-    res.set('X-Daho-Provider', provider);
+    /*
+     * Provayder nomi brauzerga CHIQMAYDI.
+     *
+     * «Dahonator» ortida qaysi model turgani sotuv siri: uni sarlavhada
+     * yuborish — DevTools ochgan har kimga aytish demak. Shu sabab
+     * faqat Daho nomi ketadi.
+     */
+    res.set('X-Daho-Model', slug);
 
     // UUID shaklidagina qabul qilamiz — bazaga axlat bormasin.
     const rawGroup = (req.get('x-daho-group') || '').trim();
@@ -556,8 +563,29 @@ export function mountAi(app) {
         ? rawGroup
         : null;
 
+    /*
+     * Taxminiy hisob.
+     *
+     * Baʼzi modellar `usage` umuman qaytarmaydi, foydalanuvchi javobni
+     * yarmida toʻxtatsa ham u kelmaydi. Ilgari bunday holatda sarf
+     * UMUMAN yozilmasdi: hisobotda 0 turardi, kredit esa yechilmasdi.
+     * Endi haqiqiy belgilar soni boʻyicha taxmin qilinadi va
+     * hisobotda «taxminiy» deb belgilanadi — soxta aniqlik yaratmaymiz.
+     *
+     * 4 belgi ≈ 1 token: lotin va kirill matn uchun amaliy oʻrtacha.
+     */
+    let chiqqanBelgi = 0;
+    const kirishBelgi = JSON.stringify(req.body ?? {}).length;
+    const taxmin = () => ({
+      input: Math.max(1, Math.round(kirishBelgi / 4)),
+      output: Math.round(chiqqanBelgi / 4),
+      taxminiy: true,
+    });
+
     const charge = async (usage) => {
-      if (!usage || (!usage.input && !usage.output)) return;
+      const u = usage && (usage.input || usage.output) ? usage : taxmin();
+      if (!u.input && !u.output) return;
+      usage = u;
       const { error } = await admin.rpc('charge_usage', {
         p_user: user.id,
         p_model: slug,
@@ -573,6 +601,8 @@ export function mountAi(app) {
           provider,
           upstream: target.upstream,
           ms: Date.now() - started,
+          // Hisobot rost boʻlsin: taxmin qilingani yashirilmaydi.
+          ...(usage.taxminiy ? { taxminiy: true } : {}),
           /*
            * Guruh ishi boʻlsa — avval guruh hamyonidan. Sarlavhaga
            * ishonmaymiz: bazadagi `group_charge` chaqiruvchi oʻsha
@@ -653,10 +683,15 @@ export function mountAi(app) {
       const isStream = (upstreamRes.headers.get('content-type') ?? '').includes('event-stream');
       if (!isStream || !upstreamRes.body) {
         const text = await upstreamRes.text();
+        chiqqanBelgi += text.length;
         try {
           await charge(googleUsage(JSON.parse(text)));
         } catch {
-          /* hisobsiz oʻtadi */
+          /*
+           * Javobni oʻqib boʻlmadi — lekin ish qilingan. Taxminiy
+           * hisob bilan boʻlsa ham yozamiz, aks holda sarf yoʻqoladi.
+           */
+          await charge(null);
         }
         return res.type('application/json').send(text);
       }
@@ -676,7 +711,9 @@ export function mountAi(app) {
       let usage = null;
       for await (const chunk of upstreamRes.body) {
         res.write(chunk);
-        buffer += decoder.decode(chunk, { stream: true });
+        const matn = decoder.decode(chunk, { stream: true });
+        chiqqanBelgi += matn.length;
+        buffer += matn;
         let index;
         while ((index = buffer.indexOf('\n')) >= 0) {
           const line = buffer.slice(0, index);
@@ -698,6 +735,7 @@ export function mountAi(app) {
     /* ---------------- OpenRouter: tarjima qilamiz ---------------- */
     if (!stream) {
       const data = await upstreamRes.json().catch(() => ({}));
+      chiqqanBelgi += JSON.stringify(data?.choices ?? '').length;
       const geminiShape = fromOpenAi(data);
       const meta = usageFrom(data?.usage);
       if (meta) {
@@ -732,7 +770,13 @@ export function mountAi(app) {
             continue;
           }
           const out = tr.chunk(parsed);
-          if (out) res.write(sseLine(out));
+          if (out) {
+            // Taxminiy hisob uchun haqiqatan chiqqan matnni sanaymiz.
+            for (const part of out.candidates?.[0]?.content?.parts ?? []) {
+              if (typeof part?.text === 'string') chiqqanBelgi += part.text.length;
+            }
+            res.write(sseLine(out));
+          }
         }
       }
     } catch (err) {
