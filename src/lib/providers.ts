@@ -234,8 +234,96 @@ export function visionCapableRef(): string | null {
 
 
 /** Google qidiruvi faqat Gemini bilan ishlaydi. */
+/**
+ * Internetdan qidirish mumkinmi.
+ *
+ * Ikki yoʻl bor: Gemini’ning oʻz qidiruvi (grounding) va OpenRouter’ning
+ * `:online` qoʻshimchasi. Avval faqat birinchisi tekshirilardi —
+ * shuning uchun OpenRouter bilan ishlayotgan odamda qidiruv, jonli
+ * maʼlumot va manba keltirish umuman oʻchiq turardi.
+ */
 export function canSearchWeb(): boolean {
-  return hasGemini();
+  return hasGemini() || Boolean(onlineProvider());
+}
+
+/** OpenRouter ulangan boʻlsa uning sozlamasini qaytaradi. */
+function onlineProvider(): ProviderConfig | undefined {
+  return activeProviders().find((p) => p.baseUrl.includes('openrouter'));
+}
+
+export interface WebAnswer {
+  text: string;
+  sources: Array<{ title: string; url: string }>;
+}
+
+/**
+ * Internetdan javob — provayderdan qatʼi nazar.
+ *
+ * OpenRouter’da model nomiga `:online` qoʻshilsa u oʻzi qidiradi va
+ * javobga manbalarni `annotations` boʻlimida qaytaradi.
+ */
+export async function searchAny(query: string, signal?: AbortSignal): Promise<WebAnswer> {
+  const { settings } = getState();
+
+  if (hasGemini()) {
+    const { searchAnswer } = await import('./gemini');
+    const { geminiModel } = await import('./models');
+    return searchAnswer(settings.apiKey, geminiModel(settings.model), query, signal);
+  }
+
+  const cfg = onlineProvider();
+  if (!cfg) throw new GeminiError('Qidiruv uchun Gemini yoki OpenRouter kaliti kerak.', 0);
+
+  const ref = parseRef(settings.model);
+  const model = `${ref.model || 'openai/gpt-4o-mini'}:online`;
+
+  const res = await fetch(`${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cfg.apiKey.trim()}`,
+      'HTTP-Referer': 'https://daho.app',
+      'X-Title': 'Daho',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Internetdan tekshirib javob ber. Faqat topilganini yoz, oʻylab topma. '
+            + 'Sana va raqamlarni manbasi bilan ayt. Oʻzbek tilida, qisqa.',
+        },
+        { role: 'user', content: query },
+      ],
+      temperature: 0.3,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new GeminiError(humanHttpError(res.status, body, cfg.label), res.status);
+  }
+
+  const data = await res.json();
+  const message = data?.choices?.[0]?.message ?? {};
+  const text = typeof message.content === 'string' ? message.content : '';
+
+  const sources: Array<{ title: string; url: string }> = [];
+  for (const note of message.annotations ?? []) {
+    const cite = note?.url_citation ?? note;
+    if (cite?.url) sources.push({ title: String(cite.title ?? cite.url), url: String(cite.url) });
+  }
+
+  recordUsage(
+    settings.model,
+    Number(data?.usage?.prompt_tokens ?? 0),
+    Number(data?.usage?.completion_tokens ?? 0),
+    'qidiruv',
+  );
+
+  return { text: text.trim(), sources: sources.slice(0, 6) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -660,6 +748,41 @@ export async function streamAny(opts: StreamOptions): Promise<StreamResult> {
 }
 
 /** Streamsiz qisqa soʻrov — sarlavha, xulosa kabi mayda ishlar uchun. */
+/**
+ * Fayl (rasm yoki PDF) bilan birga savol — provayderdan qatʼi nazar.
+ *
+ * `completeAny` faqat matn yuboradi. Hujjat oʻqish, rasmni tushunish
+ * kabi ishlar uchun fayl ham ketishi kerak, model esa «koʻradigan»
+ * boʻlishi shart — shuning uchun `koʻrish` roli boʻyicha tanlanadi.
+ */
+export async function visionAny(
+  prompt: string,
+  files: Attachment[],
+  signal?: AbortSignal,
+): Promise<string> {
+  const { settings } = getState();
+  let out = '';
+  const res = await streamAny({
+    apiKey: settings.apiKey,
+    model: pickForJob('koʻrish'),
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          ...files.map((f) => ({ inlineData: { mimeType: f.mimeType, data: f.data } })),
+          { text: prompt },
+        ],
+      },
+    ],
+    temperature: 0.2,
+    signal,
+    onText: (chunk) => {
+      out += chunk;
+    },
+  });
+  return (res.text || out).trim();
+}
+
 export async function completeAny(
   model: string,
   prompt: string,

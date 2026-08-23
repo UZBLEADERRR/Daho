@@ -44,10 +44,8 @@ import {
   tgSync,
 } from './telegram';
 import { fetchImageData, searchImages } from './imagesearch';
-import { geminiModel } from './models';
-import { canSearchWeb, imageAny } from './providers';
+import { canSearchWeb, imageAny, jsonAny, searchAny, visionAny } from './providers';
 import { DOC_LABEL, exportDocument, saveBytes, saveZip, type DocFormat } from './exporter';
-import { generateJson, generateText, searchAnswer } from './gemini';
 import {
   DOCX_MIME,
   buildDocxWithImages,
@@ -95,7 +93,6 @@ import type {
   TimeLog,
 } from './types';
 import { fmtDuration, todayISO, uid, weekdayIndex } from './utils';
-import { fallbackModel } from './resilient';
 import {
   findVideos,
   languageName,
@@ -2162,9 +2159,8 @@ export async function executeTool(
       }
       const query = str(args.query);
       if (!query) return { ok: false, summary: 'Savol berilmadi', payload: { error: 'query_yoq' } };
-      const { settings } = getState();
       try {
-        const answer = await searchAnswer(settings.apiKey, geminiModel(settings.model), query, ctx.signal);
+        const answer = await searchAny(query, ctx.signal);
         return {
           ok: true,
           summary: `Qidirildi: ${query.slice(0, 40)}`,
@@ -2199,7 +2195,6 @@ export async function executeTool(
       const query = str(args.query);
       if (!query) return { ok: false, summary: 'Mavzu berilmadi', payload: { error: 'query_yoq' } };
       const language = str(args.language);
-      const { settings } = getState();
       const ask =
         `YouTube dan «${query}» mavzusidagi eng foydali 3-5 ta videoni top` +
         (language ? ` (${language} tilida boʻlsa afzal)` : '') +
@@ -2209,14 +2204,14 @@ export async function executeTool(
       const browse = searchUrl(query);
       let note = '';
 
-      // Google qidiruvi band boʻlishi mumkin — bir necha model bilan urinamiz.
-      const models = [settings.model, fallbackModel(settings.model)].filter(
-        (m): m is string => Boolean(m),
-      );
-
-      for (const model of models) {
+      /*
+       * Qidiruv band boʻlishi mumkin — ikki marta urinamiz. Avval har
+       * bir model bilan alohida urinilardi, lekin endi model tanlashni
+       * `searchAny` oʻzi qiladi (Gemini yoki OpenRouter `:online`).
+       */
+      for (let urinish = 0; urinish < 2; urinish += 1) {
         try {
-          const answer = await searchAnswer(settings.apiKey, model, ask, ctx.signal);
+          const answer = await searchAny(ask, ctx.signal);
           const found = [
             ...findVideos(answer.text),
             ...findVideos(answer.sources.map((src) => src.url).join(' ')),
@@ -2370,17 +2365,13 @@ export async function executeTool(
     case 'search_web': {
       const query = str(args.query);
       if (!query) return { ok: false, summary: 'Savol berilmadi', payload: { error: 'query_yoq' } };
-      const { settings } = getState();
 
-      // Qidiruv serveri band boʻlsa boshqa model bilan ham urinib koʻramiz.
-      const models = [settings.model, fallbackModel(settings.model)].filter(
-        (m): m is string => Boolean(m),
-      );
+      // Qidiruv serveri band boʻlsa yana bir marta urinib koʻramiz.
       let lastError = '';
 
-      for (const model of models) {
+      for (let urinish = 0; urinish < 2; urinish += 1) {
         try {
-          const answer = await searchAnswer(settings.apiKey, model, query, ctx.signal);
+          const answer = await searchAny(query, ctx.signal);
           return {
             ok: true,
             summary: `Qidirildi: ${query.slice(0, 40)}`,
@@ -2463,7 +2454,7 @@ export async function executeTool(
     }
 
     case 'illustrate_document': {
-      const { settings, chats } = getState();
+      const { chats } = getState();
       const chat = chats.find((c) => c.id === ctx.chatId);
 
       // Suhbatdagi eng oxirgi hujjatni topamiz.
@@ -2494,11 +2485,14 @@ export async function executeTool(
       if (source.mimeType === DOCX_MIME) {
         text = readDocx(b64ToBytes(source.data));
       } else {
-        text = await generateText(
-          settings.apiKey,
-          geminiModel(settings.model),
-          'Ushbu PDF hujjatning BARCHA matnini oʻzgartirmasdan, tartibi bilan yozib ber. ' +
-            'Izoh qoʻshma, faqat matnning oʻzi.',
+        /*
+         * PDF ni faqat KOʻRADIGAN model oʻqiy oladi. Avval bu yerda
+         * Gemini qattiq yozilgan edi — OpenRouter bilan ishlaydigan
+         * odamda hujjatga rasm qoʻshish umuman ishlamasdi.
+         */
+        text = await visionAny(
+          'Ushbu PDF hujjatning BARCHA matnini oʻzgartirmasdan, tartibi bilan yozib ber. '
+            + 'Izoh qoʻshma, faqat matnning oʻzi.',
           [source],
           ctx.signal,
         );
@@ -2509,11 +2503,9 @@ export async function executeTool(
       const forPlan = text.length > 24000 ? `${text.slice(0, 24000)}\n…` : text;
 
       // 2. Qayerga qanday rasm kerakligini modeldan soʻraymiz.
-      const plan = await generateJson<{
+      const plan = await jsonAny<{
         images: Array<{ prompt: string; caption?: string; after?: string }>;
       }>(
-        settings.apiKey,
-        settings.model,
         `Quyidagi hujjatga ${count} ta rasm qoʻshamiz. Uslub: ${style}.` +
           (note ? ` Qoʻshimcha talab: ${note}.` : '') +
           `\n\nHar bir rasm uchun:\n` +

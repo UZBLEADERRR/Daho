@@ -1,8 +1,6 @@
 import { b64ToBytes } from './audio';
-import { generateJson } from './gemini';
 import { synthesize } from './speech';
-import { geminiModel } from './models';
-import { imageAny } from './providers';
+import { imageAny, jsonAny } from './providers';
 import { getState, setState } from './store';
 import type {
   SubtitleStyle,
@@ -146,9 +144,8 @@ export async function planVideo(
   const style = opts.style ?? VIDEO_STYLES[0];
   const sceneCount = Math.min(12, Math.max(3, opts.sceneCount ?? 6));
 
-  const plan = await generateJson<PlanResponse>(
-    settings.apiKey,
-    geminiModel(settings.model),
+  // Provayderdan qatʼi nazar: Gemini boʻlsa u, boʻlmasa OpenRouter.
+  const plan = await jsonAny<PlanResponse>(
     planPrompt(topic, sceneCount, style),
     PLAN_SCHEMA,
     signal,
@@ -371,12 +368,9 @@ export async function translateProject(
   const project = getProject(projectId);
   if (!project || !project.scenes.length) return;
 
-  const { settings } = getState();
   const numbered = project.scenes.map((s, i) => `${i + 1}. ${s.narration}`).join('\n');
 
-  const result = await generateJson<{ title?: string; lines: string[] }>(
-    settings.apiKey,
-    geminiModel(settings.model),
+  const result = await jsonAny<{ title?: string; lines: string[] }>(
     `Quyidagi video ssenariysini ${language.toUpperCase()} TILIGA tarjima qil.
 
 Qoidalar:

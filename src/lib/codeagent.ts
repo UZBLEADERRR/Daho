@@ -34,7 +34,7 @@ import {
   setTopics,
   updateRepo,
 } from './github';
-import { cachedModels, geminiModel, getModels } from './models';
+import { cachedModels, getModels } from './models';
 import {
   bundlePreview,
   deleteProjectFile,
@@ -62,7 +62,7 @@ import {
   supabaseLink,
 } from './supabase';
 import { screenshotHtml, shotToAttachment } from './shot';
-import { searchAnswer } from './gemini';
+
 import {
   allCachedModels,
   modelLabel,
@@ -75,7 +75,7 @@ import {
 import { askUser, drainInterjections } from './ask';
 import { isModelReadable } from './attach';
 import { getState, setState } from './store';
-import { imageAny } from './providers';
+import { imageAny, searchAny } from './providers';
 import { templateById } from './templates';
 import {
   connectable,
@@ -2566,14 +2566,13 @@ async function runTool(
     case 'web_search': {
       const query = str(args.query);
       if (!query) return { ok: false, summary: 'Soʻrov boʻsh', payload: { error: 'boʻsh' } };
-      const { settings } = getState();
-      const answer = await searchAnswer(settings.apiKey, geminiModel(settings.model), query, signal);
+      const answer = await searchAny(query, signal);
       return {
         ok: true,
         summary: `Qidirildi: ${query.slice(0, 40)}`,
         payload: {
           javob: answer.text.slice(0, 6000),
-          manbalar: answer.sources.map((s) => `${s.title} — ${s.url}`),
+          manbalar: answer.sources.map((m: { title: string; url: string }) => `${m.title} — ${m.url}`),
         },
       };
     }
