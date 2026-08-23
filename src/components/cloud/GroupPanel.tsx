@@ -224,7 +224,7 @@ function Members({ group, onChanged }: { group: GroupRow; onChanged: () => void 
 
 /* ---------------------------------------------------------------- suhbat */
 
-function Chat({ group }: { group: GroupRow }) {
+function Chat({ group, full }: { group: GroupRow; full?: boolean }) {
   const { account } = useCloud();
   const [rows, setRows] = useState<GroupMessage[]>([]);
   const [text, setText] = useState('');
@@ -280,7 +280,7 @@ function Chat({ group }: { group: GroupRow }) {
   };
 
   return (
-    <div className="chatbox">
+    <div className={full ? 'chatbox full' : 'chatbox'}>
       <div className="chatbox-feed">
         {!rows.length && (
           <div className="chatbox-empty">
@@ -430,7 +430,14 @@ export function ProjectGroup({
 }) {
   const [group, setGroup] = useState<GroupRow | null>(null);
   const [holat, setHolat] = useState<'yuklanmoqda' | 'yoʻq' | 'bor'>('yuklanmoqda');
-  const [tab, setTab] = useState<Tab>('azolar');
+  /*
+   * Guruh — avvalo suhbat.
+   *
+   * Ilgari birinchi «Aʼzolar» roʻyxati ochilardi va guruh xizmat
+   * varaqasiga oʻxshardi. Odam guruhga gaplashish uchun kiradi:
+   * shuning uchun messenjer birinchi, qolgani yonida.
+   */
+  const [tab, setTab] = useState<Tab>('suhbat');
   const [busy, setBusy] = useState(false);
 
   const load = () => {
@@ -511,34 +518,40 @@ export function ProjectGroup({
   }
 
   return (
-    <div className="scroll">
-      <div className="pad">
-        <div className="between" style={{ marginBottom: 10 }}>
-          <div style={{ minWidth: 0 }}>
-            <b>{group.name}</b>
-            <div className="tiny">
-              {group.members} aʼzo · {formatCredits(group.credits)} kredit
-              {group.my_role === 'owner' ? ' · egasi sizsiz' : ` · egasi: ${group.owner_name}`}
-            </div>
+    <div className="grp">
+      {/* Messenjer sarlavhasi: kim bilan gaplashyapman va nechta odam bor. */}
+      <div className="grp-top">
+        <span className="grp-ava">{(group.name || '?').charAt(0).toUpperCase()}</span>
+        <div className="grp-id">
+          <b>{group.name}</b>
+          <div className="tiny">
+            {group.members} aʼzo · {formatCredits(group.credits)} kredit
           </div>
         </div>
-
-        <div className="seg">
-          <button className={tab === 'azolar' ? 'on' : ''} onClick={() => setTab('azolar')}>
-            Aʼzolar
-          </button>
-          <button className={tab === 'suhbat' ? 'on' : ''} onClick={() => setTab('suhbat')}>
-            Suhbat
-          </button>
-          <button className={tab === 'kredit' ? 'on' : ''} onClick={() => setTab('kredit')}>
-            Kredit
-          </button>
-        </div>
-
-        {tab === 'azolar' && <Members group={group} onChanged={load} />}
-        {tab === 'suhbat' && <Chat group={group} />}
-        {tab === 'kredit' && <Wallet group={group} onChanged={load} />}
       </div>
+
+      <div className="grp-tabs">
+        <button className={tab === 'suhbat' ? 'on' : ''} onClick={() => setTab('suhbat')}>
+          Suhbat
+        </button>
+        <button className={tab === 'azolar' ? 'on' : ''} onClick={() => setTab('azolar')}>
+          Aʼzolar
+        </button>
+        <button className={tab === 'kredit' ? 'on' : ''} onClick={() => setTab('kredit')}>
+          Kredit
+        </button>
+      </div>
+
+      {tab === 'suhbat' ? (
+        <Chat group={group} full />
+      ) : (
+        <div className="scroll">
+          <div className="pad">
+            {tab === 'azolar' && <Members group={group} onChanged={load} />}
+            {tab === 'kredit' && <Wallet group={group} onChanged={load} />}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

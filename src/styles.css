@@ -292,8 +292,14 @@ textarea {
   padding-right: 4px;
 }
 
+/*
+ * Tanlangan suhbat — tinch toʻldirish.
+ *
+ * Urgʻu rangi bilan boʻyash yon panelni «chiroq»ka aylantirardi:
+ * dizaynda tanlangan qator shunchaki bir pogʻona ochiqroq.
+ */
 .chat-row.on {
-  background: var(--accent-soft);
+  background: var(--surface-2);
 }
 
 .chat-row > button:first-child {
@@ -597,18 +603,41 @@ textarea {
   color: var(--accent);
 }
 
+/*
+ * Jadval — katakli toʻr emas.
+ *
+ * Har katakni chizib chiqish javobni «hisobot» qilib qoʻyardi. Endi
+ * tashqi ramka yumaloq, ichida faqat qatorlar orasidagi ingichka
+ * chiziq: dizayndagidek.
+ */
 .md table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13.5px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .md th,
 .md td {
-  border: 1px solid var(--line);
-  padding: 6px 9px;
+  padding: 9px 12px;
   text-align: left;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+.md thead th {
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  border-top: none;
+}
+
+.md tbody tr:first-child td {
+  border-top: 1px solid var(--line);
 }
 
 .md hr {
@@ -1838,14 +1867,22 @@ textarea {
   white-space: nowrap;
 }
 
+/*
+ * Jadval sarlavhasi — BOSH HARFLARDA emas.
+ *
+ * «MEZON» degan yozuv jadvalni hisobotga oʻxshatardi va oʻzbekcha
+ * soʻzlar bosh harfda yomon oʻqilardi. Dizayndagidek: oddiy yozuv,
+ * soʻnik rang.
+ */
 .md thead {
-  background: var(--surface-2);
+  background: var(--surface);
 }
 
 .md th {
-  font-size: 11.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
   border: none;
   border-bottom: 1px solid var(--line);
@@ -5442,14 +5479,33 @@ iframe {
   color: var(--muted);
 }
 
+/*
+ * Loyiha boʻlimlari — pill emas, tinch matn.
+ *
+ * Beshta pill sarlavhani ogʻirlashtirib yuborardi. Dizayndagidek:
+ * oddiy matn, tanlangani ostida ingichka urgʻu chizigʻi.
+ */
 .seg.tight {
-  padding: 5px 8px 6px;
-  border-bottom: 0;
+  gap: 20px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
 }
 
 .seg.tight button {
-  padding: 5px 13px;
-  font-size: 12.5px;
+  padding: 0 0 9px;
+  font-size: 14px;
+  border-radius: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+}
+
+.seg.tight button.on {
+  color: var(--text);
+  font-weight: 500;
+  background: none;
+  border: none;
+  box-shadow: inset 0 -2px 0 0 var(--accent);
 }
 
 /* Butun karta bosiladigan qator boʻlganda */
@@ -5520,6 +5576,71 @@ iframe {
  * Endi tanish tartib: kun ajratgichi, avatar, pufakchalar, oʻzimniki
  * oʻngda, ketma-ket xabarlarda ism takrorlanmaydi.
  */
+/*
+ * Guruh — messenjer koʻrinishi.
+ *
+ * Suhbat qutisi endi loyiha boʻlimining butun balandligini egallaydi:
+ * yuqorida guruh nomi, ostida boʻlimlar, qolgani — xabarlar oqimi.
+ */
+.grp {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.grp-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  flex: 0 0 auto;
+}
+
+.grp-ava {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.grp-id {
+  min-width: 0;
+}
+
+.grp-id b {
+  font-size: 15px;
+}
+
+.grp-tabs {
+  display: flex;
+  gap: 18px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.grp-tabs button {
+  padding: 0 0 8px;
+  font-size: 13.5px;
+  color: var(--muted);
+  background: none;
+  border: none;
+}
+
+.grp-tabs button.on {
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
 .chatbox {
   display: flex;
   flex-direction: column;
@@ -5528,6 +5649,16 @@ iframe {
   border-radius: 14px;
   overflow: hidden;
   background: var(--surface);
+}
+
+/* Toʻliq rejim: chegara yoʻq, butun boʻlimni egallaydi. */
+.chatbox.full {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
 }
 
 .chatbox-feed {
@@ -5783,10 +5914,16 @@ iframe {
   line-height: 1.62;
 }
 
+/*
+ * Sarlavha ostidagi chiziq olib tashlandi.
+ *
+ * U javobni «README» ga oʻxshatib qoʻyardi. Dizaynda sarlavha faqat
+ * oʻlchami va boʻsh joyi bilan ajraladi — matn tinch koʻrinadi.
+ */
 .md h1,
 .md h2 {
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--line);
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .md h2 + p,
@@ -5807,6 +5944,57 @@ iframe {
 .md li > ul,
 .md li > ol {
   margin-top: 6px;
+}
+
+/*
+ * Raqamli roʻyxat — qadamlar doira ichida.
+ *
+ * Dizayndagi «1 · 2 · 3» belgilari: qadamlar koʻzga tashlanadi va
+ * matn chetdan tekis boshlanadi.
+ */
+.md ol {
+  list-style: none;
+  padding-left: 0;
+  counter-reset: qadam;
+}
+
+.md ol > li {
+  counter-increment: qadam;
+  position: relative;
+  padding-left: 31px;
+  margin-bottom: 9px;
+}
+
+.md ol > li::before {
+  content: counter(qadam);
+  position: absolute;
+  left: 0;
+  top: 0.16em;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 21px;
+  text-align: center;
+}
+
+/* Ichma-ich roʻyxatda oddiy raqam qoladi — doira ikki qavat boʻlmasin. */
+.md ol ol {
+  list-style: decimal;
+  padding-left: 22px;
+  counter-reset: none;
+}
+
+.md ol ol > li {
+  counter-increment: none;
+  padding-left: 0;
+}
+
+.md ol ol > li::before {
+  content: none;
 }
 
 /* Qalin matn — ajralib tursin, lekin qichqirmasin. */

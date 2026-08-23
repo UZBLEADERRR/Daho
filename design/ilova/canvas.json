@@ -1,0 +1,32 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 300, "h": 844, "title": "Yon panel" },
+    { "file": "Suhbat.dc.html", "x": 400, "y": 0, "w": 390, "h": 844 },
+    { "file": "Profil.dc.html", "x": 890, "y": 0, "w": 390, "h": 844 },
+    { "file": "Agent.dc.html", "x": 1380, "y": 0, "w": 390, "h": 844 }
+  ],
+  "annotations": [
+    {
+      "id": "asos",
+      "x": 0,
+      "y": -170,
+      "w": 480,
+      "text": "Bitta til — toʻrt ekran\n\nFon #09090b, chiziq #26262c, matn #ededf0, soʻnik #8f8f99,\nurgʻu #8b7cf6. Karta emas — ingichka ajratgich; pill emas — tinch matn."
+    },
+    {
+      "id": "chat",
+      "x": 400,
+      "y": -170,
+      "w": 470,
+      "text": "AI javobi — hujjatdek\n\nSarlavha 21px/640, ichki sarlavha 16.5px, matn 15px va qator oraligʻi 1.6.\nRaqamli qadamlar doira ichida, jadval ingichka chiziqli — koʻz charchamaydi."
+    },
+    {
+      "id": "profil",
+      "x": 890,
+      "y": -170,
+      "w": 470,
+      "text": "Hisoblagich tirik\n\n«142 / 200 kredit» — foiz emas, aniq raqam. Har javobdan keyin\nqayta oʻqiladi. Sozlamaning har bir boʻlimi shu roʻyxatda alohida qator."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}
