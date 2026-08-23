@@ -308,6 +308,24 @@ export function importState(json: string): boolean {
   }
 }
 
+/**
+ * Foydalanuvchi maʼlumotini tozalaydi — qurilma sozlamalari qoladi.
+ *
+ * NEGA KERAK: suhbatlar, loyihalar, kitoblar va konspektlar qurilmada
+ * (IndexedDB) turadi. Hisobdan chiqilganda ular joyida qolardi va
+ * KEYINGI odam kirganda oʻsha suhbatlarni koʻrardi. Bitta telefonni
+ * ikki kishi ishlatsa — bu maʼlumot sizib chiqishi.
+ *
+ * Sozlamalar (mavzu, shrift, qurilmadagi kalitlar) tegilmaydi: ular
+ * hisobga emas, QURILMAGA tegishli.
+ */
+export function clearUserData(): void {
+  const settings = state.settings;
+  state = { ...structuredClone(EMPTY_STATE), settings };
+  persist();
+  listeners.forEach((l) => l());
+}
+
 export function resetState(): void {
   state = structuredClone(EMPTY_STATE);
   persist();

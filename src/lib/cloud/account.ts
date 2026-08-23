@@ -1,7 +1,20 @@
 import { useSyncExternalStore } from 'react';
 import { supa } from './client';
+import { clearUserData } from '../store';
+import { clearUsage } from '../usage';
+import { clearCache } from '../context/cache';
 import { cloudEnabled } from './config';
 import type { Account } from './types';
+
+/**
+ * Qurilmadagi maʼlumot KIMNIKI ekani.
+ *
+ * Chiqmasdan turib boshqa hisobga kirish mumkin (ilova yopilib qayta
+ * ochilgan, sessiya almashgan). Shunda ham eski suhbatlar koʻrinib
+ * qolmasligi kerak — shuning uchun har safar hisob oʻqilganda id
+ * solishtiriladi.
+ */
+const OXIRGI = 'daho.owner';
 
 export type CloudStatus = 'off' | 'yuklanmoqda' | 'kirilmagan' | 'kirgan';
 
@@ -102,6 +115,7 @@ export async function refreshAccount(): Promise<Account | null> {
       const { data, error } = await withTimeout(sb.rpc('my_account'), 'hisob');
       if (error) throw error;
       const account = data as Account;
+      if (account?.signed_in) egasiniTekshir(account.user_id);
       if (!account?.signed_in) {
         emit({ status: 'kirilmagan', account: null, error: '' });
         return null;
@@ -245,7 +259,64 @@ export async function signOut(): Promise<void> {
   const sb = supa();
   if (!sb) return;
   await sb.auth.signOut();
+  /*
+   * Qurilmadagi maʼlumot ham tozalanadi.
+   *
+   * Suhbatlar, loyihalar va sarf hisoboti IndexedDB da turadi. Ilgari
+   * ular chiqishdan keyin ham joyida qolardi va keyingi odam kirganda
+   * OʻZGANING suhbatlarini koʻrardi. Bir telefonni ikki kishi
+   * ishlatsa — bu maʼlumot sizib chiqishi.
+   */
+  forgetDevice();
   emit({ status: 'kirilmagan', account: null });
+}
+
+/**
+ * Qurilmadagi maʼlumot boshqa odamniki boʻlsa — tozalanadi.
+ *
+ * Birinchi kirishda (belgi yoʻq) hech nima oʻchirilmaydi: bu oddiy
+ * holat, oʻz maʼlumotini yoʻqotib qoʻymasin.
+ */
+function egasiniTekshir(userId: string): void {
+  try {
+    const oldingi = localStorage.getItem(OXIRGI);
+    if (oldingi && oldingi !== userId) tozala();
+    localStorage.setItem(OXIRGI, userId);
+  } catch {
+    /* xotira yopiq — tekshiruvsiz davom etadi */
+  }
+}
+
+/** Qurilmadagi foydalanuvchi izini oʻchiradi. */
+function forgetDevice(): void {
+  tozala();
+  try {
+    localStorage.removeItem(OXIRGI);
+  } catch {
+    /* xotira yopiq boʻlsa ham davom etadi */
+  }
+}
+
+/**
+ * Odamga tegishli hamma narsani oʻchiradi.
+ *
+ * Suhbatlar va loyihalar (store), sarf hisoboti (usage), javob keshi
+ * (avvalgi savol-javoblar) va sinxronizatsiya soyasi. Sozlamalar
+ * qoladi — ular qurilmaniki.
+ *
+ * `sync.ts` bu yerga import qilinmaydi: u `account.ts` ga tayanadi va
+ * halqa hosil boʻlardi. Shuning uchun kalit toʻgʻridan-toʻgʻri
+ * oʻchiriladi.
+ */
+function tozala(): void {
+  clearUserData();
+  clearUsage();
+  clearCache();
+  try {
+    localStorage.removeItem('daho.sync.v1');
+  } catch {
+    /* xotira yopiq */
+  }
 }
 
 /** Auth o'zgarishlarini kuzatish — App ishga tushganda bir marta. */
