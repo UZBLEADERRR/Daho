@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   aiModels,
+  bootstrapCatalog,
   attachModel,
   creditRate,
   deleteAiModel,
@@ -414,6 +415,7 @@ export function ModelsAdmin() {
   const [unlisted, setUnlisted] = useState<UnlistedModel[]>([]);
   const [editing, setEditing] = useState<AiModel | null>(null);
   const [showCatalog, setShowCatalog] = useState(false);
+  const [bootBusy, setBootBusy] = useState(false);
 
   const load = () => {
     void aiModels().then(setModels).catch(fail);
@@ -504,7 +506,31 @@ export function ModelsAdmin() {
 
       {/* --- bizning modellar --- */}
       <div className="section-label">Daho modellari</div>
-      {!models.length && <div className="tiny">Hali model qoʻshilmagan.</div>}
+      {!models.length && (
+        <div className="card" style={{ marginBottom: 10 }}>
+          <div className="tiny" style={{ marginBottom: 8 }}>
+            Hali model qoʻshilmagan — shuning uchun foydalanuvchilar hisob orqali
+            ishlata olmaydi. Tugmani bosing: OpenRouter roʻyxatidan uchta model
+            (bepul zaxira, tezkor va kuchli) tanlanib, barcha tarifga ochiladi.
+          </div>
+          <button
+            className="btn wide"
+            disabled={bootBusy}
+            onClick={() => {
+              setBootBusy(true);
+              void bootstrapCatalog()
+                .then((r) => {
+                  toast(`${r.qoshildi.length} ta model qoʻshildi`);
+                  load();
+                })
+                .catch(fail)
+                .finally(() => setBootBusy(false));
+            }}
+          >
+            {bootBusy ? 'Sozlanmoqda…' : 'Tez sozlash'}
+          </button>
+        </div>
+      )}
       {models.map((m) => (
         <div className="line-row" key={m.slug}>
           <div className="grow">

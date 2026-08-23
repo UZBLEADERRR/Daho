@@ -124,11 +124,9 @@ unga qanday yetishni oʻzing hal qilasan.
   tanlaganingni bir jumlada aytib qoʻy.
 - **Vositalarni birlashtir.** Bitta savolga bir nechta vosita kerak boʻlishi
   mumkin: masalan avval qidir, keyin kitob boshla, soʻng vazifa qoʻsh.
-- **Katta ishni boʻlib ber.** Mavzu keng boʻlsa yoki bir nechta yoʻnalishni
-  oʻrganish kerak boʻlsa — \`delegate\` bilan yordamchi chaqir: «tadqiqot»
-  maʼlumot yigʻadi, «matn» yozadi, «tekshir» xato qidiradi, «reja»
-  bosqichlarga ajratadi. Har biri oʻz modeli bilan alohida ishlaydi, senga
-  hisobot qaytaradi. Oddiy savolga chaqirma — vaqt va token ketadi.
+- **Katta ishni boʻlib ber.** Mavzu keng boʻlsa \`use_tools\` bilan
+  \`yordamchi\` guruhini ochib, \`delegate\` orqali yordamchi agent chaqir.
+  Oddiy savolga chaqirma — vaqt va token ketadi.
 - **Foydalanuvchi vaqtini tejaydigan qoʻshimchani oʻzing taklif qil** —
   lekin soʻralmagan ishni oʻzboshimchalik bilan qilma; bitta jumlada taklif qil.`;
 const B_TELEGRAM = `## Telegram bilan ishlash ✈️
@@ -465,6 +463,30 @@ const KEEP_MEDIA = 6;
 /** Tarix matnining chegarasi (belgi) — taxminan 15 000 token. */
 const HISTORY_BUDGET = 60_000;
 
+/** Shuncha oxirgi xabarda kod bloklari toʻliq qoladi. */
+const KEEP_CODE = 2;
+
+/**
+ * Eski javoblardagi kod bloklarini qisqartiradi.
+ *
+ * Model ilova yasab bersa, javobda butun HTML fayl turadi — 5 000 token
+ * ham boʻlishi mumkin. U artifact sifatida ALOHIDA saqlangan va ekranda
+ * koʻrinib turibdi, lekin suhbat tarixida ham qolib ketardi va HAR bir
+ * keyingi soʻrovda qayta yuborilardi. Yaʼni «Salom» deb yozganingizda
+ * ham piyano ilovasining kodi ketardi.
+ *
+ * Endi eski bloklar bir qatorga aylanadi. Model kerak boʻlsa qayta
+ * yozadi — bu takror yuborishdan koʻra arzon.
+ */
+function trimCode(text: string): string {
+  return text.replace(/```(\w*)\n([\s\S]*?)```/g, (whole, lang: string, body: string) => {
+    // Grafik va qisqa parchalar joyida qolsin — ular arzon va kerak.
+    if (lang === 'chart' || body.length < 400) return whole;
+    const lines = body.trim().split('\n').length;
+    return `\`\`\`${lang}\n[${lang || 'kod'} — ${lines} qator, alohida saqlangan]\n\`\`\``;
+  });
+}
+
 function toContents(messages: Message[]): GeminiContent[] {
   const recent = messages.slice(-MAX_HISTORY);
   const mediaFrom = Math.max(0, recent.length - KEEP_MEDIA);
@@ -490,7 +512,11 @@ function toContents(messages: Message[]): GeminiContent[] {
       }
     }
 
-    if (msg.text.trim()) parts.push({ text: msg.text });
+    const matn =
+      index >= recent.length - KEEP_CODE || msg.role === 'user'
+        ? msg.text
+        : trimCode(msg.text);
+    if (matn.trim()) parts.push({ text: matn });
     if (!parts.length) continue;
     out.push({ role: msg.role, parts });
   }

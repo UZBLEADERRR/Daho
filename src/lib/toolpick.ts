@@ -18,7 +18,22 @@
 /** Guruh nomi → ichidagi vositalar. */
 export const TOOL_GROUPS: Record<string, string[]> = {
   // Har doim ochiq: savol berish, oʻz maʼlumotini oʻqish, internet.
-  yadro: ['ask_user', 'read_data', 'search_web', 'open_site', 'delegate', 'use_tools', 'connect_service', 'use_skill'],
+  yadro: [
+    'ask_user',
+    'read_data',
+    'search_web',
+    'open_site',
+    'use_tools',
+    'connect_service',
+    'use_skill',
+  ],
+
+  /*
+   * `delegate` eʼloni bir oʻzi ~280 token. U faqat katta, boʻlinadigan
+   * ishda kerak — «hosila nima?» degan savolda emas. Shuning uchun
+   * yadrodan chiqarildi.
+   */
+  yordamchi: ['delegate'],
 
   reja: [
     'create_note',
@@ -52,6 +67,7 @@ export const GROUP_NOTE: Record<string, string> = {
   ulanish: 'tashqi xizmatga ulanish (Google Drive, Calendar, Sheets…)',
   telegram: 'Telegram: xabar, kontaktlar, eʼlon, jadval boʻyicha yuborish',
   ijtimoiy: 'Instagram: izohlar, Direct, post',
+  yordamchi: 'yordamchi agent chaqirish — katta ishni boʻlib bajarish',
 };
 
 /**
@@ -68,6 +84,7 @@ const HINTS: Array<[string, RegExp]> = [
   ['ulanish', /ulan|connect|google\s*(drive|calendar|sheet|doc|gmail)|kalendar|jadvalim|hisobim|akkaunt|token|api/i],
   ['telegram', /telegram|tg\b|bot|mijoz|eʼlon|e'lon|broadcast|guruh(ga|dagi)|obunachi/i],
   ['ijtimoiy', /instagram|insta\b|direct|izoh|comment|reels|story|storis|post/i],
+  ['yordamchi', /katta ish|boʻlib bajar|bolib bajar|bir vaqtda|parallel|chuqur tadqiqot|hammasini oʻrgan/i],
 ];
 
 /** Matndan qaysi guruhlar kerakligini topadi. */

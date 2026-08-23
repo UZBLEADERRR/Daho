@@ -202,6 +202,159 @@ export function mountAi(app) {
     }
   });
 
+  /**
+   * Tez sozlash — katalogni jonli roʻyxatdan toʻldiradi.
+   *
+   * Egasi Railway’da OPENROUTER_API_KEY ni qoʻyadi va shu tugmani
+   * bosadi: uchta model tanlanadi (bepul zaxira, tezkor, kuchli),
+   * haqiqiy tannarxi bilan katalogga yoziladi va barcha tarifga
+   * ochiladi. Model nomlarini qoʻlda yozish shart emas — roʻyxat
+   * OpenRouter’ning oʻzidan olinadi, shuning uchun eskirmaydi.
+   */
+  app.post('/api/catalog/bootstrap', async (req, res) => {
+    const user = await userFromToken((req.get('authorization') || '').replace(/^Bearer\s+/i, ''));
+    if (!user) return res.status(401).json({ error: 'Avval tizimga kiring' });
+
+    const admin = adminClient();
+    const { data: isAdmin } = await admin.rpc('is_admin', { p_user: user.id });
+    if (!isAdmin) return res.status(403).json({ error: 'Faqat admin' });
+
+    let list;
+    try {
+      list = await openrouterCatalog(true);
+    } catch (err) {
+      return res.status(502).json({ error: String(err?.message ?? err) });
+    }
+
+    const tool = list.filter((m) => m.supports_tools && m.context >= 32_000);
+    const narx = (m) => m.input_usd + m.output_usd;
+
+    // Bepul zaxira — «Daho Daily». Boʻlmasa eng arzoni.
+    const bepul = tool.filter((m) => m.free).sort((a, b) => b.context - a.context)[0];
+    const pullilar = tool.filter((m) => !m.free && narx(m) > 0).sort((a, b) => narx(a) - narx(b));
+    const tezkor = pullilar[0];
+
+    /*
+     * Kuchli model — byudjet ichidagi eng kuchlisi.
+     *
+     * Foizga qarab tanlash xato edi: roʻyxatning yuqori chetida Opus
+     * turadi ($75 / 1M chiqish). Pro rejasi 120 000 kredit beradi —
+     * bunday model bilan u 0,04 million tokenga yetadi, yaʼni foydasiz.
+     * Shuning uchun mutlaq shift: chiqishi $3/1M dan oshmasin.
+     */
+    const SHIFT_USD = Number(process.env.AI_STRONG_MAX_USD || 3);
+    const byudjet = pullilar.filter((m) => m.output_usd <= SHIFT_USD);
+    const kuchli = byudjet.at(-1) ?? pullilar[0];
+
+    const tanlov = [
+      bepul && {
+        slug: 'daho-daily',
+        label: 'Daho Daily',
+        description: 'Bepul zaxira — limit tugaganda ishlaydi, sekinroq',
+        upstream: bepul.id,
+        model: bepul,
+        is_daily: true,
+        sort: 30,
+      },
+      tezkor && {
+        slug: 'dahonator',
+        label: 'Dahonator',
+        description: 'Kundalik savollar uchun — tez va tejamkor',
+        upstream: tezkor.id,
+        model: tezkor,
+        sort: 10,
+      },
+      kuchli && kuchli.id !== tezkor?.id && {
+        slug: 'dahox',
+        label: 'DahoX',
+        description: 'Murakkab ish uchun — kuchli, lekin limitni tez yeydi',
+        upstream: kuchli.id,
+        model: kuchli,
+        sort: 20,
+      },
+    ].filter(Boolean);
+
+    if (!tanlov.length) {
+      return res.status(502).json({ error: 'OpenRouter roʻyxatidan mos model topilmadi' });
+    }
+
+    // Rejalar — modellar shularga ochiladi.
+    const { data: plans } = await admin.from('plans').select('id, code').eq('is_active', true);
+    const planIds = (plans ?? []).map((p) => p.id);
+
+    /*
+     * Yozishni service-role bilan bevosita bajaramiz.
+     *
+     * `admin_save_model` ichida `is_admin()` bor, u esa `auth.uid()` ga
+     * tayanadi — serverda u boʻsh. Admin ekanini yuqorida allaqachon
+     * tekshirdik, shuning uchun jadvalga toʻgʻridan-toʻgʻri yozamiz.
+     */
+    const { data: rateRow } = await admin
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'credit_rate')
+      .maybeSingle();
+    const usdPerCredit = Number(rateRow?.value?.usd_per_credit) || 0.00005;
+    const markup = Number(rateRow?.value?.markup) || 2;
+    const kredit = (usd) => Math.round((usd * markup) / usdPerCredit);
+
+    const qoshildi = [];
+    for (const item of tanlov) {
+      const row = {
+        slug: item.slug,
+        label: item.label,
+        description: item.description,
+        provider: 'openrouter',
+        upstream: item.upstream,
+        role: 'chat',
+        cost_input_usd: Number(item.model.input_usd.toFixed(6)),
+        cost_output_usd: Number(item.model.output_usd.toFixed(6)),
+        input_credits_per_mtok: kredit(item.model.input_usd),
+        output_credits_per_mtok: kredit(item.model.output_usd),
+        supports_tools: true,
+        supports_vision: item.model.supports_vision,
+        context_tokens: item.model.context,
+        enabled: true,
+        is_daily: Boolean(item.is_daily),
+        sort: item.sort,
+      };
+
+      const { error } = await admin.from('ai_models').upsert(row, { onConflict: 'slug' });
+      if (error) return res.status(400).json({ error: error.message });
+
+      if (item.is_daily) {
+        await admin.from('ai_models').update({ is_daily: false }).neq('slug', item.slug).eq('is_daily', true);
+        await admin
+          .from('app_settings')
+          .upsert({ key: 'daily_model', value: { model: item.slug, quota: 30 } });
+      }
+
+      for (const planId of planIds) {
+        await admin.from('plan_models').upsert(
+          {
+            plan_id: planId,
+            model: item.slug,
+            role: 'chat',
+            input_credits_per_mtok: row.input_credits_per_mtok,
+            output_credits_per_mtok: row.output_credits_per_mtok,
+            call_credits: 0,
+            enabled: true,
+          },
+          { onConflict: 'plan_id,model' },
+        );
+      }
+
+      qoshildi.push({
+        slug: item.slug,
+        label: item.label,
+        upstream: item.upstream,
+        narx: `$${item.model.input_usd.toFixed(3)} / $${item.model.output_usd.toFixed(3)}`,
+      });
+    }
+
+    res.json({ qoshildi, rejalar: planIds.length });
+  });
+
   /** Foydalanuvchiga ochiq modellar — ilovadagi tanlov roʻyxati. */
   app.get('/api/ai/v1beta/models', async (req, res) => {
     const user = await userFromToken((req.get('authorization') || '').replace(/^Bearer\s+/i, ''));

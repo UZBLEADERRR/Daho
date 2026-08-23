@@ -21,6 +21,7 @@ import {
   type StreamResult,
 } from './gemini';
 import { cachedModels, geminiModel, getModels, type ModelInfo, type ModelRole } from './models';
+import { cloudReady } from './route';
 import { getState } from './store';
 import { recordUsage } from './usage';
 import type { Attachment, ProviderConfig, RoleModels } from './types';
@@ -167,11 +168,19 @@ export function hasGemini(): boolean {
 }
 
 /**
- * Suhbat qilish mumkinmi. Gemini kaliti SHART EMAS — faqat OpenRouter
- * (yoki boshqa provayder) ulangan boʻlsa ham ilova toʻliq gaplashadi.
+ * Suhbat qilish mumkinmi.
+ *
+ * Uch yoʻldan biri yetadi:
+ *   • Gemini kaliti;
+ *   • ulangan provayder (OpenRouter va h.k.);
+ *   • Daho hisobi — kalit serverda turadi.
+ *
+ * Uchinchisi yetishmasdi: egasi Railway’da OPENROUTER_API_KEY ni
+ * qoʻysa ham ilova «avval kalit kiriting» deb turaverardi, chunki
+ * faqat QURILMADAGI kalitlar tekshirilardi.
  */
 export function canChat(): boolean {
-  return hasGemini() || activeProviders().length > 0;
+  return hasGemini() || activeProviders().length > 0 || cloudReady();
 }
 
 /**

@@ -105,8 +105,17 @@ function ModelCosts({ onClose }: { onClose: () => void }) {
               </span>
             </div>
             <div className="tiny" style={{ marginTop: 4 }}>
-              {r.requests} soʻrov · {(r.inTokens / 1000).toFixed(1)}k kirish ·{' '}
+              {r.requests} soʻrov · jami {(r.inTokens / 1000).toFixed(1)}k kirish ·{' '}
               {(r.outTokens / 1000).toFixed(1)}k chiqish
+            </div>
+            {/*
+              «31.9k kirish» degan raqam bitta xabarga tegishli deb
+              tushunilardi. Aslida u 30 kunlik JAMI. Bitta soʻrovga
+              qancha tushgani muhimroq — shuni ham koʻrsatamiz.
+            */}
+            <div className="tiny">
+              bitta soʻrovga ≈ {Math.round(r.inTokens / Math.max(1, r.requests))} kirish /{' '}
+              {Math.round(r.outTokens / Math.max(1, r.requests))} chiqish token
             </div>
           </div>
         ))

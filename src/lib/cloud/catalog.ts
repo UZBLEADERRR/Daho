@@ -65,6 +65,22 @@ export interface CreditRate {
   markup: number;
 }
 
+async function serverCall<T>(path: string, method = 'GET'): Promise<T> {
+  if (!SERVER_URL) {
+    throw new Error(
+      'Daho serveri topilmadi. Ilovani Railway manzilidan oching yoki VITE_DAHO_SERVER_URL ni sozlang.',
+    );
+  }
+  const token = await accessToken();
+  const res = await fetch(`${SERVER_URL}${path}`, {
+    method,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error(data?.error ?? `Server xatosi (${res.status})`);
+  return data;
+}
+
 async function serverGet<T>(path: string): Promise<T> {
   if (!SERVER_URL) {
     throw new Error(
@@ -210,4 +226,20 @@ export async function unlistedModels(): Promise<UnlistedModel[]> {
   const { data, error } = await client().rpc('unlisted_models');
   if (error) throw new Error(error.message);
   return (data ?? []) as UnlistedModel[];
+}
+
+/**
+ * Tez sozlash.
+ *
+ * OpenRouter roʻyxatidan uchta model tanlab katalogga qoʻshadi va
+ * barcha tarifga ochadi: bepul zaxira (Daho Daily), tezkor va kuchli.
+ * Model nomlarini qoʻlda yozish shart emas — roʻyxat jonli olinadi.
+ */
+export interface BootstrapResult {
+  qoshildi: Array<{ slug: string; label: string; upstream: string; narx: string }>;
+  rejalar: number;
+}
+
+export function bootstrapCatalog(): Promise<BootstrapResult> {
+  return serverCall<BootstrapResult>('/api/catalog/bootstrap', 'POST');
 }
