@@ -392,10 +392,6 @@ export default function App() {
             setAccountOpen(false);
             setAdminOpen(true);
           }}
-          onOpenSettings={() => {
-            setAccountOpen(false);
-            setSettingsOpen(true);
-          }}
         />
       )}
       {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}

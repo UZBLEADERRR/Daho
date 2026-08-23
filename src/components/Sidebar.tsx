@@ -43,6 +43,18 @@ export function Sidebar({
     }
   });
   const cloud = useCloud();
+  /** Qaysi suhbatning menyusi ochiq / qaysisi tahrirlanmoqda. */
+  const [menu, setMenu] = useState<string | null>(null);
+  const [tahrir, setTahrir] = useState<string | null>(null);
+
+  const saqla = (id: string, nom: string) => {
+    const yangi = nom.trim();
+    setTahrir(null);
+    if (!yangi) return;
+    setState((s) => ({
+      chats: s.chats.map((c) => (c.id === id ? { ...c, title: yangi.slice(0, 80) } : c)),
+    }));
+  };
 
   return (
     <>
@@ -142,26 +154,64 @@ export function Sidebar({
               className={tab === 'chat' && c.id === activeChatId ? 'chat-row on' : 'chat-row'}
               key={c.id}
             >
+              {tahrir === c.id ? (
+                /*
+                 * Nomni joyida tahrirlash. Alohida oyna ochilmaydi:
+                 * suhbat nomini oʻzgartirish — bir soniyalik ish.
+                 */
+                <input
+                  className="chat-rename"
+                  autoFocus
+                  defaultValue={c.title}
+                  onBlur={(e) => saqla(c.id, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saqla(c.id, e.currentTarget.value);
+                    if (e.key === 'Escape') setTahrir(null);
+                  }}
+                />
+              ) : (
+                <button
+                  onClick={() => {
+                    setState({ activeChatId: c.id });
+                    onGoChat();
+                    onClose();
+                  }}
+                >
+                  {c.title}
+                  <div className="tiny">{relativeTime(c.updatedAt)}</div>
+                </button>
+              )}
+
               <button
-                onClick={() => {
-                  setState({ activeChatId: c.id });
-                  onGoChat();
-                  onClose();
-                }}
-              >
-                {c.title}
-                <div className="tiny">{relativeTime(c.updatedAt)}</div>
-              </button>
-              <button
-                className="icon-btn"
+                className="icon-btn chat-more"
                 style={{ width: 30, height: 30 }}
-                onClick={() => {
-                  if (window.confirm(`"${c.title}" suhbati oʻchirilsinmi?`)) deleteChat(c.id);
-                }}
-                aria-label="Oʻchirish"
+                onClick={() => setMenu(menu === c.id ? null : c.id)}
+                aria-label="Amallar"
               >
-                <Trash size={15} />
+                ⋯
               </button>
+
+              {menu === c.id && (
+                <div className="chat-menu">
+                  <button
+                    onClick={() => {
+                      setMenu(null);
+                      setTahrir(c.id);
+                    }}
+                  >
+                    ✏️ Nomini oʻzgartirish
+                  </button>
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      setMenu(null);
+                      if (window.confirm(`«${c.title}» suhbati oʻchirilsinmi?`)) deleteChat(c.id);
+                    }}
+                  >
+                    <Trash size={14} /> Oʻchirish
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

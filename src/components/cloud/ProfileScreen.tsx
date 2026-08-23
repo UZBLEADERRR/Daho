@@ -18,10 +18,11 @@ import {
 import { clearSyncShadow, getSyncState, syncNow } from '../../lib/cloud/sync';
 import { JobsTab, LimitBars, ModelList, PlansTab, ProfileBlock, UsageTab } from './AccountSheet';
 import { InviteList } from './GroupPanel';
+import { Settings } from '../Settings';
 import { Close } from '../Icons';
 import { toast } from '../ui';
 
-type Page = 'bosh' | 'profil' | 'tarif' | 'sarf' | 'fon' | 'modellar' | 'sync';
+type Page = 'bosh' | 'profil' | 'tarif' | 'sarf' | 'fon' | 'modellar' | 'sync' | 'sozlama';
 
 const SARLAVHA: Record<Page, string> = {
   bosh: 'Profil',
@@ -31,6 +32,7 @@ const SARLAVHA: Record<Page, string> = {
   fon: 'Fon vazifalari',
   modellar: 'Modellar',
   sync: 'Sinxronizatsiya',
+  sozlama: 'Sozlamalar',
 };
 
 /** Ism yoki pochtadan bitta harf — avatar oʻrniga. */
@@ -63,11 +65,9 @@ function Qator({
 export function ProfileScreen({
   onClose,
   onOpenAdmin,
-  onOpenSettings,
 }: {
   onClose: () => void;
   onOpenAdmin?: () => void;
-  onOpenSettings?: () => void;
 }) {
   const { account } = useCloud();
   const [page, setPage] = useState<Page>('bosh');
@@ -136,9 +136,8 @@ export function ProfileScreen({
 
             <div className="prof-group">Tizim</div>
             <div className="prof-list">
-              {onOpenSettings && (
-                <Qator emoji="⚙️" label="Sozlamalar" onClick={onOpenSettings} />
-              )}
+              {/* Sozlamalar endi shu yerda — alohida oyna emas. */}
+              <Qator emoji="⚙️" label="Sozlamalar" onClick={() => setPage('sozlama')} />
               {account.is_admin && (
                 <>
                   <Qator emoji="📊" label="Sarf tarixi" onClick={() => setPage('sarf')} />
@@ -184,6 +183,9 @@ export function ProfileScreen({
         {page === 'sarf' && <UsageTab />}
         {page === 'fon' && <JobsTab />}
         {page === 'modellar' && <ModelList />}
+        {page === 'sozlama' && (
+          <Settings inline onClose={() => setPage('bosh')} onOpenAccount={() => setPage('bosh')} />
+        )}
         {page === 'sync' && (
           <div className="prof-card">
             <div className="tiny">

@@ -7,6 +7,7 @@ import { learnFromChat } from './memory';
 import { completeAny } from './providers';
 import { streamResilient } from './resilient';
 import type { GeminiContent, GeminiPart } from './gemini';
+import { catalogLabel } from './modelname';
 import { getState, setState } from './store';
 import { TOOL_DECLARATIONS, buildContextSummary, executeTool } from './tools';
 import { compactContents } from './compact';
@@ -113,24 +114,6 @@ boʻlimidan qoʻshishni ayt.`;
  * Bu qoida prompt oxirida takrorlanadi ham: uzun kontekstda birinchi
  * qatorlar eʼtibordan qolib ketishi mumkin.
  */
-let katalogNomlari: Record<string, string> = {};
-
-/**
- * Slug uchun koʻrinadigan Daho nomi.
- *
- * Katalog fon rejimida bir marta oʻqiladi va shu yerda saqlanadi:
- * har bir soʻrovda bazaga borish shart emas. Nom topilmasa
- * «Daho» qaytadi — provayder nomi HECH QACHON qaytmaydi.
- */
-export function noteCatalogNames(rows: Array<{ slug: string; label: string }>): void {
-  katalogNomlari = Object.fromEntries(rows.map((r) => [r.slug, r.label]));
-}
-
-function dahoLabel(model: string): string {
-  const slug = String(model || '').split('/').pop() ?? '';
-  return katalogNomlari[model] ?? katalogNomlari[slug] ?? 'Daho';
-}
-
 function identityBlock(label: string): string {
   return `## Kiming sen — qatʼiy qoida
 Sening isming **${label}**. Sen Daho platformasining modelisan.
@@ -244,7 +227,16 @@ YouTube, Telegram) — bu odatda KOʻP ishni bildiradi. Shunday ishla:
 Narx, muddat, shaxsiy shart haqidagi savolga OʻZINGDAN javob berma —
 foydalanuvchidan aniqlab ol yoki «egasi javob beradi» deb yoz.
 `;
-const B_USLUB = `## Uslub
+const B_USLUB = `## Uslub va koʻrinish
+- **Tuzilma bilan yoz.** Javob uch qatordan uzun boʻlsa — sarlavhalarga boʻl
+  (\`##\`, \`###\`), roʻyxat va jadvaldan foydalan. «Matn devori» qilma.
+- Muhim soʻz va xulosani \`**qalin**\` qil, lekin har jumlada emas.
+- Taqqoslash, narx, xususiyat — JADVAL bilan ber.
+- Kod, buyruq, fayl nomi — kod blokida (\`\`\`) yoki \`teskari tirnoq\` ichida.
+- Qadamlar boʻlsa — raqamlangan roʻyxat, har qadam bitta ish.
+- Uzun javob oxirida bir jumlalik xulosa qoldir.
+
+## Uslub
 - **TIL — foydalanuvchi tilida.** Qaysi tilda yozsa, oʻsha tilda javob ber:
   ingliz tilida soʻrasa — ingliz tilida, rus tilida soʻrasa — rus tilida.
   «Ingliz tilida yoz», «write in English», «답변은 한국어로» kabi koʻrsatma
@@ -435,7 +427,7 @@ function systemPrompt(
    * boʻlsa oʻsha, boʻlmasa oddiygina «Daho». Provayderdagi haqiqiy
    * nom bu yerga hech qachon tushmaydi.
    */
-  const modelNomi = dahoLabel(settings.model);
+  const modelNomi = catalogLabel(settings.model) || 'Daho';
 
   const bosh = [
     'Sen — "Daho", shaxsiy oʻquv yordamchisi va agentsan.'

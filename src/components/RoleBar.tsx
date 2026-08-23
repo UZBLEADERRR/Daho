@@ -11,6 +11,7 @@
  */
 import { useState } from 'react';
 import { usableChatModels } from '../lib/providers';
+import { canSeeRawModels, displayModel } from '../lib/modelname';
 import { updateSettings, useStore } from '../lib/store';
 import type { RoleModels } from '../lib/types';
 import { Sheet } from './ui';
@@ -21,12 +22,6 @@ const ROLLAR: Array<{ id: keyof RoleModels; label: string; emoji: string; hint: 
   { id: 'dizayn', label: 'Dizayn', emoji: '🎨', hint: 'koʻrinish va uslub' },
   { id: 'tekshir', label: 'Tekshir', emoji: '🔍', hint: 'xatolarni topadi' },
 ];
-
-/** Uzun nomni qisqartiradi: `openai/gpt-4o-mini` → `gpt-4o-mini`. */
-function qisqa(ref: string): string {
-  const nom = String(ref || '').split('/').pop() ?? '';
-  return nom.replace(/^gemini-/, '') || 'avto';
-}
 
 export function RoleBar() {
   const roleModels = useStore((s) => s.settings.roleModels);
@@ -50,7 +45,7 @@ export function RoleBar() {
             >
               <span>{r.emoji}</span>
               {r.label}
-              <i>{qiymat ? qisqa(qiymat) : auto ? 'avto' : 'umumiy'}</i>
+              <i>{qiymat ? displayModel(qiymat) : auto ? 'avto' : 'umumiy'}</i>
             </button>
           );
         })}
@@ -87,8 +82,10 @@ export function RoleBar() {
             >
               <span className="action-icon">🧠</span>
               <span className="grow" style={{ minWidth: 0 }}>
-                <b>{m.label}</b>
-                <div className="tiny">{m.providerLabel ?? 'Gemini'}</div>
+                <b>{displayModel(m.id)}</b>
+                {canSeeRawModels() && (
+                  <div className="tiny">{m.providerLabel ?? 'Gemini'}</div>
+                )}
               </span>
             </button>
           ))}

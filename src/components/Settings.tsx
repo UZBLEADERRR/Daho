@@ -10,7 +10,6 @@ import { applyBackupSetting, cloudEnabled, useCloud } from '../lib/cloud';
 import { byRole, cachedModels, geminiModel, getModels, pickModel, type ModelInfo } from '../lib/models';
 import { useInstallPrompt } from '../lib/pwa';
 import { aiAvailable, resolveSource } from '../lib/route';
-import type { AiSource } from '../lib/types';
 import {
   VOICES,
   checkMicrophone,
@@ -77,11 +76,13 @@ const TTS_LANGS = [
 ];
 
 interface SettingsProps {
+  /** Profil ichida sahifa boʻlib turadi — oyna emas. */
+  inline?: boolean;
   onClose: () => void;
   onOpenAccount: () => void;
 }
 
-export function Settings({ onClose, onOpenAccount }: SettingsProps) {
+export function Settings({ onClose, onOpenAccount, inline }: SettingsProps) {
   const settings = useStore((s) => s.settings);
   const cloud = useCloud();
   const install = useInstallPrompt();
@@ -204,22 +205,22 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
               : 'Kirish yoki roʻyxatdan oʻtish'}
           </button>
 
-          <div className="field" style={{ marginTop: 12 }}>
-            <label>AI qayerdan ishlaydi</label>
-            <select
-              value={settings.aiSource}
-              onChange={(e) => updateSettings({ aiSource: e.target.value as AiSource })}
-            >
-              <option value="auto">Avtomatik — kalit boʻlsa oʻzimniki, boʻlmasa obuna</option>
-              <option value="byok">Faqat oʻz API kalitim</option>
-              <option value="cloud">Faqat Daho Cloud obunasi</option>
-            </select>
-            <div className="tiny" style={{ marginTop: 6 }}>
+          {/*
+            * «AI qayerdan ishlaydi» tanlovi olib tashlandi.
+            *
+            * Bulut yoqilgan boʻlsa oddiy foydalanuvchi baribir faqat
+            * shlyuz orqali ishlaydi (`resolveSource` da qatʼiy
+            * chegara), yaʼni bu tanlov unga hech nima bermasdi —
+            * faqat chalgʻitardi. Admin esa oʻz kalitini «AI modellar»
+            * boʻlimida kiritadi.
+            */}
+          {ishlabChiquvchi && (
+            <div className="tiny" style={{ marginTop: 10 }}>
               Hozir ishlatilmoqda:{' '}
               <b>{resolveSource(settings.apiKey) === 'cloud' ? 'Daho Cloud' : 'oʻz kalitingiz'}</b>
               {cloud.account ? ` · qolgan kredit: ${Math.round(cloud.account.balance)}` : ''}
             </div>
-          </div>
+          )}
 
           <Switch
             on={settings.cloudBackup}
@@ -837,15 +838,22 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
   const current = groups.find((g) => g.id === openGroup);
 
   if (current) {
-    return (
+    return inline ? (
+      <div>
+        <button className="btn ghost mini" onClick={() => setOpenGroup(null)}>
+          ‹ Sozlamalar
+        </button>
+        <div style={{ marginTop: 10 }}>{current.body}</div>
+      </div>
+    ) : (
       <Sheet title={current.title} onClose={() => setOpenGroup(null)}>
         {current.body}
       </Sheet>
     );
   }
 
-  return (
-    <Sheet title="Sozlamalar" onClose={onClose}>
+  const ichki = (
+    <>
       {install.available && (
         <button
           className="btn wide"
@@ -875,8 +883,10 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
       <div className="tiny set-foot">
         Daho 2.0
       </div>
-    </Sheet>
+    </>
   );
+
+  return inline ? ichki : <Sheet title="Sozlamalar" onClose={onClose}>{ichki}</Sheet>;
 }
 
 /* ------------------------------------------------------------------ */

@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from 'react';
 import { publicCatalog, type PublicModel } from '../lib/cloud/catalog';
-import { noteCatalogNames } from '../lib/agent';
+import { noteCatalogNames } from '../lib/modelname';
 import { cloudEnabled, useCloud } from '../lib/cloud';
 import { updateSettings, useStore } from '../lib/store';
 import { usableChatModels } from '../lib/providers';

@@ -5695,3 +5695,162 @@ iframe {
   background: color-mix(in srgb, var(--danger) 18%, transparent);
   color: var(--danger);
 }
+
+/* ---------- Yon paneldagi suhbat qatori ---------- */
+
+.chat-row {
+  position: relative;
+}
+
+.chat-rename {
+  flex: 1;
+  min-width: 0;
+  margin: 2px 4px;
+  padding: 6px 9px;
+  font-size: 13.5px;
+  border-radius: 8px;
+}
+
+.chat-more {
+  font-size: 17px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+/*
+ * Kichik menyu. Ilgari qatorda faqat savat turardi: nomini
+ * oʻzgartirib boʻlmasdi va tasodifan bosib oʻchirib yuborish oson edi.
+ */
+.chat-menu {
+  position: absolute;
+  right: 6px;
+  top: 100%;
+  z-index: 20;
+  min-width: 200px;
+  padding: 5px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  animation: fade 0.12s ease;
+}
+
+.chat-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: var(--text);
+  text-align: left;
+}
+
+.chat-menu button:active {
+  background: var(--surface-2);
+}
+
+.chat-menu button.danger {
+  color: var(--danger);
+}
+
+/* ================================================================== */
+/*  Javob tipografiyasi — o'qishga qulay                               */
+/* ================================================================== */
+
+/*
+ * Maqsad: uzun javob «matn devori» boʻlib qolmasin. Sarlavha koʻzga
+ * tashlansin, roʻyxat nafas olsin, kod bloki va jadval ajralib tursin.
+ */
+.md {
+  line-height: 1.62;
+}
+
+.md h1,
+.md h2 {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.md h2 + p,
+.md h3 + p {
+  margin-top: 6px;
+}
+
+.md ul,
+.md ol {
+  padding-left: 22px;
+  margin: 0 0 12px;
+}
+
+.md li {
+  margin-bottom: 6px;
+}
+
+.md li > ul,
+.md li > ol {
+  margin-top: 6px;
+}
+
+/* Qalin matn — ajralib tursin, lekin qichqirmasin. */
+.md strong {
+  font-weight: 640;
+  color: var(--text);
+}
+
+.md blockquote {
+  margin: 0 0 12px;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  color: var(--muted);
+}
+
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 20px 0;
+}
+
+/* Kod bloki — chegara va ichki boʻshliq bilan. */
+.md pre {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.md pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.md table {
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.md th,
+.md td {
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  text-align: left;
+}
+
+.md th {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+/* Birinchi sarlavha yuqorida ortiqcha boʻshliq qoldirmasin. */
+.md > h1:first-child,
+.md > h2:first-child,
+.md > h3:first-child {
+  margin-top: 0;
+}

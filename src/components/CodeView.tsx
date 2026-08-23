@@ -13,7 +13,7 @@ import { saveBytes } from '../lib/exporter';
 import { getRepo, listRepos, whoAmI, type GhRepo } from '../lib/github';
 import { saveLinkApp } from '../lib/creations';
 import { describeDiff, deleteSnapshot, restore } from '../lib/checkpoint';
-import { modelLabel, parseRef, pickForProject, usableChatModels } from '../lib/providers';
+import { modelLabel, pickForProject, usableChatModels } from '../lib/providers';
 import { TEMPLATES } from '../lib/templates';
 import { Markdown } from './Markdown';
 import { IFRAME_ALLOW, IFRAME_SANDBOX, sandboxDocument } from '../lib/sandbox';
@@ -34,6 +34,7 @@ import { Empty, Sheet, toast } from './ui';
 import { ProjectGroup } from './cloud/GroupPanel';
 import { pullGroup, pushGroup } from '../lib/cloud/groupsync';
 import { RoleBar } from './RoleBar';
+import { displayModel } from '../lib/modelname';
 import { cloudEnabled } from '../lib/cloud';
 
 /* ------------------------------------------------------------------ */
@@ -314,9 +315,10 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
               {project.repo ? ` · ${project.repo.owner}/${project.repo.repo}` : ''}
             </span>
           </div>
+          {/* Provayder nomi emas, Daho nomi — sotuv siri oshkor boʻlmasin. */}
           <button className="model-chip" onClick={() => setModelPicker(true)}>
             {pinned ? '📌 ' : auto ? '⚡ ' : ''}
-            {parseRef(activeModel).model.replace(/^gemini-/, '')}
+            {displayModel(activeModel)}
           </button>
         </div>
 
@@ -417,12 +419,6 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
 
 /* ---------- Suhbat ---------- */
 
-const CODE_STARTERS = [
-  'Portfolio sayt yasab ber',
-  'Bosh sahifaga qorongʻi/yorugʻ tugmasi qoʻsh',
-  'GitHub’dagi repolarimni koʻrsat',
-  'Loyihani internetga chiqar',
-];
 
 function CodeChat({ project }: { project: CodeProject }) {
   const artifacts = useStore((s) => s.artifacts);
@@ -537,18 +533,6 @@ function CodeChat({ project }: { project: CodeProject }) {
               title="Nima quramiz?"
               hint="Fayllarni oʻzim oʻqiyman va yozaman, GitHub bilan ishlayman, tayyor boʻlgach internetga chiqarib havola beraman."
             />
-            <div style={{ display: 'grid', gap: 8 }}>
-              {CODE_STARTERS.map((s) => (
-                <button
-                  key={s}
-                  className="btn ghost"
-                  style={{ justifyContent: 'flex-start', textAlign: 'left' }}
-                  onClick={() => void send(s)}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         ) : (
           <div className="msgs">
