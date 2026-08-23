@@ -858,13 +858,36 @@ function SchemaCheck() {
 
   if (holat !== 'eski') return null;
 
+  /*
+   * Ikki xil nosozlik bir xil koʻrinadi, lekin davosi boshqa:
+   *   «schema cache» — jadval yoʻq YOKI PostgREST hali koʻrmagan;
+   *   «permission denied» — jadval bor, ammo grant berilmagan.
+   */
+  const ruxsat = /permission denied|not authorized|42501/i.test(xato);
+
   return (
     <div className="admin-alert">
       <b>Baza yangilanmagan</b>
-      <div className="tiny" style={{ marginTop: 4 }}>
-        Model katalogi jadvali topilmadi, shuning uchun model qoʻshish ishlamaydi.
-        Supabase → SQL Editor ga <b>supabase/setup.sql</b> faylini qoʻyib bir marta
-        «Run» bosing, soʻng bu sahifani yangilang.
+      {ruxsat ? (
+        <div className="tiny" style={{ marginTop: 4 }}>
+          Katalog jadvali bor, ammo unga ruxsat berilmagan. Supabase → SQL Editor da
+          <b> supabase/setup.sql</b> ni qaytadan «Run» qiling — u kerakli
+          <code> grant</code> larni qoʻyadi.
+        </div>
+      ) : (
+        <div className="tiny" style={{ marginTop: 4 }}>
+          Model katalogi jadvali topilmadi, shuning uchun model qoʻshish ishlamaydi.
+          Supabase → SQL Editor ga <b>supabase/setup.sql</b> faylini qoʻyib bir marta
+          «Run» bosing, soʻng bu sahifani yangilang.
+        </div>
+      )}
+      <div className="tiny" style={{ marginTop: 6 }}>
+        Agar SQL ni allaqachon ishlatgan boʻlsangiz — Supabase’ning sxema keshi
+        kechikkan boʻlishi mumkin. SQL Editor da bir qatorni bajaring:
+        <br />
+        <code>notify pgrst, 'reload schema';</code>
+        <br />
+        soʻng sahifani yangilang.
       </div>
       <div className="tiny" style={{ marginTop: 6, opacity: 0.7 }}>
         {xato}

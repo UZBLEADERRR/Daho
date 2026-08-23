@@ -2905,3 +2905,6 @@ end;
 $$;
 
 grant execute on function public.unlisted_models() to authenticated;
+
+-- PostgREST sxema keshini yangilash: yangi jadval darrov koʻrinsin.
+notify pgrst, 'reload schema';

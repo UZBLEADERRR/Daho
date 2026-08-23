@@ -17,6 +17,7 @@ import {
   deleteAiModel,
   openrouterCatalog,
   providerStatus,
+  serverHealth,
   saveAiModel,
   saveCreditRate,
   toCredits,
@@ -25,6 +26,7 @@ import {
   type CatalogModel,
   type CreditRate,
   type ProviderStatus,
+  type ServerHealth,
   type UnlistedModel,
 } from '../../lib/cloud/catalog';
 import { adminPlans } from '../../lib/cloud/admin';
@@ -409,9 +411,11 @@ function Catalog({ onPick }: { onPick: (m: CatalogModel) => void }) {
 export function ModelsAdmin() {
   const [models, setModels] = useState<AiModel[]>([]);
   const [plans, setPlans] = useState<CloudPlan[]>([]);
-  const [rate, setRate] = useState<CreditRate>({ usd_per_credit: 0.00002, markup: 2 });
+  const [rate, setRate] = useState<CreditRate>({ usd_per_credit: 0.00005, markup: 2 });
   const [providers, setProviders] = useState<ProviderStatus | null>(null);
   const [providerError, setProviderError] = useState('');
+  const [health, setHealth] = useState<ServerHealth | null>(null);
+  const [healthError, setHealthError] = useState('');
   const [unlisted, setUnlisted] = useState<UnlistedModel[]>([]);
   const [editing, setEditing] = useState<AiModel | null>(null);
   const [showCatalog, setShowCatalog] = useState(false);
@@ -425,6 +429,9 @@ export function ModelsAdmin() {
     void providerStatus()
       .then(setProviders)
       .catch((err) => setProviderError(String((err as Error)?.message ?? err)));
+    void serverHealth()
+      .then(setHealth)
+      .catch((err) => setHealthError(String((err as Error)?.message ?? err)));
   };
 
   useEffect(load, []);
@@ -448,6 +455,28 @@ export function ModelsAdmin() {
 
   return (
     <div>
+      {/* --- server holati --- */}
+      {/*
+        Nega birinchi: server sozlanmagan boʻlsa pastdagi hamma narsa
+        xato beradi va sabab koʻrinmaydi. Bu yerda qaysi Railway
+        oʻzgaruvchisi yoʻqligi toʻgʻridan-toʻgʻri yozilib turadi.
+      */}
+      {healthError ? (
+        <div className="admin-alert">
+          <b>Server javob bermadi</b>
+          <div className="tiny" style={{ marginTop: 4 }}>{healthError}</div>
+        </div>
+      ) : health && !health.ok ? (
+        <div className="admin-alert">
+          <b>Server sozlanmagan</b>
+          <div className="tiny" style={{ marginTop: 4 }}>
+            Railway → Variables da quyidagilar yoʻq:{' '}
+            <b>{health.yetishmayapti.join(', ')}</b>. Ularni qoʻyib xizmatni qayta
+            ishga tushiring — shusiz katalog va «Tez sozlash» ishlamaydi.
+          </div>
+        </div>
+      ) : null}
+
       {/* --- provayder kalitlari --- */}
       <div className="section-label">Provayder kalitlari (Railway muhitida)</div>
       {providerError ? (

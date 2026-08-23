@@ -96,6 +96,35 @@ async function serverGet<T>(path: string): Promise<T> {
   return data;
 }
 
+export interface ServerHealth {
+  ok: boolean;
+  yetishmayapti: string[];
+  xotira_mb?: number;
+  ish_vaqti_s?: number;
+}
+
+/**
+ * Railway’dagi server holati.
+ *
+ * Token talab qilmaydi — aynan shuning uchun foydali: agar server
+ * SUPABASE_URL siz turgan boʻlsa, boshqa manzillar javob bera olmaydi,
+ * bu esa beradi va sababini aytadi.
+ */
+export async function serverHealth(): Promise<ServerHealth> {
+  if (!SERVER_URL) throw new Error('Daho serveri manzili sozlanmagan');
+  const res = await fetch(`${SERVER_URL}/health`);
+  const data = (await res.json().catch(() => ({}))) as Partial<ServerHealth>;
+  if (!res.ok && !Array.isArray(data.yetishmayapti)) {
+    throw new Error(`Server javob bermadi (${res.status})`);
+  }
+  return {
+    ok: Boolean(data.ok),
+    yetishmayapti: data.yetishmayapti ?? [],
+    xotira_mb: data.xotira_mb,
+    ish_vaqti_s: data.ish_vaqti_s,
+  };
+}
+
 /** Qaysi provayder kaliti serverda bor. Kalitning oʻzi hech qachon kelmaydi. */
 export async function providerStatus(): Promise<ProviderStatus> {
   const data = await serverGet<{ providers: ProviderStatus }>('/api/providers');
@@ -164,7 +193,7 @@ export async function creditRate(): Promise<CreditRate> {
   if (error) throw new Error(error.message);
   const value = (data?.value ?? {}) as Partial<CreditRate>;
   return {
-    usd_per_credit: Number(value.usd_per_credit ?? 0.00002),
+    usd_per_credit: Number(value.usd_per_credit ?? 0.00005),
     markup: Number(value.markup ?? 2),
   };
 }
@@ -178,7 +207,7 @@ export async function saveCreditRate(rate: CreditRate): Promise<void> {
 
 /** Tannarxdan sotuv narxini hisoblaydi (bazadagi funksiya bilan bir xil). */
 export function toCredits(usdPerMtok: number, rate: CreditRate): number {
-  const perCredit = rate.usd_per_credit || 0.00002;
+  const perCredit = rate.usd_per_credit || 0.00005;
   return Math.round(((usdPerMtok || 0) * (rate.markup || 1)) / perCredit);
 }
 

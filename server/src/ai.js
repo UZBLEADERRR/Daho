@@ -15,7 +15,7 @@
  * Ular hech qachon bazaga yozilmaydi va brauzerga chiqmaydi.
  */
 
-import { env } from './env.js';
+import { env, missing } from './env.js';
 import { createCache, createGate, rateLimit } from './limits.js';
 import { adminClient, userFromToken } from './supabase.js';
 import { fromOpenAi, streamTranslator, toOpenAi, usageFrom } from './translate.js';
@@ -175,21 +175,60 @@ function kindOf(method, body) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Kim soʻrayapti                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Soʻrov egasini aniqlaydi va nosozlikni toʻgʻri nomlaydi.
+ *
+ * Ilgari bu yerdagi har bir manzil «Avval tizimga kiring» qaytarardi.
+ * Agar Railway muhitida SUPABASE_URL yoki SUPABASE_SERVICE_ROLE_KEY
+ * qoʻyilmagan boʻlsa, tokenni tekshirib boʻlmaydi — shu sababli
+ * TIZIMGA KIRGAN admin ham oʻsha javobni koʻrardi va nosozlikni
+ * oʻzidan qidirardi. Endi uch holat ajratilgan:
+ *   503 — server sozlanmagan (qaysi oʻzgaruvchi yoʻqligi aytiladi);
+ *   401 — token umuman yuborilmagan (haqiqatan kirilmagan);
+ *   401 — token yaroqsiz yoki muddati oʻtgan (boshqa matn).
+ */
+async function whoIs(req) {
+  const gaps = [];
+  if (!env.supabaseUrl) gaps.push('SUPABASE_URL');
+  if (!env.serviceKey) gaps.push('SUPABASE_SERVICE_ROLE_KEY');
+  if (gaps.length) {
+    return {
+      status: 503,
+      body: {
+        error: `Server sozlanmagan: Railway muhitida ${gaps.join(' va ')} yoʻq.`,
+        yetishmayapti: missing(),
+      },
+    };
+  }
+
+  const token = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!token) return { status: 401, body: { error: 'Avval tizimga kiring' } };
+
+  const user = await userFromToken(token);
+  if (!user) return { status: 401, body: { error: 'Sessiya muddati tugagan — qaytadan kiring' } };
+  return { user, token };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Express ulagichi                                                   */
 /* ------------------------------------------------------------------ */
 
 export function mountAi(app) {
   /** Qaysi provayder kaliti bor — panelda koʻrsatiladi. */
   app.get('/api/providers', async (req, res) => {
-    const user = await userFromToken((req.get('authorization') || '').replace(/^Bearer\s+/i, ''));
-    if (!user) return res.status(401).json({ error: 'Avval tizimga kiring' });
+    const who = await whoIs(req);
+    if (!who.user) return res.status(who.status).json(who.body);
     res.json({ providers: providerStatus() });
   });
 
   /** OpenRouter katalogi — faqat admin uchun (tannarx koʻrinadi). */
   app.get('/api/catalog/openrouter', async (req, res) => {
-    const user = await userFromToken((req.get('authorization') || '').replace(/^Bearer\s+/i, ''));
-    if (!user) return res.status(401).json({ error: 'Avval tizimga kiring' });
+    const who = await whoIs(req);
+    if (!who.user) return res.status(who.status).json(who.body);
+    const user = who.user;
 
     const { data: isAdmin } = await adminClient().rpc('is_admin', { p_user: user.id });
     if (!isAdmin) return res.status(403).json({ error: 'Faqat admin' });
@@ -212,8 +251,9 @@ export function mountAi(app) {
    * OpenRouter’ning oʻzidan olinadi, shuning uchun eskirmaydi.
    */
   app.post('/api/catalog/bootstrap', async (req, res) => {
-    const user = await userFromToken((req.get('authorization') || '').replace(/^Bearer\s+/i, ''));
-    if (!user) return res.status(401).json({ error: 'Avval tizimga kiring' });
+    const who = await whoIs(req);
+    if (!who.user) return res.status(who.status).json(who.body);
+    const user = who.user;
 
     const admin = adminClient();
     const { data: isAdmin } = await admin.rpc('is_admin', { p_user: user.id });
@@ -357,8 +397,9 @@ export function mountAi(app) {
 
   /** Foydalanuvchiga ochiq modellar — ilovadagi tanlov roʻyxati. */
   app.get('/api/ai/v1beta/models', async (req, res) => {
-    const user = await userFromToken((req.get('authorization') || '').replace(/^Bearer\s+/i, ''));
-    if (!user) return res.status(401).json({ error: 'Avval tizimga kiring' });
+    const who = await whoIs(req);
+    if (!who.user) return res.status(who.status).json(who.body);
+    const user = who.user;
 
     const { data, error } = await adminClient().rpc('allowed_models', { p_user: user.id });
     if (error) return res.status(500).json({ error: error.message });
@@ -378,9 +419,9 @@ export function mountAi(app) {
    */
   app.post('/api/ai/v1beta/models/*', async (req, res) => {
     const started = Date.now();
-    const token = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
-    const user = await userFromToken(token);
-    if (!user) return res.status(401).json({ error: 'Avval tizimga kiring' });
+    const who = await whoIs(req);
+    if (!who.user) return res.status(who.status).json(who.body);
+    const user = who.user;
 
     const match = /^(.+):([A-Za-z]+)$/.exec(req.params[0] ?? '');
     if (!match) return res.status(404).json({ error: 'Bunday manzil yoʻq' });
