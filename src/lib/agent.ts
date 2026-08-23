@@ -3,14 +3,17 @@ import { connectorCatalog } from './connectors';
 import { isModelReadable } from './attach';
 import { extractArtifacts } from './artifacts';
 import { GeminiError } from './gemini';
-import { learnFromChat, memoryBlock } from './memory';
+import { learnFromChat } from './memory';
 import { completeAny } from './providers';
 import { streamResilient } from './resilient';
 import type { GeminiContent, GeminiPart } from './gemini';
 import { getState, setState } from './store';
 import { TOOL_DECLARATIONS, buildContextSummary, executeTool } from './tools';
 import { compactContents } from './compact';
-import { recapOf, refreshRecap } from './recap';
+import { buildContext } from './context/builder';
+import { cachedAnswer, remember } from './context/cache';
+import { refreshSummary } from './context/summary';
+import { refreshTopic, topicStale } from './context/topic';
 import { guessSkill, skillById, skillIndex, type Skill } from './skills';
 import {
   closedGroupsNote,
@@ -417,7 +420,6 @@ function systemPrompt(
     skill ? skill.instruction : '',
     skillIndex(skill?.id),
     closedGroupsNote(groups),
-    memoryBlock(),
     /*
      * Foydalanuvchining jadvali, vazifalari va loyihalari roʻyxati.
      * Har savolda yuborilsa katta joy egallaydi — «hosilani tushuntir»
@@ -494,14 +496,17 @@ function trimCode(text: string): string {
   });
 }
 
-export function toContents(messages: Message[], recap = '', recapUpto = 0): GeminiContent[] {
+export function toContents(
+  messages: Message[],
+  opts: { summaryUpto?: number; keepTurns?: number } = {},
+): GeminiContent[] {
   /*
    * Xulosaga tushgan xabarlar qayta yuborilmaydi — ular oʻrniga
-   * xulosaning oʻzi ketadi. Shuning uchun sarf suhbat uzunligiga
-   * deyarli bogʻliq boʻlmay qoladi.
+   * xulosaning oʻzi tizim koʻrsatmasiga qoʻshiladi. Shuning uchun
+   * sarf suhbat uzunligiga deyarli bogʻliq boʻlmay qoladi.
    */
-  const tail = recap ? messages.slice(Math.max(0, recapUpto)) : messages;
-  const recent = tail.slice(-MAX_HISTORY);
+  const tail = opts.summaryUpto ? messages.slice(Math.max(0, opts.summaryUpto)) : messages;
+  const recent = tail.slice(-(opts.keepTurns ?? MAX_HISTORY));
   const mediaFrom = Math.max(0, recent.length - KEEP_MEDIA);
 
   const out: GeminiContent[] = [];
@@ -547,19 +552,6 @@ export function toContents(messages: Message[], recap = '', recapUpto = 0): Gemi
   // Gemini birinchi xabar 'user' rolida bo'lishini talab qiladi.
   while (out.length && out[0].role !== 'user') out.shift();
 
-  if (recap) {
-    out.unshift({
-      role: 'user',
-      parts: [
-        {
-          text:
-            `## Suhbatning avvalgi qismi (qisqacha)\n${recap}\n\n`
-            + 'Bu — eslatma, yangi soʻrov emas. Javob berma, shunchaki hisobga ol.',
-        },
-      ],
-    });
-    out.splice(1, 0, { role: 'model', parts: [{ text: 'Tushundim.' }] });
-  }
   return out;
 }
 
@@ -673,12 +665,6 @@ export async function sendMessage(
   }));
 
   const chat = getState().chats.find((c) => c.id === chatId);
-  const xotira = recapOf(chat);
-  const contents = toContents(
-    (chat?.messages ?? []).filter((m) => m.id !== modelMsg.id),
-    xotira.text,
-    xotira.upto,
-  );
 
   const toolCalls: ToolCallRecord[] = [];
   /** Vositalar va model oqimidan kelgan rasm artifactlari */
@@ -721,6 +707,40 @@ export async function sendMessage(
   // Qaysi koʻrsatma boʻlimlari kerakligini soʻrovning oʻzidan aniqlaymiz.
   const signals = readSignals(text);
 
+  /*
+   * Kontekstni Context Builder yigʻadi: mavzu holati, MOS xotiralar
+   * (hammasi emas), suhbat xulosasi — hammasi token budjetiga
+   * sigʻdirilgan holda. Shu tufayli tarix qanchalik uzun boʻlishidan
+   * qatʼi nazar soʻrov hajmi bir xil boʻlib qoladi.
+   */
+  const built = buildContext(chat, text, '', { hasFiles: attachments.length > 0 });
+  const contents = toContents(
+    (chat?.messages ?? []).filter((m) => m.id !== modelMsg.id),
+    { summaryUpto: built.summaryUpto, keepTurns: built.keepTurns },
+  );
+  onStep?.(
+    built.report.memories
+      ? `${built.report.memories} ta tegishli xotira olindi`
+      : 'kontekst yigʻildi',
+  );
+
+  /*
+   * Tayyor javob bormi.
+   *
+   * Bir xil savolga ikkinchi marta pul toʻlash shart emas. Kesh faqat
+   * umumiy, vaqtga bogʻliq boʻlmagan savollarga ishlaydi va moslik
+   * juda baland boʻlgandagina — notoʻgʻri javob qaytarish keshsiz
+   * ishlashdan yomonroq.
+   */
+  if (!brief && !attachments.length) {
+    const tayyor = cachedAnswer(text);
+    if (tayyor) {
+      onStep?.('tayyor javob topildi');
+      patchMessage(chatId, modelMsg.id, { text: tayyor });
+      return { ok: true, text: tayyor };
+    }
+  }
+
   try {
     const maxRounds = toolRounds();
     for (let round = 0; round < maxRounds; round += 1) {
@@ -730,7 +750,9 @@ export async function sendMessage(
        */
       const names = toolNames(groups);
       const declarations = TOOL_DECLARATIONS.filter((t) => names.has(t.name));
-      const base = systemPrompt(groups, skill, signals);
+      const base = [systemPrompt(groups, skill, signals), ...built.blocks]
+        .filter(Boolean)
+        .join('\n\n');
       const instruction = brief
         ? `${base}\n\n## Ushbu soʻrov uchun maxsus vazifa\n${brief}`
         : base;
@@ -891,7 +913,12 @@ export async function sendMessage(
      * Eski qismni xulosaga aylantiramiz — keyingi soʻrov arzon tushsin.
      * Javob allaqachon berilgan, shuning uchun kutib turmaymiz.
      */
-    void refreshRecap(chatId);
+    // Vosita ishlatilmagan oddiy javobni keshga qoʻyamiz.
+    if (!toolCalls.length && !brief && !attachments.length) remember(text, accumulated);
+
+    void refreshSummary(chatId);
+    // «Qayerda edik?» — mavzu holati ham vaqti-vaqti bilan yangilanadi.
+    if (topicStale(getState().chats.find((c) => c.id === chatId))) void refreshTopic(chatId);
     return { ok: true, text: accumulated };
   } catch (err) {
     if (flushTimer) clearTimeout(flushTimer);

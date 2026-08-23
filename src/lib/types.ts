@@ -39,15 +39,26 @@ export interface Chat {
   title: string;
   messages: Message[];
   /**
-   * Suhbatning eski qismidan yigʻilgan qisqa xotira.
+   * Suhbatning eski qismidan yigʻilgan xotira.
    *
    * Usiz har soʻrovda butun tarix qayta yuborilardi va suhbat uzaygan
-   * sari narx oʻsib borardi. Endi eski xabarlar oʻrniga shu bir necha
-   * qator ketadi.
+   * sari narx oʻsib borardi. Endi eski xabarlar oʻrniga shu qisqa
+   * tuzilma ketadi.
+   *
+   * Ataylab TUZILMALI: erkin matnli xulosa har yangilanishda oʻzini
+   * ichiga olib, asta-sekin oʻn minglab tokenga aylanardi.
    */
-  recap?: string;
+  summary?: ChatSummary;
   /** Xulosa qaysi xabargacha yozilgani (indeks) */
   recapUpto?: number;
+  /**
+   * Mavzu holati — «qayerda edik?».
+   *
+   * Xulosa umumiy boʻlgani uchun oʻnlab xabardan keyin model joriy
+   * vazifani yoʻqotardi. Bu — kichik, tuzilmali va har doim yuboriladigan
+   * qism: maqsad, hozirgi ish, qarorlar, ochiq savollar.
+   */
+  topicState?: TopicState;
   createdAt: number;
   updatedAt: number;
 }
@@ -582,6 +593,31 @@ export interface Automation {
 }
 
 /** Daho foydalanuvchi haqida eslab qolgan doimiy fakt. */
+/** Suhbat xulosasi — maydonlari va band soni cheklangan. */
+export interface ChatSummary {
+  goal: string;
+  current_state: string;
+  important_facts: string[];
+  decisions: string[];
+  /** Yasalgan narsalar: ilova, hujjat, kitob… */
+  made: string[];
+  open_questions: string[];
+  next_step: string;
+}
+
+/** Suhbatning joriy holati — tuzilmali va chegaralangan. */
+export interface TopicState {
+  topic: string;
+  goal: string;
+  current_task: string;
+  entities: string[];
+  decisions: string[];
+  open_questions: string[];
+  updatedAt: number;
+  /** Qaysi xabarda yangilangani — qayta hisoblash vaqtini bilish uchun */
+  messageCount?: number;
+}
+
 export interface Memory {
   id: string;
   text: string;
