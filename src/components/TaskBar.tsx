@@ -26,8 +26,19 @@ const KIND_LABEL: Record<string, string> = {
  * tugmalarini yopib qoʻyardi. Bu qator hech narsani bosmaydi va matn
  * oʻqishga xalaqit bermaydi.
  */
-export function TaskBar() {
-  const tasks = useTasks();
+export function TaskBar({ hide }: { hide?: { kind: string; targetId: string } }) {
+  const all = useTasks();
+  /*
+   * Ekranda koʻrinib turgan ish bu yerda takrorlanmaydi.
+   *
+   * Suhbat yoki kod oynasida jarayon javob chiqadigan joyda —
+   * yuqorida — koʻrsatiladi. Pastda yana bir marta yozilsa ikki
+   * joyda bir xil narsa turadi va diqqatni boʻladi. Bu qator
+   * faqat FON ishlari uchun qoladi: kitob, video, avtomatlashtirish.
+   */
+  const tasks = hide
+    ? all.filter((t) => !(t.kind === hide.kind && t.targetId === hide.targetId))
+    : all;
   const [, tick] = useState(0);
 
   useEffect(() => {

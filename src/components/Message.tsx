@@ -1,4 +1,7 @@
 import { useMemo, useState } from 'react';
+import { Attachments } from './Attachments';
+import { ProcessTrail } from './ProcessTrail';
+import type { RunningTask } from '../lib/tasks';
 import { splitSegments, type Segment } from '../lib/artifacts';
 import { copyText, exportDocument, DOC_LABEL, type DocFormat } from '../lib/exporter';
 import { Markdown } from './Markdown';
@@ -19,6 +22,12 @@ import { Sheet, toast } from './ui';
 interface Props {
   message: Msg;
   streaming: boolean;
+  /**
+   * Hozir bajarilayotgan ish. Berilgan boʻlsa oddiy «yozilmoqda»
+   * nuqtalari oʻrniga qadamlar izi koʻrinadi — foydalanuvchi nima
+   * boʻlayotganini aynan shu yerda, javob chiqadigan joyda koʻradi.
+   */
+  task?: RunningTask;
   isLast: boolean;
   onOpenArtifact: (a: Artifact) => void;
   onOpenVideo: (id: string) => void;
@@ -28,6 +37,7 @@ interface Props {
 export function MessageView({
   message,
   streaming,
+  task,
   isLast,
   onOpenArtifact,
   onOpenVideo,
@@ -60,13 +70,7 @@ export function MessageView({
   if (message.role === 'user') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-        {!!message.attachments?.length && (
-          <div className="attach-grid" style={{ justifyContent: 'flex-end' }}>
-            {message.attachments.map((a, i) => (
-              <img key={i} src={`data:${a.mimeType};base64,${a.data}`} alt="" />
-            ))}
-          </div>
-        )}
+        {!!message.attachments?.length && <Attachments items={message.attachments} />}
         {message.text && (
           <div
             className="msg user"
@@ -186,7 +190,7 @@ export function MessageView({
 
       {message.videoId && <VideoCard projectId={message.videoId} onOpen={onOpenVideo} />}
 
-      {streaming && <span className="typing" />}
+      {streaming && (task ? <ProcessTrail task={task} inline /> : <span className="typing" />)}
 
       {message.error && <div className="err">{message.error}</div>}
 

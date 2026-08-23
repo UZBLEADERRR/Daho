@@ -2333,6 +2333,17 @@ textarea {
   margin-bottom: 10px;
 }
 
+/*
+ * Kod oynasidagi reja — tarif kartasi bilan bir xil klass nomini
+ * ishlatadi, lekin bu yerda u ingichka qator boʻlishi kerak.
+ */
+.msgs .plan-card,
+.plan-card:has(> .plan-head) {
+  padding: 0;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
 .plan-card.on {
   border-color: var(--accent);
 }
@@ -3201,16 +3212,59 @@ textarea {
   overflow: hidden;
 }
 
+/*
+ * Yigʻiq reja — bitta ingichka qator.
+ *
+ * Kerakli maʼlumot shu yerda: qancha bajarildi va keyingi qadam nima.
+ * Batafsili — bosilganda.
+ */
 .plan-head {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 9px 12px;
-  font-size: 13.5px;
+  padding: 7px 11px;
+  font-size: 12.5px;
   background: none;
   border: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* Bajarilgan ulush — matnsiz koʻrsatkich */
+.plan-bar {
+  flex: 0 0 34px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.plan-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.plan-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-next {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text);
+}
+
+.plan-caret {
+  flex: none;
+  font-size: 10px;
 }
 
 .plan-steps {
@@ -4505,4 +4559,74 @@ iframe {
 /* Yopiq (yuqori tarifdagi) model — koʻrinadi, lekin oldinga chiqmaydi */
 .line-row.dim {
   opacity: 0.55;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Yuborilgan fayllar                                                 */
+/* ------------------------------------------------------------------ */
+
+.attach-image {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+  border-radius: 10px;
+}
+
+/* Rasm boʻlmagan fayl — nomi va hajmi bilan bosiladigan karta */
+.attach-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 210px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.attach-file:active {
+  background: var(--surface);
+}
+
+.attach-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex: none;
+}
+
+.attach-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.attach-meta b {
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attach-meta i {
+  font-size: 11px;
+  font-style: normal;
+  color: var(--muted);
+}
+
+/*
+ * Jarayon javob pufagi ichida — ramkasiz, matn oqimiga qoʻshiladi.
+ * Pastdagi qatorda takrorlanmaydi: bir narsa ikki joyda turmasin.
+ */
+.process.inline {
+  margin: 2px 0 0;
+  padding: 0;
+  background: none;
+  border: 0;
 }

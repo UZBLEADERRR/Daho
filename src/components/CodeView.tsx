@@ -21,6 +21,8 @@ import { getState, useStore, updateSettings, updateView } from '../lib/store';
 import type { Artifact, Attachment, CodeProject } from '../lib/types';
 import { relativeTime } from '../lib/utils';
 import { prepareFile, fileIcon } from '../lib/attach';
+import { Attachments } from './Attachments';
+import { ProcessTrail } from './ProcessTrail';
 import { startListening, type ListenHandle } from '../lib/speech';
 import { interject, usePendingQuestion } from '../lib/ask';
 import { noteTask, startTask, stopFor, useTaskFor } from '../lib/tasks';
@@ -182,23 +184,52 @@ type Tab = 'suhbat' | 'fayllar' | 'korinish' | 'nashr';
  * katta loyihada ish qayerga yetganini kuzatib turish uchun.
  */
 function PlanCard({ project }: { project: CodeProject }) {
-  const [open, setOpen] = useState(true);
+  /*
+   * Yigʻiq holat — standart.
+   *
+   * Avval reja doim ochiq turardi va ekranning yarmini egallardi.
+   * Yigʻib qoʻyilsa ham qayta ochilib ketardi, chunki holat faqat
+   * komponent ichida edi: reja yangilanganda komponent qaytadan
+   * yaratilib, `useState(true)` ni oʻqirdi. Endi tanlov loyiha
+   * boʻyicha saqlanadi va yigʻiq holat sukut boʻyicha.
+   */
+  const kalit = `daho.plan.${project.id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(kalit) === 'ochiq';
+    } catch {
+      return false;
+    }
+  });
+
   const plan = project.plan ?? [];
   if (!plan.length) return null;
 
   const done = plan.filter((s) => s.done).length;
   const next = plan.find((s) => !s.done);
+  const foiz = Math.round((done / plan.length) * 100);
+
+  const almashtir = () =>
+    setOpen((v) => {
+      try {
+        localStorage.setItem(kalit, v ? 'yigʻiq' : 'ochiq');
+      } catch {
+        /* xotira yopiq boʻlsa ham ishlayveradi */
+      }
+      return !v;
+    });
 
   return (
-    <div className="plan-card">
-      <button className="plan-head" onClick={() => setOpen((v) => !v)}>
-        <span className="grow" style={{ textAlign: 'left', minWidth: 0 }}>
-          <b>
-            📋 Reja — {done}/{plan.length}
-          </b>
-          {!open && next && <div className="tiny">Keyingi: {next.title}</div>}
+    <div className={open ? 'plan-card open' : 'plan-card'}>
+      <button className="plan-head" onClick={almashtir} aria-expanded={open}>
+        <span className="plan-bar" aria-hidden="true">
+          <i style={{ width: `${foiz}%` }} />
         </span>
-        <span className="tiny">{open ? '▾' : '▸'}</span>
+        <span className="plan-count">
+          {done}/{plan.length}
+        </span>
+        <span className="plan-next">{next ? next.title : 'hammasi bajarildi'}</span>
+        <span className="plan-caret">{open ? '▾' : '▸'}</span>
       </button>
       {open && (
         <div className="plan-steps">
@@ -353,16 +384,32 @@ function CodeChat({ project }: { project: CodeProject }) {
   const [mic, setMic] = useState<'oʻchiq' | 'yozilmoqda' | 'tahlil'>('oʻchiq');
   const listenRef = useRef<ListenHandle | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** Foydalanuvchi pastda turibdimi — shunda javob kelganda pastga tushamiz. */
+  const stickRef = useRef(true);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const running = useTaskFor('code', project.id);
   const busy = Boolean(running);
   const question = usePendingQuestion('code', project.id);
 
+  /*
+   * Avtomatik pastga tushish — LEKIN faqat foydalanuvchi pastda tursa.
+   *
+   * Avval har oʻzgarishda pastga tortilardi: agent ishlayotganda
+   * yuqoriga chiqib eski javobni oʻqiy olmasdingiz — matn kelishi
+   * bilan yana pastga uloqtirardi. Endi yuqoriga chiqilsa «yopishish»
+   * oʻchadi va foydalanuvchi oʻzi pastga qaytguncha tegilmaydi.
+   */
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [project.messages]);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
+  };
 
   useEffect(() => {
     const el = areaRef.current;
@@ -433,7 +480,7 @@ function CodeChat({ project }: { project: CodeProject }) {
 
   return (
     <>
-      <div className="scroll" ref={scrollRef}>
+      <div className="scroll" ref={scrollRef} onScroll={onScroll}>
         {project.messages.length === 0 ? (
           <div style={{ padding: '24px 14px' }}>
             <Empty
@@ -461,13 +508,7 @@ function CodeChat({ project }: { project: CodeProject }) {
                   key={m.id}
                   style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                 >
-                  {!!m.attachments?.length && (
-                    <div className="attach-grid" style={{ justifyContent: 'flex-end' }}>
-                      {m.attachments.map((a, i) => (
-                        <img key={i} src={`data:${a.mimeType};base64,${a.data}`} alt="" />
-                      ))}
-                    </div>
-                  )}
+                  {!!m.attachments?.length && <Attachments items={m.attachments} />}
                   {m.text && (
                     <div
                       className="msg user"
@@ -529,7 +570,8 @@ function CodeChat({ project }: { project: CodeProject }) {
               ),
             )}
             {question && <QuestionCard question={question} />}
-            {busy && !question && <span className="typing" />}
+            {busy && !question && running && <ProcessTrail task={running} inline />}
+            {busy && !question && !running && <span className="typing" />}
           </div>
         )}
 

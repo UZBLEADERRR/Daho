@@ -13,7 +13,14 @@ function soniya(from: number): number {
   return Math.max(0, Math.round((Date.now() - from) / 1000));
 }
 
-export function ProcessTrail({ task }: { task: RunningTask }) {
+export function ProcessTrail({
+  task,
+  inline = false,
+}: {
+  task: RunningTask;
+  /** Javob pufagi ichida — ramkasiz, ixchamroq */
+  inline?: boolean;
+}) {
   const [, tick] = useState(0);
 
   // Vaqt hisoblagichi yursin.
@@ -26,7 +33,7 @@ export function ProcessTrail({ task }: { task: RunningTask }) {
   const qadamda = soniya(task.stepAt);
 
   return (
-    <div className="process" role="status" aria-live="polite">
+    <div className={inline ? 'process inline' : 'process'} role="status" aria-live="polite">
       {task.steps.map((step, i) => (
         <div className="process-past" key={`${step}-${i}`}>
           <span className="process-tick">✓</span>
@@ -42,7 +49,7 @@ export function ProcessTrail({ task }: { task: RunningTask }) {
 
       {oʻtgan >= 12 && (
         <div className="process-total">
-          jami {oʻtgan >= 60 ? `${Math.floor(oʻtgan / 60)}m ${oʻtgan % 60}s` : `${oʻtgan}s`} · toʻxtatish uchun ⏹
+          jami {oʻtgan >= 60 ? `${Math.floor(oʻtgan / 60)}m ${oʻtgan % 60}s` : `${oʻtgan}s`}
         </div>
       )}
     </div>

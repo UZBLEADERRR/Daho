@@ -73,11 +73,39 @@ export default function App() {
   // ilovani yopib qayta ochsangiz ham hech narsa qaytadan boshlanmaydi.
   const tab = useStore((s) => s.view.tab) as Tab;
   const rawSection = useStore((s) => s.view.section);
+  const codeId = useStore((s) => s.view.codeId);
   const section: AgentSection = isSection(rawSection) ? rawSection : 'bugun';
   const setTab = (next: Tab) => updateView({ tab: next });
   const setSection = (next: AgentSection) => updateView({ section: next });
 
   const [sidebar, setSidebar] = useState(false);
+  /*
+   * Keng ekranda yon panel doim ochiq edi va yigʻib boʻlmasdi. Kod yoki
+   * hujjat bilan ishlaganda joy kerak — shuning uchun endi u ham
+   * yigʻiladi va tanlov saqlanadi.
+   */
+  const [wideOpen, setWideOpen] = useState(() => {
+    try {
+      return localStorage.getItem('daho.sidebar') !== 'yopiq';
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleSidebar = () => {
+    if (wide) {
+      setWideOpen((open) => {
+        try {
+          localStorage.setItem('daho.sidebar', open ? 'yopiq' : 'ochiq');
+        } catch {
+          /* xotira yopiq boʻlsa ham ishlayveradi */
+        }
+        return !open;
+      });
+    } else {
+      setSidebar(true);
+    }
+  };
   const [settingsOpen, setSettingsOpen] = useState(!ready);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
@@ -230,7 +258,7 @@ export default function App() {
     };
   }, [artifact, videoId, browserUrl, settingsOpen, accountOpen, adminOpen, sidebar, tab, section]);
 
-  const showSidebar = wide || sidebar;
+  const showSidebar = wide ? wideOpen : sidebar;
 
   /**
    * Kirish darvozasi.
@@ -280,11 +308,15 @@ export default function App() {
 
       <div className="app">
       <header className="topbar">
-        {!wide ? (
-          <button className="icon-btn" onClick={() => setSidebar(true)} aria-label="Menyu">
-            <Menu />
-          </button>
-        ) : (
+        <button
+          className="icon-btn"
+          onClick={toggleSidebar}
+          aria-label={showSidebar ? 'Yon panelni yigʻish' : 'Yon panelni ochish'}
+          aria-expanded={showSidebar}
+        >
+          <Menu />
+        </button>
+        {wide && (
           <div className="topbar-title">
             {tab === 'chat'
               ? (chats.find((c) => c.id === activeChatId)?.title ?? 'Yangi suhbat')
@@ -343,7 +375,20 @@ export default function App() {
         {tab === 'kod' && <CodeView />}
       </main>
 
-      <TaskBar />
+      {/*
+        * Fon ishlari uchun ingichka qator. Ekranda koʻrinib turgan
+        * suhbat yoki loyiha bu yerda takrorlanmaydi — uning jarayoni
+        * javob chiqadigan joyda koʻrsatiladi.
+        */}
+      <TaskBar
+        hide={
+          tab === 'chat' && activeChatId
+            ? { kind: 'chat', targetId: activeChatId }
+            : tab === 'kod' && codeId
+              ? { kind: 'code', targetId: codeId }
+              : undefined
+        }
+      />
       </div>
 
       {settingsOpen && (
