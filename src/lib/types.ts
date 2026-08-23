@@ -38,6 +38,16 @@ export interface Chat {
   id: string;
   title: string;
   messages: Message[];
+  /**
+   * Suhbatning eski qismidan yigʻilgan qisqa xotira.
+   *
+   * Usiz har soʻrovda butun tarix qayta yuborilardi va suhbat uzaygan
+   * sari narx oʻsib borardi. Endi eski xabarlar oʻrniga shu bir necha
+   * qator ketadi.
+   */
+  recap?: string;
+  /** Xulosa qaysi xabargacha yozilgani (indeks) */
+  recapUpto?: number;
   createdAt: number;
   updatedAt: number;
 }

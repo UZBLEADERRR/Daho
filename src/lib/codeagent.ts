@@ -3211,18 +3211,65 @@ Qisqa yoz. Kodni javob matniga koʻchirma — vositalar orqali faylga yoz.
 Nima qilayotganingni bir jumlada ayt, keyin vositani chaqir.`;
 }
 
+/*
+ * Loyiha suhbatini soʻrovga tayyorlaydi.
+ *
+ * Kod agenti oʻnlab qadam yuradi va har qadamda BUTUN tarix qayta
+ * yuboriladi. Chegara qoʻyilmasa uzun loyihada bitta qadam ham
+ * oʻn minglab tokenga tushadi. Uch chegara bor:
+ *
+ *   • rasm faqat yaqin xabarlarda qoladi;
+ *   • eski javoblardagi kod bloklari bir qatorga aylanadi (fayllar
+ *     baribir loyihada saqlangan — model `read_file` bilan oʻqiydi);
+ *   • umumiy matn hajmi chegaradan oshsa eng eskisi tushiriladi.
+ */
+const KEEP_MEDIA = 4;
+const KEEP_CODE = 2;
+const HISTORY_BUDGET = 16_000;
+
+function trimCode(text: string): string {
+  return text.replace(/```(\w*)\n([\s\S]*?)```/g, (whole, lang: string, body: string) => {
+    if (body.length < 400) return whole;
+    const lines = body.trim().split('\n').length;
+    return `\`\`\`${lang}\n[${lang || 'kod'} — ${lines} qator, faylda saqlangan]\n\`\`\``;
+  });
+}
+
 function toContents(messages: Message[]): GeminiContent[] {
+  const recent = messages.slice(-MAX_HISTORY);
+  const mediaFrom = Math.max(0, recent.length - KEEP_MEDIA);
+
   const out: GeminiContent[] = [];
-  for (const msg of messages.slice(-MAX_HISTORY)) {
+  for (const [index, msg] of recent.entries()) {
     const parts: GeminiPart[] = [];
-    for (const att of msg.attachments ?? []) {
-      if (!isModelReadable(att.mimeType)) continue;
-      parts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
+
+    const files = (msg.attachments ?? []).filter((a) => isModelReadable(a.mimeType));
+    if (files.length) {
+      if (index >= mediaFrom) {
+        for (const att of files) {
+          parts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
+        }
+      } else {
+        parts.push({ text: `[avval ${files.length} ta fayl yuborilgan edi]` });
+      }
     }
-    if (msg.text.trim()) parts.push({ text: msg.text });
+
+    const matn =
+      index >= recent.length - KEEP_CODE || msg.role === 'user' ? msg.text : trimCode(msg.text);
+    if (matn.trim()) parts.push({ text: matn });
     if (!parts.length) continue;
     out.push({ role: msg.role, parts });
   }
+
+  let total = 0;
+  for (const content of out) {
+    for (const part of content.parts) total += (part.text ?? '').length;
+  }
+  while (out.length > 4 && total > HISTORY_BUDGET) {
+    const dropped = out.shift();
+    for (const part of dropped?.parts ?? []) total -= (part.text ?? '').length;
+  }
+
   while (out.length && out[0].role !== 'user') out.shift();
   return out;
 }

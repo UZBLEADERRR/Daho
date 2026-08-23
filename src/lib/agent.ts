@@ -10,6 +10,7 @@ import type { GeminiContent, GeminiPart } from './gemini';
 import { getState, setState } from './store';
 import { TOOL_DECLARATIONS, buildContextSummary, executeTool } from './tools';
 import { compactContents } from './compact';
+import { recapOf, refreshRecap } from './recap';
 import { guessSkill, skillById, skillIndex, type Skill } from './skills';
 import {
   closedGroupsNote,
@@ -460,8 +461,14 @@ function addMedia(store: Artifact[], made: Artifact[]): void {
 /** Rasm shuncha oxirgi xabarda saqlanadi. */
 const KEEP_MEDIA = 6;
 
-/** Tarix matnining chegarasi (belgi) — taxminan 15 000 token. */
-const HISTORY_BUDGET = 60_000;
+/*
+ * Tarix matnining chegarasi (belgi).
+ *
+ * Avval 60 000 edi — yaʼni uzun suhbat har soʻrovda ~15 000 token
+ * turardi. Endi eski qism xulosaga aylantirilgani uchun bunchalik
+ * joy kerak emas: oxirgi bir necha xabar + xulosa sigʻsa yetadi.
+ */
+const HISTORY_BUDGET = 16_000;
 
 /** Shuncha oxirgi xabarda kod bloklari toʻliq qoladi. */
 const KEEP_CODE = 2;
@@ -487,8 +494,14 @@ function trimCode(text: string): string {
   });
 }
 
-function toContents(messages: Message[]): GeminiContent[] {
-  const recent = messages.slice(-MAX_HISTORY);
+export function toContents(messages: Message[], recap = '', recapUpto = 0): GeminiContent[] {
+  /*
+   * Xulosaga tushgan xabarlar qayta yuborilmaydi — ular oʻrniga
+   * xulosaning oʻzi ketadi. Shuning uchun sarf suhbat uzunligiga
+   * deyarli bogʻliq boʻlmay qoladi.
+   */
+  const tail = recap ? messages.slice(Math.max(0, recapUpto)) : messages;
+  const recent = tail.slice(-MAX_HISTORY);
   const mediaFrom = Math.max(0, recent.length - KEEP_MEDIA);
 
   const out: GeminiContent[] = [];
@@ -533,6 +546,20 @@ function toContents(messages: Message[]): GeminiContent[] {
 
   // Gemini birinchi xabar 'user' rolida bo'lishini talab qiladi.
   while (out.length && out[0].role !== 'user') out.shift();
+
+  if (recap) {
+    out.unshift({
+      role: 'user',
+      parts: [
+        {
+          text:
+            `## Suhbatning avvalgi qismi (qisqacha)\n${recap}\n\n`
+            + 'Bu — eslatma, yangi soʻrov emas. Javob berma, shunchaki hisobga ol.',
+        },
+      ],
+    });
+    out.splice(1, 0, { role: 'model', parts: [{ text: 'Tushundim.' }] });
+  }
   return out;
 }
 
@@ -646,8 +673,11 @@ export async function sendMessage(
   }));
 
   const chat = getState().chats.find((c) => c.id === chatId);
+  const xotira = recapOf(chat);
   const contents = toContents(
     (chat?.messages ?? []).filter((m) => m.id !== modelMsg.id),
+    xotira.text,
+    xotira.upto,
   );
 
   const toolCalls: ToolCallRecord[] = [];
@@ -857,6 +887,11 @@ export async function sendMessage(
     void autoTitle(chatId, text);
     // Suhbatdan doimiy faktlarni jimgina eslab qolamiz (xato boʻlsa eʼtiborsiz).
     void learnFromChat(chatId);
+    /*
+     * Eski qismni xulosaga aylantiramiz — keyingi soʻrov arzon tushsin.
+     * Javob allaqachon berilgan, shuning uchun kutib turmaymiz.
+     */
+    void refreshRecap(chatId);
     return { ok: true, text: accumulated };
   } catch (err) {
     if (flushTimer) clearTimeout(flushTimer);
