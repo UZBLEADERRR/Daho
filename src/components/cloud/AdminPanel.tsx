@@ -25,6 +25,8 @@ import {
   type PurchaseRequestRow,
 } from '../../lib/cloud/admin';
 import type { UsageRow } from '../../lib/cloud/types';
+import { aiModels } from '../../lib/cloud/catalog';
+import { Close } from '../Icons';
 import { ModelsAdmin } from './ModelsAdmin';
 import { Sheet, toast } from '../ui';
 
@@ -831,9 +833,77 @@ function Config() {
 
 /* ---------------------------------------------------------------- asosiy */
 
+/* ---------------------------------------------------------------- sxema */
+
+/**
+ * Baza yangilanganmi.
+ *
+ * Katalog jadvali (`ai_models`) keyinroq qoʻshilgan. Migratsiya
+ * ishga tushirilmagan boʻlsa «model qoʻshish» jimgina ishlamaydi va
+ * sabab koʻrinmaydi. Shuning uchun paneldagi birinchi narsa —
+ * aniq tekshiruv va aniq koʻrsatma.
+ */
+function SchemaCheck() {
+  const [holat, setHolat] = useState<'tekshirilmoqda' | 'joyida' | 'eski'>('tekshirilmoqda');
+  const [xato, setXato] = useState('');
+
+  useEffect(() => {
+    void aiModels()
+      .then(() => setHolat('joyida'))
+      .catch((err: unknown) => {
+        setXato(String((err as Error)?.message ?? err));
+        setHolat('eski');
+      });
+  }, []);
+
+  if (holat !== 'eski') return null;
+
+  return (
+    <div className="admin-alert">
+      <b>Baza yangilanmagan</b>
+      <div className="tiny" style={{ marginTop: 4 }}>
+        Model katalogi jadvali topilmadi, shuning uchun model qoʻshish ishlamaydi.
+        Supabase → SQL Editor ga <b>supabase/setup.sql</b> faylini qoʻyib bir marta
+        «Run» bosing, soʻng bu sahifani yangilang.
+      </div>
+      <div className="tiny" style={{ marginTop: 6, opacity: 0.7 }}>
+        {xato}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- asosiy */
+
+const TABS: Array<{ id: Tab; label: string; icon: string }> = [
+  { id: 'umumiy', label: 'Umumiy', icon: '📊' },
+  { id: 'modellar', label: 'Modellar', icon: '🧠' },
+  { id: 'rejalar', label: 'Tariflar', icon: '💳' },
+  { id: 'odamlar', label: 'Odamlar', icon: '👥' },
+  { id: 'sorovlar', label: 'Soʻrovlar', icon: '📨' },
+  { id: 'sozlama', label: 'Sozlama', icon: '⚙️' },
+];
+
+/**
+ * Admin panel — alohida toʻliq ekran.
+ *
+ * Avval u oddiy varaq (sheet) edi: tor ustun, uzun scroll, hamma
+ * narsa bir-birining ustida. Boshqaruv paneli boshqa ish: bir vaqtda
+ * koʻp maʼlumot koʻrinishi va boʻlimlar orasida tez yurish kerak.
+ * Shuning uchun keng ekranda yon ustun, telefonda pastki qator.
+ */
 export function AdminPanel({ onClose }: { onClose: () => void }) {
   const { account } = useCloud();
   const [tab, setTab] = useState<Tab>('umumiy');
+
+  // Esc bilan yopilsin — toʻliq ekranda bu kutiladigan xatti-harakat.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   if (!account?.is_admin) {
     return (
@@ -844,34 +914,43 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Sheet title="Admin panel" onClose={onClose}>
-      <div className="seg-inline">
-        <button className={tab === 'umumiy' ? 'on' : ''} onClick={() => setTab('umumiy')}>
-          Umumiy
+    <div className="admin-screen">
+      <header className="admin-top">
+        <div className="admin-brand">
+          <b>Daho</b>
+          <span>boshqaruv</span>
+        </div>
+        <div className="grow" />
+        <span className="admin-who">{account.email}</span>
+        <button className="icon-btn" onClick={onClose} aria-label="Yopish">
+          <Close size={18} />
         </button>
-        <button className={tab === 'odamlar' ? 'on' : ''} onClick={() => setTab('odamlar')}>
-          Odamlar
-        </button>
-        <button className={tab === 'modellar' ? 'on' : ''} onClick={() => setTab('modellar')}>
-          Modellar
-        </button>
-        <button className={tab === 'rejalar' ? 'on' : ''} onClick={() => setTab('rejalar')}>
-          Rejalar
-        </button>
-        <button className={tab === 'sorovlar' ? 'on' : ''} onClick={() => setTab('sorovlar')}>
-          Soʻrovlar
-        </button>
-        <button className={tab === 'sozlama' ? 'on' : ''} onClick={() => setTab('sozlama')}>
-          Sozlama
-        </button>
-      </div>
+      </header>
 
-      {tab === 'umumiy' && <Overview />}
-      {tab === 'odamlar' && <Users />}
-      {tab === 'modellar' && <ModelsAdmin />}
-      {tab === 'rejalar' && <Plans />}
-      {tab === 'sorovlar' && <Requests />}
-      {tab === 'sozlama' && <Config />}
-    </Sheet>
+      <div className="admin-body">
+        <nav className="admin-nav">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              className={tab === t.id ? 'admin-nav-item on' : 'admin-nav-item'}
+              onClick={() => setTab(t.id)}
+            >
+              <span className="admin-nav-icon">{t.icon}</span>
+              <span className="admin-nav-label">{t.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <main className="admin-main">
+          <SchemaCheck />
+          {tab === 'umumiy' && <Overview />}
+          {tab === 'odamlar' && <Users />}
+          {tab === 'modellar' && <ModelsAdmin />}
+          {tab === 'rejalar' && <Plans />}
+          {tab === 'sorovlar' && <Requests />}
+          {tab === 'sozlama' && <Config />}
+        </main>
+      </div>
+    </div>
   );
 }

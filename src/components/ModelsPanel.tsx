@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   PROVIDER_PRESETS,
   allCachedModels,
@@ -12,6 +12,7 @@ import {
   usableChatModels,
 } from '../lib/providers';
 import { updateSettings, useStore } from '../lib/store';
+import type { ModelInfo } from '../lib/models';
 import type { ProviderConfig, RoleModels } from '../lib/types';
 import { ModelPickButton } from './ModelPicker';
 import { Close, Cpu, Globe, Refresh, Trash } from './Icons';
@@ -526,13 +527,60 @@ function ModelList({ onClose }: { onClose: () => void }) {
 /*  Rollar — koʻp agentli ish                                          */
 /* ------------------------------------------------------------------ */
 
+/** Narx boʻyicha filtr. */
+type NarxFiltr = 'hammasi' | 'bepul' | 'arzon' | 'orta' | 'kuchli';
+
+const NARX_LABEL: Record<NarxFiltr, string> = {
+  hammasi: 'Hammasi',
+  bepul: 'Bepul',
+  arzon: '$0–1',
+  orta: '$1–5',
+  kuchli: '$5+',
+};
+
+/** Model narx guruhiga tushadimi (chiqish narxi boʻyicha — u ogʻirroq). */
+function narxGuruhi(m: { id: string; label?: string; inPrice?: number; outPrice?: number }): NarxFiltr {
+  if (modelIsFree(m)) return 'bepul';
+  const out = m.outPrice ?? m.inPrice ?? 0;
+  if (out < 1) return 'arzon';
+  if (out < 5) return 'orta';
+  return 'kuchli';
+}
+
 function RolePicker({ onClose }: { onClose: () => void }) {
   const settings = useStore((s) => s.settings);
   const hidden = new Set(settings.hiddenModels ?? []);
-  const chat = allCachedModels().filter((m) => m.role === 'chat' && !hidden.has(m.id));
+  const barcha = allCachedModels().filter((m) => m.role === 'chat' && !hidden.has(m.id));
 
-  const set = (key: keyof RoleModels, value: string) =>
+  /*
+   * Qidiruv va narx filtri.
+   *
+   * OpenRouter roʻyxatida yuzlab model bor — uzun `select` dan
+   * keraklisini topib boʻlmasdi. Endi nom boʻyicha yozib qidiriladi
+   * va narx guruhiga qarab siqiladi.
+   */
+  const [q, setQ] = useState('');
+  const [narx, setNarx] = useState<NarxFiltr>('hammasi');
+  const [ochiq, setOchiq] = useState<keyof RoleModels | null>(null);
+
+  const koʻrinadigan = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return barcha
+      .filter((m) => narx === 'hammasi' || narxGuruhi(m) === narx)
+      .filter(
+        (m) =>
+          !term
+          || m.id.toLowerCase().includes(term)
+          || m.label.toLowerCase().includes(term)
+          || (m.providerLabel ?? '').toLowerCase().includes(term),
+      )
+      .slice(0, 60);
+  }, [barcha, q, narx]);
+
+  const set = (key: keyof RoleModels, value: string) => {
     updateSettings({ roleModels: { ...settings.roleModels, [key]: value } });
+    setOchiq(null);
+  };
 
   return (
     <Sheet title="Agent rollari" onClose={onClose}>
@@ -542,27 +590,79 @@ function RolePicker({ onClose }: { onClose: () => void }) {
         Boʻsh qoldirsangiz asosiy model ishlatiladi.
       </div>
 
-      {ROLE_LABEL.map((role) => (
-        <label className="field" key={role.key}>
-          <span>
-            {role.title} — <i className="tiny">{role.hint}</i>
-          </span>
-          <select
-            value={settings.roleModels[role.key] ?? ''}
-            onChange={(e) => set(role.key, e.target.value)}
-          >
-            <option value="">Asosiy model</option>
-            {chat.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-                {m.providerLabel ? ` · ${m.providerLabel}` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-      ))}
+      {ROLE_LABEL.map((role) => {
+        const tanlangan = settings.roleModels[role.key] ?? '';
+        const info = barcha.find((m) => m.id === tanlangan);
+        return (
+          <div className="field" key={role.key}>
+            <span>
+              {role.title} — <i className="tiny">{role.hint}</i>
+            </span>
+            <button
+              className="btn ghost wide"
+              style={{ justifyContent: 'space-between', textAlign: 'left' }}
+              onClick={() => setOchiq(ochiq === role.key ? null : role.key)}
+            >
+              <span className="grow" style={{ minWidth: 0 }}>
+                {info ? info.label : tanlangan || 'Asosiy model'}
+              </span>
+              <span className="tiny">{ochiq === role.key ? '▾' : '▸'}</span>
+            </button>
 
-      {!chat.some((m) => m.provider) && (
+            {ochiq === role.key && (
+              <div className="role-picker">
+                <div className="row" style={{ marginBottom: 6 }}>
+                  <input
+                    className="grow"
+                    autoFocus
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="qidiruv: kimi, gpt, claude…"
+                  />
+                </div>
+                <div className="row wrap" style={{ marginBottom: 8 }}>
+                  {(Object.keys(NARX_LABEL) as NarxFiltr[]).map((f) => (
+                    <button
+                      key={f}
+                      className={`btn mini ${narx === f ? '' : 'ghost'}`}
+                      onClick={() => setNarx(f)}
+                    >
+                      {NARX_LABEL[f]}
+                    </button>
+                  ))}
+                </div>
+
+                <button className="line-row role-row" onClick={() => set(role.key, '')}>
+                  <span className="grow">Asosiy model</span>
+                </button>
+                {koʻrinadigan.map((m) => (
+                  <button
+                    key={m.id}
+                    className={`line-row role-row${m.id === tanlangan ? ' on' : ''}`}
+                    onClick={() => set(role.key, m.id)}
+                  >
+                    <span className="grow" style={{ minWidth: 0 }}>
+                      <div>{m.label}</div>
+                      <div className="tiny">
+                        {[m.providerLabel, priceLabel(m), m.tools ? 'tool' : '', m.vision ? 'rasm' : '']
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    </span>
+                  </button>
+                ))}
+                {!koʻrinadigan.length && (
+                  <div className="tiny" style={{ padding: '8px 4px' }}>
+                    Bunday model topilmadi. Filtrni kengaytiring.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {!barcha.some((m: ModelInfo) => m.provider) && (
         <div className="tiny" style={{ marginTop: 8, opacity: 0.75 }}>
           Turli provayderdan model ulasangiz, bittasi band boʻlganda ish toʻxtamaydi.
         </div>

@@ -167,6 +167,19 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     );
   };
 
+  /*
+   * Ishlab chiquvchi boʻlimlari oddiy foydalanuvchiga koʻrinmaydi.
+   *
+   * API kalit, rol modellari, Daho serveri, GitHub va Supabase —
+   * bular platformani BOSHQARADIGAN odam uchun. Oddiy foydalanuvchi
+   * admin qoʻshgan modellar bilan ishlaydi va bu boʻlimlar unga
+   * faqat chalgʻitadi.
+   *
+   * Bulut oʻchirilgan boʻlsa (mahalliy ishga tushirish) hammasi
+   * koʻrinadi — aks holda kalit kiritishning ILOJI qolmasdi.
+   */
+  const ishlabChiquvchi = !cloudEnabled || Boolean(cloud.account?.is_admin);
+
   /** Sozlamalar boʻlimlari — bittasi ochiladi, qolgani xalaqit bermaydi. */
   const groups: Array<{
     id: string;
@@ -223,6 +236,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'ai',
+      show: ishlabChiquvchi,
       icon: <Cpu size={18} />,
       title: 'AI modellar',
       hint: 'Gemini, OpenRouter, rol modellari va ijodkorlik',
@@ -335,6 +349,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'server',
+      show: ishlabChiquvchi,
       icon: <Server size={18} />,
       title: 'Daho serveri',
       hint: 'Fon ishlari va haqiqiy terminal',
@@ -547,6 +562,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'github',
+      show: ishlabChiquvchi,
       icon: <Code size={18} />,
       title: 'GitHub',
       hint: 'Daho Code uchun token va nashr domeni',
@@ -619,6 +635,7 @@ export function Settings({ onClose, onOpenAccount }: SettingsProps) {
     },
     {
       id: 'supabase',
+      show: ishlabChiquvchi,
       icon: <Database size={18} />,
       title: 'Supabase',
       hint: 'Loyihalaringiz uchun maʼlumot bazasi',

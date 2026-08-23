@@ -17,6 +17,7 @@ import { uid } from '../lib/utils';
 import { interject, usePendingQuestion } from '../lib/ask';
 import { noteTask, startTask, stopFor, useTaskFor } from '../lib/tasks';
 import { planVideo } from '../lib/video';
+import { ChatModelBar } from './ChatModelBar';
 import { Composer, type ComposerMode } from './Composer';
 import { MessageView } from './Message';
 import { QuestionCard } from './QuestionCard';
@@ -258,6 +259,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
 
   return (
     <>
+      <ChatModelBar />
+
       <div className="scroll" ref={scrollRef} onScroll={onScroll}>
         {messages.length === 0 ? (
           <div style={{ padding: '30px 16px' }}>
