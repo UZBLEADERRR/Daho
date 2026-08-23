@@ -8,7 +8,10 @@ node_modules
 dist
 build
 android
+# `supabase/` ogʻir, lekin setup.sql KERAK: server sxemani oʻzi
+# quyadi (telefondan 2900 qatorni nusxalash imkonsiz).
 supabase
+!supabase/setup.sql
 docs
 *.md
 *.apk

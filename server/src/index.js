@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import express from 'express';
-import { loadStats, mountAi, projectRef, providerStatus } from './ai.js';
+import { loadStats, mountAi, projectRef, providerStatus, whoIs } from './ai.js';
+import { autoMigrate, dbStatus, runSetup } from './migrate.js';
 import { mountOauth, oauthStatus } from './oauth.js';
 import { env, missing } from './env.js';
 import { allowedHosts, proxyRequest } from './proxy.js';
@@ -54,6 +55,43 @@ app.get('/api', serviceInfo);
  */
 mountAi(app);
 mountOauth(app);
+
+/*
+ * Bazani yangilash — telefondan 2900 qatorli SQL ni Supabase
+ * muharririga tashlamaslik uchun. Server tasvir ichidagi tayyor
+ * `setup.sql` ni bajaradi; tashqaridan SQL qabul qilinmaydi.
+ */
+app.get('/api/db/holat', async (req, res) => {
+  const who = await whoIs(req);
+  if (!who.user) return res.status(who.status).json(who.body);
+
+  const { data: isAdmin } = await adminClient().rpc('is_admin', { p_user: who.user.id });
+  if (!isAdmin) return res.status(403).json({ error: 'Faqat admin' });
+
+  res.json(await dbStatus());
+});
+
+app.post('/api/db/migrate', async (req, res) => {
+  const who = await whoIs(req);
+  if (!who.user) return res.status(who.status).json(who.body);
+
+  const { data: isAdmin } = await adminClient().rpc('is_admin', { p_user: who.user.id });
+  if (!isAdmin) return res.status(403).json({ error: 'Faqat admin' });
+
+  if (!env.databaseUrl) {
+    return res.status(503).json({
+      error:
+        'DATABASE_URL yoʻq. Supabase → Settings → Database → Connection string ' +
+        '(Session pooler, 5432) ni Railway muhitiga qoʻying.',
+    });
+  }
+
+  try {
+    res.json(await runSetup({ force: req.body?.force === true }));
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message ?? err) });
+  }
+});
 
 app.get('/health', (_req, res) => {
   const mem = process.memoryUsage();
@@ -358,4 +396,10 @@ if (gaps.length) {
 app.listen(env.port, () => {
   console.log(`[daho] server ${env.port} portda`);
   console.log(`[daho] terminal: ${env.shellEnabled ? 'yoqilgan' : 'oʻchiq'}`);
+  /*
+   * Sxemani tekshirish port ochilgandan KEYIN boshlanadi: Railway
+   * sogʻliq tekshiruvi kutib qolmasin. DATABASE_URL boʻlmasa jimgina
+   * oʻtkazib yuboriladi.
+   */
+  void autoMigrate();
 });

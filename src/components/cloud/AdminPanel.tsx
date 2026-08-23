@@ -25,7 +25,7 @@ import {
   type PurchaseRequestRow,
 } from '../../lib/cloud/admin';
 import type { UsageRow } from '../../lib/cloud/types';
-import { aiModels } from '../../lib/cloud/catalog';
+import { aiModels, dbStatus, runMigration } from '../../lib/cloud/catalog';
 import { Close } from '../Icons';
 import { ModelsAdmin } from './ModelsAdmin';
 import { Sheet, toast } from '../ui';
@@ -831,8 +831,6 @@ function Config() {
   );
 }
 
-/* ---------------------------------------------------------------- asosiy */
-
 /* ---------------------------------------------------------------- sxema */
 
 /**
@@ -846,15 +844,39 @@ function Config() {
 function SchemaCheck() {
   const [holat, setHolat] = useState<'tekshirilmoqda' | 'joyida' | 'eski'>('tekshirilmoqda');
   const [xato, setXato] = useState('');
+  const [server, setServer] = useState<'nomaʼlum' | 'tayyor' | 'yoʻq'>('nomaʼlum');
+  const [ish, setIsh] = useState(false);
 
-  useEffect(() => {
+  const tekshir = () => {
     void aiModels()
       .then(() => setHolat('joyida'))
       .catch((err: unknown) => {
         setXato(String((err as Error)?.message ?? err));
         setHolat('eski');
       });
+  };
+
+  useEffect(() => {
+    tekshir();
+    /*
+     * Server bazaga toʻgʻridan-toʻgʻri ulana oladimi. Ulansa — SQL ni
+     * qoʻlda nusxalash shart emas, tugma bosilsa boʻldi.
+     */
+    void dbStatus()
+      .then((d) => setServer(d.ulangan ? 'tayyor' : 'yoʻq'))
+      .catch(() => setServer('yoʻq'));
   }, []);
+
+  const yangila = () => {
+    setIsh(true);
+    void runMigration()
+      .then((out) => {
+        toast(out.holat === 'oʻzgarmagan' ? 'Baza allaqachon yangi' : 'Baza yangilandi');
+        tekshir();
+      })
+      .catch((err: unknown) => toast(String((err as Error)?.message ?? err)))
+      .finally(() => setIsh(false));
+  };
 
   if (holat !== 'eski') return null;
 
@@ -868,27 +890,30 @@ function SchemaCheck() {
   return (
     <div className="admin-alert">
       <b>Baza yangilanmagan</b>
-      {ruxsat ? (
-        <div className="tiny" style={{ marginTop: 4 }}>
-          Katalog jadvali bor, ammo unga ruxsat berilmagan. Supabase → SQL Editor da
-          <b> supabase/setup.sql</b> ni qaytadan «Run» qiling — u kerakli
-          <code> grant</code> larni qoʻyadi.
-        </div>
+      <div className="tiny" style={{ marginTop: 4 }}>
+        {ruxsat
+          ? 'Katalog jadvali bor, ammo unga ruxsat berilmagan.'
+          : 'Model katalogi jadvali topilmadi, shuning uchun model qoʻshish ishlamaydi.'}
+      </div>
+
+      {server === 'tayyor' ? (
+        <>
+          <div className="tiny" style={{ marginTop: 6 }}>
+            Server bazaga ulangan — SQL ni hech qayerga nusxalash shart emas.
+          </div>
+          <button className="btn mini" style={{ marginTop: 8 }} disabled={ish} onClick={yangila}>
+            {ish ? 'Yangilanmoqda…' : 'Bazani yangilash'}
+          </button>
+        </>
       ) : (
-        <div className="tiny" style={{ marginTop: 4 }}>
-          Model katalogi jadvali topilmadi, shuning uchun model qoʻshish ishlamaydi.
-          Supabase → SQL Editor ga <b>supabase/setup.sql</b> faylini qoʻyib bir marta
-          «Run» bosing, soʻng bu sahifani yangilang.
+        <div className="tiny" style={{ marginTop: 6 }}>
+          Serverga <b>DATABASE_URL</b> qoʻysangiz (Supabase → Settings → Database →
+          Connection string, <b>Session pooler</b>, port 5432) shu yerda «Bazani
+          yangilash» tugmasi chiqadi va sxema oʻzi quyiladi. Aks holda Supabase →
+          SQL Editor da <b>supabase/setup.sql</b> ni bir marta «Run» qiling.
         </div>
       )}
-      <div className="tiny" style={{ marginTop: 6 }}>
-        Agar SQL ni allaqachon ishlatgan boʻlsangiz — Supabase’ning sxema keshi
-        kechikkan boʻlishi mumkin. SQL Editor da bir qatorni bajaring:
-        <br />
-        <code>notify pgrst, 'reload schema';</code>
-        <br />
-        soʻng sahifani yangilang.
-      </div>
+
       <div className="tiny" style={{ marginTop: 6, opacity: 0.7 }}>
         {xato}
       </div>

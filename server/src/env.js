@@ -5,6 +5,13 @@ export const env = {
   supabaseUrl: process.env.SUPABASE_URL || '',
   serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   anonKey: process.env.SUPABASE_ANON_KEY || '',
+  /*
+   * Bazaga toʻgʻridan-toʻgʻri ulanish (Supabase → Settings → Database).
+   * Sxemani serverning oʻzi quyishi uchun kerak: PostgREST orqali
+   * jadval yaratib boʻlmaydi. Majburiy emas — boʻlmasa egasi SQL ni
+   * qoʻlda ishlatadi.
+   */
+  databaseUrl: process.env.DATABASE_URL || '',
   // Chrome Web Store dagi manzil — joylangach shu yerga yoziladi.
   storeUrl: process.env.EXTENSION_STORE_URL || '',
 

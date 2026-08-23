@@ -44,6 +44,9 @@ COPY server/package.json ./
 RUN npm install --omit=dev
 COPY server/src ./src
 
+# Baza sxemasi — server koʻtarilganda oʻzi tekshirib quyadi.
+COPY supabase/setup.sql ./sql/setup.sql
+
 # Yigʻilgan veb ilova — Express shu papkadan beradi.
 COPY --from=web /build/dist ./public
 

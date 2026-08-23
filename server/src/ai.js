@@ -178,9 +178,15 @@ function kindOf(method, body) {
 /*  Kim soʻrayapti                                                     */
 /* ------------------------------------------------------------------ */
 
-/** Supabase manzilidan loyiha belgisini ajratadi: `abcd.supabase.co` → `abcd`. */
+/**
+ * Supabase manzilidan loyiha belgisini ajratadi: `abcd.supabase.co` → `abcd`.
+ *
+ * Faqat haqiqiy Supabase domeni taniladi: oʻz domeni yoki mahalliy
+ * manzilda boʻsh qaytadi, shunda solishtiruv oʻtkazib yuboriladi va
+ * notoʻgʻri ogohlantirish chiqmaydi.
+ */
 export function projectRef(url) {
-  const m = /^https?:\/\/([^./]+)\./.exec(String(url || ''));
+  const m = /^https?:\/\/([a-z0-9-]+)\.supabase\.(co|in|red)\b/i.exec(String(url || ''));
   return m ? m[1] : '';
 }
 
@@ -215,7 +221,7 @@ function tokenRef(token) {
  *   401 — token umuman yuborilmagan (haqiqatan kirilmagan);
  *   401 — token yaroqsiz yoki muddati oʻtgan (boshqa matn).
  */
-async function whoIs(req) {
+export async function whoIs(req) {
   const gaps = [];
   if (!env.supabaseUrl) gaps.push('SUPABASE_URL');
   if (!env.serviceKey) gaps.push('SUPABASE_SERVICE_ROLE_KEY');

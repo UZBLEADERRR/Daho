@@ -4,13 +4,16 @@
   "private": true,
   "type": "module",
   "description": "Daho fon ishchisi — telefon oʻchiq boʻlsa ham vazifalarni bajaradi",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
-    "express": "^4.21.1"
+    "express": "^4.21.1",
+    "pg": "^8.13.1"
   }
 }

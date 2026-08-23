@@ -105,9 +105,14 @@ export interface ServerHealth {
   supabase_loyiha?: string;
 }
 
-/** `https://abcd.supabase.co` → `abcd`. */
+/**
+ * `https://abcd.supabase.co` → `abcd`.
+ *
+ * Faqat haqiqiy Supabase domeni taniladi — oʻz domeni ishlatilsa boʻsh
+ * qaytadi va server bilan solishtiruv oʻtkazib yuboriladi.
+ */
 export function projectRef(url: string): string {
-  return /^https?:\/\/([^./]+)\./.exec(url ?? '')?.[1] ?? '';
+  return /^https?:\/\/([a-z0-9-]+)\.supabase\.(co|in|red)\b/i.exec(url ?? '')?.[1] ?? '';
 }
 
 /**
@@ -131,6 +136,49 @@ export async function serverHealth(): Promise<ServerHealth> {
     ish_vaqti_s: data.ish_vaqti_s,
     supabase_loyiha: data.supabase_loyiha,
   };
+}
+
+export interface DbStatus {
+  ulangan: boolean;
+  sabab?: string;
+  katalog_bor?: boolean;
+  baza_hash?: string;
+  fayl_hash?: string;
+}
+
+export interface MigrateResult {
+  ok: boolean;
+  holat?: string;
+  soniya?: number;
+  error?: string;
+}
+
+/** Baza sxemasi holati (faqat admin). */
+export async function dbStatus(): Promise<DbStatus> {
+  return serverGet<DbStatus>('/api/db/holat');
+}
+
+/**
+ * Sxemani serverda ishga tushiradi.
+ *
+ * Telefonda 2900 qatorli SQL ni Supabase muharririga tashlab
+ * boʻlmaydi — brauzer qotadi. Server tasvir ichidagi tayyor faylni
+ * oʻzi bajaradi.
+ */
+export async function runMigration(force = false): Promise<MigrateResult> {
+  if (!SERVER_URL) throw new Error('Daho serveri manzili sozlanmagan');
+  const token = await accessToken();
+  const res = await fetch(`${SERVER_URL}/api/db/migrate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ force }),
+  });
+  const data = (await res.json().catch(() => ({}))) as MigrateResult;
+  if (!res.ok) throw new Error(data?.error ?? `Server xatosi (${res.status})`);
+  return data;
 }
 
 /** Qaysi provayder kaliti serverda bor. Kalitning oʻzi hech qachon kelmaydi. */
