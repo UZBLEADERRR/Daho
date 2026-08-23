@@ -54,6 +54,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
   const activeChatId = useStore((s) => s.activeChatId);
   const settings = useStore((s) => s.settings);
   const [mode, setMode] = useState<ComposerMode>('chat');
+  /** `/` bilan tanlangan koʻnikma — yuborilgach oʻchadi. */
+  const [skill, setSkill] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
 
@@ -203,8 +205,14 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         note: text.slice(0, 40) || 'fayl yuborildi',
       },
       (signal, taskId) =>
-        sendMessage(chatId, text, attachments, signal, BRIEFS[mode], (step) =>
-          noteTask(taskId, step),
+        sendMessage(
+          chatId,
+          text,
+          attachments,
+          signal,
+          BRIEFS[mode],
+          (step) => noteTask(taskId, step),
+          skill || undefined,
         ),
     );
     if (!result) return;
@@ -300,6 +308,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         allowWhileBusy
         mode={mode}
         onMode={setMode}
+        skill={skill}
+        onSkill={setSkill}
         onSend={onSend}
         onStop={stop}
         onLocation={() => onSend('Men hozir qayerdaman? Yaqin atrofda nima bor?', [])}

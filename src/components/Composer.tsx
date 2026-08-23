@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fileIcon, prepareFile } from '../lib/attach';
+import { findSkills, skillById } from '../lib/skills';
 import { startListening, type ListenHandle } from '../lib/speech';
 import { updateView, useStore } from '../lib/store';
 import type { Attachment } from '../lib/types';
@@ -60,6 +61,9 @@ interface Props {
   allowWhileBusy?: boolean;
   mode: ComposerMode;
   onMode: (m: ComposerMode) => void;
+  /** `/` bilan tanlangan koʻnikma */
+  skill?: string;
+  onSkill?: (id: string) => void;
   onSend: (text: string, attachments: Attachment[]) => void;
   onStop: () => void;
   /** «Joylashuvim» tanlanganda */
@@ -71,6 +75,8 @@ export function Composer({
   allowWhileBusy,
   mode,
   onMode,
+  skill,
+  onSkill,
   onSend,
   onStop,
   onLocation,
@@ -80,6 +86,13 @@ export function Composer({
   const [docs, setDocs] = useState<string[]>([]);
   const [mic, setMic] = useState<'oʻchiq' | 'yozilmoqda' | 'tahlil'>('oʻchiq');
   const [menu, setMenu] = useState(false);
+  /*
+   * `/` bosilganda koʻnikmalar roʻyxati. Bosh harf yozilishi bilan
+   * filtrlanadi — foydalanuvchi qaysi ish turlari borligini eslab
+   * yurishi shart emas.
+   */
+  const [skillQuery, setSkillQuery] = useState<string | null>(null);
+  const [skillPick, setSkillPick] = useState(0);
 
   // Imkoniyatlar galereyasidan tayyor matn kelsa — maydonga qoʻyamiz.
   const draft = useStore((st) => st.view.draft);
@@ -100,6 +113,25 @@ export function Composer({
   const camRef = useRef<HTMLInputElement>(null);
 
   const active = MODES.find((m) => m.id === mode) ?? null;
+  const activeSkill = skill ? skillById(skill) : undefined;
+  const skillList = skillQuery === null ? [] : findSkills(skillQuery).slice(0, 6);
+
+  const chooseSkill = (id: string) => {
+    onSkill?.(id);
+    setSkillQuery(null);
+    setSkillPick(0);
+    // `/kitob` matnini maydondan olib tashlaymiz — u buyruq, savol emas.
+    setText((t) => t.replace(/^\/\S*\s?/, ''));
+    requestAnimationFrame(() => areaRef.current?.focus());
+  };
+
+  /** Maydon matni oʻzgarganda `/` holatini yangilaydi. */
+  const onText = (value: string) => {
+    setText(value);
+    const command = /^\/([\p{L}\d-]*)$/u.exec(value);
+    setSkillQuery(command ? command[1] : null);
+    setSkillPick(0);
+  };
   const canSend = Boolean(text.trim() || attachments.length || docs.length);
 
   useEffect(() => {
@@ -174,6 +206,38 @@ export function Composer({
 
   return (
     <div className="composer">
+      {skillList.length > 0 && (
+        <div className="skill-menu" role="listbox">
+          {skillList.map((sk, i) => (
+            <button
+              key={sk.id}
+              role="option"
+              aria-selected={i === skillPick}
+              className={i === skillPick ? 'skill-row on' : 'skill-row'}
+              onMouseEnter={() => setSkillPick(i)}
+              onClick={() => chooseSkill(sk.id)}
+            >
+              <span className="skill-icon">{sk.icon}</span>
+              <span className="grow">
+                <b>{sk.name}</b>
+                <i>{sk.summary}</i>
+              </span>
+              <span className="skill-id">/{sk.id}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeSkill && (
+        <div className="mode-chip">
+          <span>{activeSkill.icon}</span>
+          <span className="grow">{activeSkill.name}</span>
+          <button onClick={() => onSkill?.('')} aria-label="Koʻnikmani bekor qilish">
+            <Close size={14} />
+          </button>
+        </div>
+      )}
+
       {active && (
         <div className="mode-chip">
           <span>{active.icon}</span>
@@ -254,8 +318,31 @@ export function Composer({
           value={text}
           rows={1}
           placeholder={placeholder}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => onText(e.target.value)}
           onKeyDown={(e) => {
+            // Koʻnikma roʻyxati ochiq boʻlsa strelka va Enter shunga tegishli.
+            if (skillList.length) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSkillPick((n) => (n + 1) % skillList.length);
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSkillPick((n) => (n - 1 + skillList.length) % skillList.length);
+                return;
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                chooseSkill(skillList[skillPick].id);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setSkillQuery(null);
+                return;
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) {
               e.preventDefault();
               submit();

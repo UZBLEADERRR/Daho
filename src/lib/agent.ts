@@ -10,7 +10,14 @@ import type { GeminiContent, GeminiPart } from './gemini';
 import { getState, setState } from './store';
 import { TOOL_DECLARATIONS, buildContextSummary, executeTool } from './tools';
 import { compactContents } from './compact';
-import { closedGroupsNote, guessGroups, toolNames } from './toolpick';
+import { guessSkill, skillById, skillIndex, type Skill } from './skills';
+import {
+  closedGroupsNote,
+  guessGroups,
+  readSignals,
+  toolNames,
+  type Signals,
+} from './toolpick';
 import type { Artifact, Attachment, Chat, Message, ToolCallRecord } from './types';
 import { uid } from './utils';
 
@@ -223,7 +230,9 @@ Qoidalar: bir grafikda 8 tadan ortiq seriya boʻlmasin; foizlar yigʻindisi 100 
 "unit" ni har doim yoz; grafik oldidan bir jumlada nima koʻrsatilayotganini ayt.
 Grafik faqat haqiqiy sonlar boʻlganda chizilsin — bezak uchun emas.
 `;
-const B_ARTIFACT = `## Artifact yaratish — FAQAT soʻralganda
+/* Qachon yasash kerak — bu qoida DOIM kerak, aks holda model
+ * soʻralmagan joyda ham ilova yasab tokenni behuda sarflaydi. */
+const B_ARTIFACT_QOIDA = `## Artifact yaratish — FAQAT soʻralganda
 Odatiy savolga oddiy matn bilan javob ber. HTML/kod bloki YOZMA, agar foydalanuvchi
 aniq soʻramagan boʻlsa. Bu tokenni tejaydi va javobni tez qiladi.
 
@@ -235,9 +244,10 @@ Artifact faqat mana bunda yasaladi:
 
 Shubha boʻlsa — yasama. Oʻrniga bir jumlada «Xohlasangiz shu mavzuni interaktiv
 ilova qilib beraman» deb taklif qil va foydalanuvchi javobini kut.
-Tushuntirish, taʼrif, misol, roʻyxat, taqqoslash, uy vazifasi — bularga artifact KERAK EMAS.
+Tushuntirish, taʼrif, misol, roʻyxat, taqqoslash, uy vazifasi — bularga artifact KERAK EMAS.`;
 
-Soʻralganda esa javobingda \`\`\`html bloki ichida BITTA toʻliq, mustaqil ishlaydigan HTML fayl ber:
+/* Qanday yozish kerak — faqat haqiqatan yasayotganda. */
+const B_ARTIFACT_QANDAY = `Soʻralganda esa javobingda \`\`\`html bloki ichida BITTA toʻliq, mustaqil ishlaydigan HTML fayl ber:
 - Barcha CSS va JavaScript shu faylning oʻzida boʻlsin (tashqi CDN, tashqi shrift, tashqi rasm ISHLATMA — ular ishlamaydi).
 - Telefon ekraniga moslashgan boʻlsin, tugmalar yirik, barmoq bilan bosishga qulay.
 - Interfeys matni oʻzbekcha boʻlsin.
@@ -338,11 +348,25 @@ Har bir vositani chaqirishdan OLDIN bir qisqa jumlada nima qilayotganingni yoz
 sodir boʻlayotganini koʻrib tursin.
 `;
 
+/** Bugungi sana — qisqa kontekst uchun. */
+function bugun(): string {
+  return new Date().toLocaleDateString('uz-UZ', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
 /**
  * Koʻrsatmani yigʻadi. `groups` — hozir ochiq vosita guruhlari;
  * yopiq guruhning boʻlimi qoʻshilmaydi.
  */
-function systemPrompt(groups: Set<string> = new Set()): string {
+function systemPrompt(
+  groups: Set<string> = new Set(),
+  skill?: Skill,
+  signals: Signals = { raqam: true, yasash: true, shaxsiy: true },
+): string {
   const { settings } = getState();
   const bor = (g: string) => groups.has(g);
   const who = [
@@ -378,8 +402,10 @@ function systemPrompt(groups: Set<string> = new Set()): string {
     bor('telegram') ? B_TELEGRAM : '',
     bor('telegram') || bor('ijtimoiy') ? B_KOPODAM : '',
     B_USLUB,
-    B_GRAFIK,
-    B_ARTIFACT,
+    // Grafik qoidalari faqat javobda raqam kutilganda.
+    signals.raqam || bor('ijod') ? B_GRAFIK : '',
+    B_ARTIFACT_QOIDA,
+    signals.yasash || bor('ijod') ? B_ARTIFACT_QANDAY : '',
     vositalar,
     B_JONLI,
     bor('joy') ? B_YOL : '',
@@ -388,9 +414,20 @@ function systemPrompt(groups: Set<string> = new Set()): string {
     bor('video') ? B_VIDEO : '',
     B_SAVOL,
     B_AYTIB,
+    // Faol koʻnikmaning toʻliq matni; qolganlari bir qatorli roʻyxatda.
+    skill ? skill.instruction : '',
+    skillIndex(skill?.id),
     closedGroupsNote(groups),
     memoryBlock(),
-    `## Kontekst\n${buildContextSummary()}`,
+    /*
+     * Foydalanuvchining jadvali, vazifalari va loyihalari roʻyxati.
+     * Har savolda yuborilsa katta joy egallaydi — «hosilani tushuntir»
+     * degan savolga dars jadvali kerak emas. Kerak boʻlsa model
+     * `read_data` bilan oʻzi oʻqiydi.
+     */
+    signals.shaxsiy || bor('reja')
+      ? `## Kontekst\n${buildContextSummary()}`
+      : `## Kontekst\nBugun: ${bugun()}. Jadval, vazifa yoki konspekt kerak boʻlsa \`read_data\` bilan oʻqi.`,
     settings.customInstructions
       ? `## Foydalanuvchining qoʻshimcha koʻrsatmalari\n${settings.customInstructions}`
       : '',
@@ -407,21 +444,67 @@ function addMedia(store: Artifact[], made: Artifact[]): void {
   setState((s) => ({ artifacts: [...made, ...s.artifacts] }));
 }
 
+/*
+ * Tarixni soʻrovga tayyorlaydi.
+ *
+ * Ikki chegara bor va ikkalasi ham pul haqida:
+ *
+ *   • RASMLAR. Biriktirilgan rasm har soʻrovda qaytadan yuborilardi.
+ *     Yigirmanchi savolda ham birinchi rasm ketaverardi — holbuki
+ *     suhbat allaqachon boshqa mavzuda. Endi faqat yaqin xabarlardagi
+ *     rasm yuboriladi, eskisi oʻrniga bir qator izoh qoladi.
+ *
+ *   • MATN. Uzun suhbat cheksiz oʻsib boradi. Umumiy hajm chegaradan
+ *     oshsa eng eski xabarlar tushirib qoldiriladi — model oxirgi
+ *     gaplashuvni toʻliq koʻradi.
+ */
+
+/** Rasm shuncha oxirgi xabarda saqlanadi. */
+const KEEP_MEDIA = 6;
+
+/** Tarix matnining chegarasi (belgi) — taxminan 15 000 token. */
+const HISTORY_BUDGET = 60_000;
+
 function toContents(messages: Message[]): GeminiContent[] {
   const recent = messages.slice(-MAX_HISTORY);
+  const mediaFrom = Math.max(0, recent.length - KEEP_MEDIA);
+
   const out: GeminiContent[] = [];
-  for (const msg of recent) {
+  for (const [index, msg] of recent.entries()) {
     if (msg.error && !msg.text) continue;
     const parts: GeminiPart[] = [];
-    for (const att of msg.attachments ?? []) {
-      // Modelga faqat u oʻqiy oladigan turlarni yuboramiz (docx bizda qoladi).
-      if (!isModelReadable(att.mimeType)) continue;
-      parts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
+
+    const files = (msg.attachments ?? []).filter((a) => isModelReadable(a.mimeType));
+    if (files.length) {
+      if (index >= mediaFrom) {
+        for (const att of files) {
+          parts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
+        }
+      } else {
+        // Eski fayl — modelga faqat borligi aytiladi.
+        parts.push({
+          text: `[avval ${files.length} ta fayl yuborilgan edi: ${files
+            .map((a) => a.name ?? a.mimeType)
+            .join(', ')}]`,
+        });
+      }
     }
+
     if (msg.text.trim()) parts.push({ text: msg.text });
     if (!parts.length) continue;
     out.push({ role: msg.role, parts });
   }
+
+  // Matn hajmi chegaradan oshsa — eng eskisidan tushiramiz.
+  let total = 0;
+  for (const content of out) {
+    for (const part of content.parts) total += (part.text ?? '').length;
+  }
+  while (out.length > 4 && total > HISTORY_BUDGET) {
+    const dropped = out.shift();
+    for (const part of dropped?.parts ?? []) total -= (part.text ?? '').length;
+  }
+
   // Gemini birinchi xabar 'user' rolida bo'lishini talab qiladi.
   while (out.length && out[0].role !== 'user') out.shift();
   return out;
@@ -511,6 +594,8 @@ export async function sendMessage(
   signal?: AbortSignal,
   brief?: string,
   onStep?: (step: string) => void,
+  /** Foydalanuvchi `/` bilan tanlagan koʻnikma */
+  skillId?: string,
 ): Promise<SendResult> {
   const { settings } = getState();
 
@@ -569,6 +654,17 @@ export async function sendMessage(
     ),
   );
 
+  /*
+   * Faol koʻnikma. Foydalanuvchi `/` bilan tanlaydi; tanlamagan boʻlsa
+   * soʻzidan taxmin qilinadi. Model ham `use_skill` bilan ochishi mumkin —
+   * u holda koʻrsatma keyingi qadamda qoʻshiladi.
+   */
+  let skill = (skillId ? skillById(skillId) : undefined) ?? guessSkill(text);
+  if (skill) for (const g of skill.groups) groups.add(g);
+
+  // Qaysi koʻrsatma boʻlimlari kerakligini soʻrovning oʻzidan aniqlaymiz.
+  const signals = readSignals(text);
+
   try {
     const maxRounds = toolRounds();
     for (let round = 0; round < maxRounds; round += 1) {
@@ -578,7 +674,7 @@ export async function sendMessage(
        */
       const names = toolNames(groups);
       const declarations = TOOL_DECLARATIONS.filter((t) => names.has(t.name));
-      const base = systemPrompt(groups);
+      const base = systemPrompt(groups, skill, signals);
       const instruction = brief
         ? `${base}\n\n## Ushbu soʻrov uchun maxsus vazifa\n${brief}`
         : base;
@@ -683,6 +779,15 @@ export async function sendMessage(
         if (call.name === 'use_tools') {
           for (const g of (outcome.payload.opened as string[] | undefined) ?? []) {
             groups.add(g);
+          }
+        }
+
+        // Model koʻnikma tanladi — koʻrsatmasi keyingi qadamda qoʻshiladi.
+        if (call.name === 'use_skill') {
+          const picked = skillById(String(outcome.payload.skill ?? ''));
+          if (picked) {
+            skill = picked;
+            for (const g of picked.groups) groups.add(g);
           }
         }
 

@@ -116,6 +116,22 @@ function lowerSchema(node) {
  * @param {string} model  Provayderdagi haqiqiy model nomi
  * @param {boolean} stream
  */
+/*
+ * Anthropic modellarida kesh nuqtasi.
+ *
+ * Agent sikli har qadamda AYNAN bir xil tizim koʻrsatmasini qayta
+ * yuboradi. Anthropic buni keshlay oladi va keshdan oʻqilgan token
+ * ~10 barobar arzon tushadi. Buning uchun xabarga `cache_control`
+ * belgisi qoʻyiladi. Boshqa provayderlar bu maydonni tushunmasligi
+ * mumkin, shuning uchun faqat anthropic modellariga qoʻshamiz.
+ */
+function keshlanadimi(model) {
+  return /^anthropic\//i.test(String(model || ''));
+}
+
+/** Uzun matnnigina keshlash maʼnoli — qisqasi baribir arzon. */
+const KESH_CHEGARASI = 2000;
+
 export function toOpenAi(body, model, stream) {
   const toolNames = new Map();
   const messages = [];
@@ -124,7 +140,15 @@ export function toOpenAi(body, model, stream) {
     .map((p) => p?.text || '')
     .filter(Boolean)
     .join('\n');
-  if (system) messages.push({ role: 'system', content: system });
+  if (system) {
+    const kesh = keshlanadimi(model) && system.length >= KESH_CHEGARASI;
+    messages.push({
+      role: 'system',
+      content: kesh
+        ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+        : system,
+    });
+  }
 
   for (const content of body?.contents ?? []) {
     messages.push(...messagesFrom(content, toolNames));

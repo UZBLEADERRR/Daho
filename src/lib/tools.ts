@@ -77,6 +77,7 @@ import {
   type OauthProvider,
   type ProviderInfo,
 } from './oauth';
+import { SKILLS, skillById } from './skills';
 import { TOOL_GROUPS } from './toolpick';
 import { getState, setState } from './store';
 import { DAYS } from './types';
@@ -786,6 +787,20 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'use_skill',
+    description:
+      'Ish turi uchun tayyor koʻnikmani ochadi (kitob, test, ilmiy ish, rasmiy xat, '
+      + 'rezyume, tahlil, tarjima, mijoz, taqdimot, tushuntirish). Keyingi qadamda '
+      + 'shu ish uchun toʻliq koʻrsatma keladi. Oddiy savolga chaqirma.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        skill: { type: 'STRING', description: 'Koʻnikma nomi (id)' },
+      },
+      required: ['skill'],
+    },
+  },
+  {
     name: 'connect_service',
     description:
       'Xizmatga ulanishni TAKLIF qiladi: foydalanuvchiga tugma chiqadi va u bir bosishda '
@@ -845,6 +860,34 @@ export async function executeTool(
      * bilmaydi. Shuning uchun tayyor tugma chiqaramiz — «Ulash» bosilsa
      * xizmat sahifasi ochiladi va qolganini server bajaradi.
      */
+    /*
+     * Koʻnikmani ochish.
+     *
+     * Bu ham `use_tools` kabi hech narsa bajarmaydi — u keyingi qadamda
+     * qaysi koʻrsatma yuborilishini belgilaydi. Toʻliq matnlar promptda
+     * doim turmasin: hammasi birga ~8 000 token.
+     */
+    case 'use_skill': {
+      const wanted = str(args.skill).toLowerCase();
+      const found = skillById(wanted);
+      if (!found) {
+        return {
+          ok: false,
+          summary: `«${wanted}» koʻnikmasi yoʻq`,
+          payload: { bor: SKILLS.map((sk) => sk.id) },
+        };
+      }
+      return {
+        ok: true,
+        summary: `koʻnikma: ${found.name}`,
+        payload: {
+          skill: found.id,
+          nomi: found.name,
+          eslatma: 'Toʻliq koʻrsatma keyingi qadamda keladi — shunga amal qil.',
+        },
+      };
+    }
+
     case 'connect_service': {
       const service = str(args.service).toLowerCase() as OauthProvider;
       if (!['github', 'supabase', 'google'].includes(service)) {

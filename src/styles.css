@@ -4630,3 +4630,69 @@ iframe {
   background: none;
   border: 0;
 }
+
+/* ------------------------------------------------------------------ */
+/*  `/` — koʻnikmalar roʻyxati                                         */
+/* ------------------------------------------------------------------ */
+
+.skill-menu {
+  margin-bottom: 8px;
+  padding: 5px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.skill-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.skill-row.on {
+  background: var(--surface-2);
+}
+
+.skill-icon {
+  font-size: 17px;
+  line-height: 1;
+  flex: none;
+}
+
+.skill-row .grow {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.skill-row b {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.skill-row i {
+  font-size: 11.5px;
+  font-style: normal;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-id {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

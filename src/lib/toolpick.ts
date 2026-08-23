@@ -18,7 +18,7 @@
 /** Guruh nomi → ichidagi vositalar. */
 export const TOOL_GROUPS: Record<string, string[]> = {
   // Har doim ochiq: savol berish, oʻz maʼlumotini oʻqish, internet.
-  yadro: ['ask_user', 'read_data', 'search_web', 'open_site', 'delegate', 'use_tools', 'connect_service'],
+  yadro: ['ask_user', 'read_data', 'search_web', 'open_site', 'delegate', 'use_tools', 'connect_service', 'use_skill'],
 
   reja: [
     'create_note',
@@ -86,6 +86,40 @@ export function toolNames(groups: Iterable<string>): Set<string> {
     for (const name of TOOL_GROUPS[group] ?? []) names.add(name);
   }
   return names;
+}
+
+/*
+ * Soʻrov belgilari.
+ *
+ * Koʻrsatmaning baʼzi boʻlimlari faqat MAʼLUM ish turida kerak:
+ * grafik chizish qoidalari raqam boʻlmasa, artifact yozish qoidalari
+ * ilova soʻralmasa — bekorga token yeydi. Shu belgilar boʻyicha ular
+ * qoʻshiladi yoki qoʻshilmaydi.
+ */
+export interface Signals {
+  /** Javobda raqam/statistika boʻlishi mumkin — grafik qoidalari kerak */
+  raqam: boolean;
+  /** Ilova, sayt, oʻyin, kod soʻralyapti — artifact qoidalari kerak */
+  yasash: boolean;
+  /** Foydalanuvchining oʻz maʼlumoti kerak — kontekst xulosasi qoʻshiladi */
+  shaxsiy: boolean;
+}
+
+export function readSignals(text: string): Signals {
+  return {
+    raqam:
+      /raqam|statistik|foiz|%|dinamik|taqqosla|solishtir|oʻsish|osish|kamay|jadval|grafik|diagramma|hisobla|necha|nechta|natija|reyting|byudjet|xarajat|daromad/i.test(
+        text,
+      ),
+    yasash:
+      /ilova|sayt|oʻyin|oyin|kalkulyator|interaktiv|vizual|dastur|kod|html|css|javascript|python|quiz|test tuz|simulyator|generator|yasab ber|qilib ber/i.test(
+        text,
+      ),
+    shaxsiy:
+      /mening|menda|jadval|dars|vazifa|deadline|loyiha|konspekt|ish vaqti|bugun|ertaga|rejam|kursim|nima qildim|nima bor/i.test(
+        text,
+      ),
+  };
 }
 
 /** Yopiq guruhlarni model uchun bir necha qatorda tushuntiradi. */
