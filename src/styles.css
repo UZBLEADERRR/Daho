@@ -5388,3 +5388,50 @@ iframe {
   padding: 2px 7px;
   flex: 0 0 auto;
 }
+
+/* ---------- Daho Code: ixcham sarlavha ---------- */
+
+/*
+ * Loyiha nomi va boʻlim tugmalari bitta blokda: telefonda uchta
+ * qavat panel ekranning uchdan birini yeb qoʻyardi.
+ */
+.work-head {
+  flex: 0 0 auto;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+.work-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 0;
+}
+
+.work-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Fayl soni va hajmi — sarlavhaning yonida, ikkinchi qator emas. */
+.work-title span {
+  margin-left: 7px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.seg.tight {
+  padding: 5px 8px 6px;
+  border-bottom: 0;
+}
+
+.seg.tight button {
+  padding: 5px 13px;
+  font-size: 12.5px;
+}

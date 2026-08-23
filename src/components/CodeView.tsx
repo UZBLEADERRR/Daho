@@ -261,22 +261,30 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
 
   return (
     <>
-      <div className="course-head">
-        <button className="icon-btn" onClick={onBack} aria-label="Orqaga">
-          <Back />
-        </button>
-        <div className="grow" style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 600 }}>{project.name}</div>
-          <div className="tiny">
-            {project.files.length} fayl · {(totalSize(project) / 1024).toFixed(1)} KB
-            {project.repo ? ` · ${project.repo.owner}/${project.repo.repo}` : ''}
+      {/*
+        * Sarlavha va boʻlimlar BITTA blokda.
+        *
+        * Ilgari uchta qavat bor edi: yuqoridagi Chat/Agent/Code, loyiha
+        * nomi va boʻlim tugmalari — telefonda ekranning uchdan biri
+        * shularga ketardi. Endi ikkita ingichka qator, bitta chegara.
+        */}
+      <div className="work-head">
+        <div className="work-line">
+          <button className="icon-btn" onClick={onBack} aria-label="Orqaga">
+            <Back />
+          </button>
+          <div className="work-title">
+            {project.name}
+            <span>
+              {project.files.length} fayl · {(totalSize(project) / 1024).toFixed(1)} KB
+              {project.repo ? ` · ${project.repo.owner}/${project.repo.repo}` : ''}
+            </span>
           </div>
+          <button className="model-chip" onClick={() => setModelPicker(true)}>
+            {pinned ? '📌 ' : auto ? '⚡ ' : ''}
+            {parseRef(activeModel).model.replace(/^gemini-/, '')}
+          </button>
         </div>
-        <button className="model-chip" onClick={() => setModelPicker(true)}>
-          {pinned ? '📌 ' : auto ? '⚡ ' : ''}
-          {parseRef(activeModel).model.replace(/^gemini-/, '')}
-        </button>
-      </div>
 
       {modelPicker && (
         <Sheet title="Model tanlang" onClose={() => setModelPicker(false)}>
@@ -343,18 +351,19 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
         </Sheet>
       )}
 
-      <div className="seg">
-        {(['suhbat', 'fayllar', 'korinish', 'nashr'] as Tab[]).map((t) => (
-          <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-            {t === 'suhbat'
-              ? 'Suhbat'
-              : t === 'fayllar'
-                ? 'Fayllar'
-                : t === 'korinish'
-                  ? 'Koʻrinish'
-                  : 'Nashr'}
-          </button>
-        ))}
+        <div className="seg tight">
+          {(['suhbat', 'fayllar', 'korinish', 'nashr'] as Tab[]).map((t) => (
+            <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
+              {t === 'suhbat'
+                ? 'Suhbat'
+                : t === 'fayllar'
+                  ? 'Fayllar'
+                  : t === 'korinish'
+                    ? 'Koʻrinish'
+                    : 'Nashr'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'suhbat' && <CodeChat project={project} />}
