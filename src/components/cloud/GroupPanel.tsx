@@ -264,40 +264,85 @@ function Chat({ group }: { group: GroupRow }) {
     }
   };
 
+  /*
+   * Kun ajratgichi va «ketma-ket xabar» qoidasi — messenjerlardagidek.
+   * Bir odam ketma-ket yozsa ismi va avatari qayta chizilmaydi:
+   * shunda oqim tiqilib qolmaydi.
+   */
+  const kun = (iso: string) => new Date(iso).toDateString();
+  const kunNomi = (iso: string) => {
+    const d = new Date(iso);
+    const bugun = new Date();
+    const kecha = new Date(bugun.getTime() - 86400000);
+    if (d.toDateString() === bugun.toDateString()) return 'Bugun';
+    if (d.toDateString() === kecha.toDateString()) return 'Kecha';
+    return d.toLocaleDateString('uz-UZ', { day: 'numeric', month: 'long' });
+  };
+
   return (
-    <div>
-      <div className="grp-feed">
-        {!rows.length && <div className="tiny">Hali xabar yoʻq.</div>}
-        {rows.map((m) => (
-          <div
-            className={m.user_id === account?.user_id ? 'grp-msg mine' : 'grp-msg'}
-            key={m.id}
-          >
-            <div className="grp-who">{m.name}</div>
-            <div>{m.body}</div>
-            <div className="grp-time">
-              {new Date(m.created_at).toLocaleTimeString('uz-UZ', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </div>
+    <div className="chatbox">
+      <div className="chatbox-feed">
+        {!rows.length && (
+          <div className="chatbox-empty">
+            Hali xabar yoʻq. Birinchi boʻlib yozing.
           </div>
-        ))}
+        )}
+
+        {rows.map((m, i) => {
+          const men = m.user_id === account?.user_id;
+          const oldingi = rows[i - 1];
+          const yangiKun = !oldingi || kun(oldingi.created_at) !== kun(m.created_at);
+          // Ketma-ket: bir odam, 5 daqiqa ichida.
+          const ketma =
+            !yangiKun &&
+            oldingi?.user_id === m.user_id &&
+            new Date(m.created_at).getTime() - new Date(oldingi.created_at).getTime() < 300000;
+
+          return (
+            <div key={m.id}>
+              {yangiKun && <div className="chat-day">{kunNomi(m.created_at)}</div>}
+              <div className={`chat-line${men ? ' mine' : ''}${ketma ? ' cont' : ''}`}>
+                {!men && (
+                  <span className="chat-ava">
+                    {ketma ? '' : (m.name || '?').charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <div className="chat-bubble">
+                  {!men && !ketma && <div className="chat-name">{m.name}</div>}
+                  <span className="chat-text">{m.body}</span>
+                  <span className="chat-clock">
+                    {new Date(m.created_at).toLocaleTimeString('uz-UZ', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
         <div ref={endRef} />
       </div>
 
-      <div className="row" style={{ marginTop: 10 }}>
+      <div className="chatbox-bar">
         <input
-          className="grow"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') void send();
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              void send();
+            }
           }}
-          placeholder="Xabar yozing"
+          placeholder="Xabar…"
         />
-        <button className="btn mini" onClick={() => void send()}>
-          Yuborish
+        <button
+          className="chatbox-send"
+          onClick={() => void send()}
+          disabled={!text.trim()}
+          aria-label="Yuborish"
+        >
+          ➤
         </button>
       </div>
     </div>

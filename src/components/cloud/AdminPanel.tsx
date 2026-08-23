@@ -28,9 +28,10 @@ import type { UsageRow } from '../../lib/cloud/types';
 import { aiModels, dbStatus, runMigration } from '../../lib/cloud/catalog';
 import { Close } from '../Icons';
 import { ModelsAdmin } from './ModelsAdmin';
+import { AdminAgent } from './AdminAgent';
 import { Sheet, toast } from '../ui';
 
-type Tab = 'umumiy' | 'odamlar' | 'modellar' | 'rejalar' | 'sorovlar' | 'sozlama';
+type Tab = 'ai' | 'umumiy' | 'odamlar' | 'modellar' | 'rejalar' | 'sorovlar' | 'sozlama';
 
 function fail(err: unknown): void {
   toast(String((err as Error)?.message ?? err));
@@ -924,6 +925,8 @@ function SchemaCheck() {
 /* ---------------------------------------------------------------- asosiy */
 
 const TABS: Array<{ id: Tab; label: string; icon: string }> = [
+  // Birinchi oʻrinda: qoʻlda qadam-baqadam sozlashdan koʻra tez.
+  { id: 'ai', label: 'AI', icon: '✨' },
   { id: 'umumiy', label: 'Umumiy', icon: '📊' },
   { id: 'modellar', label: 'Modellar', icon: '🧠' },
   { id: 'rejalar', label: 'Tariflar', icon: '💳' },
@@ -991,6 +994,7 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
 
         <main className="admin-main">
           <SchemaCheck />
+          {tab === 'ai' && <AdminAgent />}
           {tab === 'umumiy' && <Overview />}
           {tab === 'odamlar' && <Users />}
           {tab === 'modellar' && <ModelsAdmin />}
