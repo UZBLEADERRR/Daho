@@ -373,6 +373,38 @@ async function writeChapter(
   const context = continuityContext(book, chapter.number);
   const isLast = chapter.number === book.chapters.length;
 
+  /*
+   * Kitob turiga qarab talablar boshqacha.
+   *
+   * Ilgari bu yerda faqat BADIIY kitob qoidalari turardi: «qahramonlar»,
+   * «dialog uchun tire», «kitobxonni keyingi bobga tort». Natijada
+   * IELTS qoʻllanmasi ham roman boʻlib chiqardi — birorta mashq yoʻq.
+   */
+  const badiiy = /badiiy|roman|qissa|hikoya|ertak|fantast|detektiv/i.test(book.kind);
+  const amaliy = /ielts|toefl|test|imtihon|amaliy|mashq|praktik|qoʻllanma|qollanma|darslik|kurs/i.test(
+    `${book.kind} ${book.title} ${book.request}`,
+  );
+
+  const talablar = badiiy
+    ? `- Yuqoridagi qahramonlar, atamalar, ohang va qoidalarga QATʼIY amal qil.
+  Qahramon tavsifini oʻzgartirma, yangi ism oʻylab topma (reja talab qilmasa).
+- Avvalgi bob qayerda tugagan boʻlsa — oʻsha yerdan tabiiy davom et.
+  «Avvalgi bobda…» deb takrorlama.
+- Dialog uchun tire (—) ishlat.
+${isLast ? '- Bu OXIRGI bob: kitobni mantiqan yakunla, ochiq savol qoldirma.' : '- Bob oxiri kitobxonni keyingi bobga tortsin.'}`
+    : `- Bu BADIIY ASAR EMAS: qahramon, syujet va dialog OʻYLAB TOPMA.
+- Tuzilma: qisqa kirish → tushuntirish → MISOLLAR → xulosa.
+- Atamani birinchi marta ishlatganda izohla.
+${
+  amaliy
+    ? `- Bob oxirida **«Mashqlar»** boʻlimi SHART: kamida 5 ta topshiriq.
+- Har bir mashqdan keyin **«Javoblar»** boʻlimida javob va qisqa izoh ber.
+- Imtihonga tayyorgarlik boʻlsa: haqiqiy imtihon formatidagi topshiriq ber
+  (savol turi, vaqt chegarasi, baholash mezoni) — umumiy maslahat emas.`
+    : '- Bob oxirida 3-5 qatorli «Xulosa» boʻlimi ber.'
+}
+${isLast ? '- Bu OXIRGI bob: butun kitobni jamlab yakunla.' : ''}`;
+
   const prompt = `${context}
 
 ---
@@ -381,17 +413,17 @@ async function writeChapter(
 ${chapter.number}-bob: «${chapter.title}»
 Rejadagi mazmuni: ${chapter.brief}
 
+Kitob turi: ${book.kind || 'oʻquv qoʻllanma'}
+Kitob tili: ${book.language || 'oʻzbek'}
+
 ## Talablar
 - Taxminan ${book.wordsPerChapter} soʻz. Qisqartirma — toʻliq yoz.
+- **Kitob TILI: ${book.language || 'oʻzbek'}.** Butun bob shu tilda boʻlsin.
 - Faqat shu bobning matnini yoz. Bob sarlavhasini \`## ${chapter.number}. ${chapter.title}\`
   koʻrinishida bir marta yoz, keyin matn.
-- Yuqoridagi qahramonlar, atamalar, ohang va qoidalarga QATʼIY amal qil.
-  Qahramon tavsifini oʻzgartirma, yangi ism oʻylab topma (reja talab qilmasa).
-- Avvalgi bob qayerda tugagan boʻlsa — oʻsha yerdan tabiiy davom et.
-  «Avvalgi bobda…» deb takrorlama.
-- Markdown ishlat: xatboshilar, kerak boʻlsa \`###\` kichik boʻlimlar,
-  dialog uchun tire (—). Kod bloklaridan foydalanma.
-${isLast ? '- Bu OXIRGI bob: kitobni mantiqan yakunla, ochiq savol qoldirma.' : '- Bob oxiri kitobxonni keyingi bobga tortsin.'}
+${talablar}
+- Markdown ishlat: xatboshilar, kerak boʻlsa \`###\` kichik boʻlimlar.
+  Kod bloklaridan foydalanma (dasturlash kitobi boʻlsa — mumkin).
 - Boshida yoki oxirida «mana bob», «davom etamiz» kabi izoh YOZMA — faqat kitob matni.`;
 
   let text = '';
@@ -399,9 +431,12 @@ ${isLast ? '- Bu OXIRGI bob: kitobni mantiqan yakunla, ochiq savol qoldirma.' : 
     apiKey: settings.apiKey,
     model,
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    systemInstruction:
-      'Sen mohir yozuvchisan. Oʻzbek tilida (lotin yozuvi) ravon, jonli va izchil yozasan. ' +
-      'Berilgan kontekstdan chetga chiqmaysan.',
+    systemInstruction: badiiy
+      ? `Sen mohir yozuvchisan. ${book.language || 'Oʻzbek'} tilida ravon, jonli va `
+        + 'izchil yozasan. Berilgan kontekstdan chetga chiqmaysan.'
+      : `Sen tajribali oʻqituvchi va qoʻllanma muallifisan. ${book.language || 'Oʻzbek'} `
+        + 'tilida aniq, tushunarli va amaliy yozasan: taʼrif, misol, mashq. '
+        + 'Badiiy syujet va qahramon oʻylab topmaysan. Berilgan kontekstdan chetga chiqmaysan.',
     temperature: 0.85,
     signal,
     onText: (chunk) => {

@@ -21,7 +21,7 @@ import {
   type StreamResult,
 } from './gemini';
 import { cachedModels, geminiModel, getModels, type ModelInfo, type ModelRole } from './models';
-import { cloudReady } from './route';
+import { cloudReady, resolveSource } from './route';
 import { getState } from './store';
 import { recordUsage } from './usage';
 import type { Attachment, ProviderConfig, RoleModels } from './types';
@@ -949,12 +949,48 @@ async function imageViaProvider(
  * Rasm yasaydi: Gemini kaliti boʻlsa oʻsha bilan, boʻlmasa ulangan
  * provayderning rasm modeli bilan.
  */
+/**
+ * Katalogdagi rasm modeli (roli «image», foydalanuvchiga ochiq).
+ *
+ * Roʻyxat kesh bilan keladi — har rasm uchun bazaga borilmaydi.
+ */
+async function imageModelSlug(): Promise<string> {
+  try {
+    const { publicCatalog } = await import('./cloud/catalog');
+    const rows = await publicCatalog();
+    return rows.find((m) => m.role === 'image' && m.open)?.slug ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export async function imageAny(
   prompt: string,
   refs: Attachment[] = [],
   signal?: AbortSignal,
 ): Promise<Attachment[]> {
   const { settings } = getState();
+
+  /*
+   * Bulut foydalanuvchisi: rasm ham admin qoʻshgan model bilan.
+   *
+   * Admin katalogga `role = image` boʻlgan model qoʻshsa, rasm
+   * kerak boʻlganda AYNAN oʻsha ishlatiladi va sarf ham oʻshanga
+   * yoziladi. Qurilmadagi kalit bu yerda umuman ishlatilmaydi.
+   */
+  if (resolveSource(settings.apiKey) === 'cloud') {
+    const slug = await imageModelSlug();
+    if (!slug) {
+      throw new GeminiError(
+        'Rasm yasaydigan model hali ochilmagan. Admin paneldan roli «image» '
+          + 'boʻlgan model qoʻshilishi kerak.',
+        0,
+      );
+    }
+    const { generateImage } = await import('./gemini');
+    const res = await generateImage('', slug, prompt, refs, signal);
+    return res.images;
+  }
 
   if (hasGemini()) {
     const { generateImage } = await import('./gemini');

@@ -238,6 +238,19 @@ export function fromOpenAi(data) {
     }
   }
 
+  /*
+   * Rasm chiqaradigan modellar.
+   *
+   * OpenRouter rasmni `message.images[].image_url.url` da data-URL
+   * koʻrinishida qaytaradi. Ilgari bu qism umuman oʻqilmasdi va
+   * rasm modeli boʻsh javob bergandek koʻrinardi.
+   */
+  for (const img of message.images ?? []) {
+    const url = img?.image_url?.url ?? img?.url ?? '';
+    const m = /^data:([^;]+);base64,(.+)$/.exec(String(url));
+    if (m) parts.push({ inlineData: { mimeType: m[1], data: m[2] } });
+  }
+
   // Baʼzi modellar «fikrlash» matnini alohida maydonda qaytaradi.
   if (typeof message.reasoning === 'string' && message.reasoning && !parts.length) {
     parts.push({ text: message.reasoning });

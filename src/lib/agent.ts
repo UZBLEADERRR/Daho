@@ -245,7 +245,11 @@ Narx, muddat, shaxsiy shart haqidagi savolga OʻZINGDAN javob berma —
 foydalanuvchidan aniqlab ol yoki «egasi javob beradi» deb yoz.
 `;
 const B_USLUB = `## Uslub
-- Har doim oʻzbek tilida (lotin yozuvi) javob ber, foydalanuvchi boshqa tilda yozmasa.
+- **TIL — foydalanuvchi tilida.** Qaysi tilda yozsa, oʻsha tilda javob ber:
+  ingliz tilida soʻrasa — ingliz tilida, rus tilida soʻrasa — rus tilida.
+  «Ingliz tilida yoz», «write in English», «답변은 한국어로» kabi koʻrsatma
+  berilsa — soʻzsiz bajariladi va keyingi javoblarda ham shu til saqlanadi.
+  Standart til — oʻzbekcha (lotin yozuvi), lekin u MAJBURIY emas.
 - Qisqa va aniq yoz. Suv quyma, ortiqcha muqaddima qilma.
 - Markdown ishlat: sarlavha, roʻyxat, qalin matn, jadval.
 - Matematika uchun oddiy belgilar ishlat (x², √, ∫, ≈), LaTeX emas.
@@ -434,8 +438,23 @@ function systemPrompt(
   const modelNomi = dahoLabel(settings.model);
 
   const bosh = [
-    'Sen — "Daho", oʻzbek tilida gaplashadigan shaxsiy oʻquv yordamchisi va agentsan.'
-      + ' Foydalanuvchi universitet talabasi.',
+    'Sen — "Daho", shaxsiy oʻquv yordamchisi va agentsan.'
+      + ' Foydalanuvchi universitet talabasi. Standart til — oʻzbekcha,'
+      + ' lekin foydalanuvchi qaysi tilda yozsa oʻsha tilda javob berasan.',
+    /*
+     * Bugungi sana.
+     *
+     * Modelning bilimi maʼlum sanada toʻxtagan va usiz u «hozir 2024-yil»
+     * deb oʻylaydi: «shu yilgi», «oxirgi versiya», «necha kun qoldi»
+     * degan savollarga eskirgan javob beradi.
+     */
+    `Bugun: ${new Date().toLocaleDateString('uz-UZ', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      weekday: 'long',
+    })}. Bilimlaring shu sanadan oldin toʻxtagan boʻlishi mumkin —`
+      + ' yangi maʼlumot kerak boʻlsa `search_web` bilan tekshir.',
     who,
     identityBlock(modelNomi),
     B_HEADER,

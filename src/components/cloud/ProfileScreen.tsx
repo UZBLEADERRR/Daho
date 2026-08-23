@@ -110,32 +110,22 @@ export function ProfileScreen({
             {/* Kelgan takliflar — koʻzga tashlanib tursin. */}
             <InviteList />
 
-            <div className="prof-group">Hisob</div>
+            {/*
+              * Eng kerakli narsa yuqorida: obuna va kredit.
+              * Token soni oddiy foydalanuvchiga koʻrsatilmaydi — u
+              * kreditda oʻlchaydi, tokenda emas. Texnik tafsilot
+              * (sarf tarixi, modellar roʻyxati, fon vazifalari) faqat
+              * adminda qoladi.
+              */}
+            <div className="prof-group">Obuna</div>
             <div className="prof-list">
-              <Qator emoji="👤" label="Ism va parol" onClick={() => setPage('profil')} />
               <Qator
                 emoji="💳"
-                label="Tarif"
+                label="Tarif va kredit"
                 qiymat={account.plan?.name ?? 'Rejasiz'}
                 onClick={() => setPage('tarif')}
               />
-              <Qator
-                emoji="🧠"
-                label="Modellar"
-                qiymat={String(account.models.length)}
-                onClick={() => setPage('modellar')}
-              />
-            </div>
-
-            <div className="prof-group">Ish</div>
-            <div className="prof-list">
-              <Qator emoji="📊" label="Sarf tarixi" onClick={() => setPage('sarf')} />
-              <Qator
-                emoji="🗂"
-                label="Fon vazifalari"
-                qiymat={account.active_jobs ? String(account.active_jobs) : undefined}
-                onClick={() => setPage('fon')}
-              />
+              <Qator emoji="👤" label="Ism va parol" onClick={() => setPage('profil')} />
               <Qator
                 emoji="☁️"
                 label="Sinxronizatsiya"
@@ -148,6 +138,23 @@ export function ProfileScreen({
             <div className="prof-list">
               {onOpenSettings && (
                 <Qator emoji="⚙️" label="Sozlamalar" onClick={onOpenSettings} />
+              )}
+              {account.is_admin && (
+                <>
+                  <Qator emoji="📊" label="Sarf tarixi" onClick={() => setPage('sarf')} />
+                  <Qator
+                    emoji="🧠"
+                    label="Modellar"
+                    qiymat={String(account.models.length)}
+                    onClick={() => setPage('modellar')}
+                  />
+                  <Qator
+                    emoji="🗂"
+                    label="Fon vazifalari"
+                    qiymat={account.active_jobs ? String(account.active_jobs) : undefined}
+                    onClick={() => setPage('fon')}
+                  />
+                </>
               )}
               {account.is_admin && onOpenAdmin && (
                 <Qator emoji="🛡" label="Admin panel" onClick={onOpenAdmin} />

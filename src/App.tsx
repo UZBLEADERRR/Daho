@@ -293,7 +293,6 @@ export default function App() {
           pinned={wide}
           activeSection={section}
           onClose={() => setSidebar(false)}
-          onOpenSettings={() => setSettingsOpen(true)}
           onOpenAccount={() => setAccountOpen(true)}
           onOpenAdmin={() => setAdminOpen(true)}
           onOpenBrowser={() => setBrowserUrl('')}

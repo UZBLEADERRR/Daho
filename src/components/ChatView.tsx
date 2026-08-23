@@ -23,13 +23,6 @@ import { MessageView } from './Message';
 import { QuestionCard } from './QuestionCard';
 import { Empty, toast } from './ui';
 
-const STARTERS = [
-  'Bugungi darslarim boʻyicha reja tuz',
-  'Hosila mavzusini misollar bilan tushuntir',
-  'IELTS 7.0 olmoqchiman, kurs ochib ber',
-  'Formulalarni yodlash uchun ilova yasab ber',
-  'Menga kitob yozib ber',
-];
 
 interface Props {
   onOpenArtifact: (a: Artifact) => void;
@@ -268,18 +261,6 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
               title="Salom! Men Dahoman."
               hint="Fanlarni tushuntiraman, kurs ochaman, ilova va video yasab beraman, jadvalingizni yuritaman."
             />
-            <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
-              {STARTERS.map((s) => (
-                <button
-                  key={s}
-                  className="btn ghost"
-                  style={{ justifyContent: 'flex-start', textAlign: 'left' }}
-                  onClick={() => void onSend(s, [])}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         ) : (
           <div className="msgs">

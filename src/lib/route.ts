@@ -30,6 +30,25 @@ export function cloudReady(): boolean {
 export function resolveSource(apiKey?: string): AiSource {
   const key = apiKey ?? getState().settings.apiKey;
   const preference = getState().settings.aiSource;
+
+  /*
+   * ODDIY FOYDALANUVCHI QURILMADAGI KALITNI ISHLATMAYDI.
+   *
+   * Bu ataylab qoʻyilgan qattiq chegara. Sabab haqiqiy nosozlikdan
+   * chiqdi: bitta telefonda admin oʻz kalitini kiritgan, keyin
+   * boshqa odam BEPUL hisob bilan kirgan — va soʻrovlar oʻsha
+   * kalitdan, admin qoʻshmagan model orqali ketgan. Sarf hisoboti
+   * ham oʻsha modelga yozilgan.
+   *
+   * Endi bulut yoqilgan boʻlsa, faqat ADMIN oʻz kalitidan
+   * foydalana oladi. Qolgan hamma odam faqat shlyuz orqali —
+   * admin ochib bergan modellar bilan.
+   */
+  const hisob = accountSnapshot();
+  if (cloudEnabled && hisob?.signed_in && !hisob.is_admin) {
+    return 'cloud';
+  }
+
   if (preference === 'byok') return 'byok';
   if (preference === 'cloud') return cloudReady() ? 'cloud' : 'byok';
   // 'auto': o'z kaliti bo'lsa — o'shandan, aks holda obunadan.

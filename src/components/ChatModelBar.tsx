@@ -43,6 +43,23 @@ export function ChatModelBar() {
   }, []);
 
   /*
+   * Tanlangan model ruxsat etilganlar ichida boʻlmasa — birinchi
+   * ochiq modelga oʻtkazamiz.
+   *
+   * Bu ham haqiqiy nosozlikdan chiqdi: qurilmada eski model nomi
+   * qolib ketgan edi (masalan avvalgi egasi tanlagan), va yuqorida
+   * «Model tanlash» deb turaverardi — soʻrov esa allaqachon boshqa
+   * modelga ketardi.
+   */
+  useEffect(() => {
+    if (!list?.length) return;
+    const ochiqlar = list.filter((m) => m.open);
+    if (!ochiqlar.length) return;
+    if (ochiqlar.some((m) => m.slug === model)) return;
+    updateSettings({ model: ochiqlar[0].slug });
+  }, [list, model]);
+
+  /*
    * Bulut katalogi boʻsh boʻlsa (admin hali model qoʻshmagan yoki
    * ilova oʻz kaliti bilan ishlayapti) qator YOʻQOLMASIN: shunda
    * modelni umuman almashtirib boʻlmasdi. Bunday holda ulangan

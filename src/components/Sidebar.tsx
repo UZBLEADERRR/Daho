@@ -5,11 +5,10 @@ import { setState, useStore } from '../lib/store';
 import { relativeTime } from '../lib/utils';
 import type { AgentSection } from './agent/sections';
 import { AGENT_SECTIONS, SECTION_EMOJI, SECTION_LABEL } from './agent/sections';
-import { Close, Cloud, Plus, Settings as SettingsIcon, Shield, Trash } from './Icons';
+import { Close, Cloud, Plus, Shield, Trash } from './Icons';
 
 interface Props {
   onClose: () => void;
-  onOpenSettings: () => void;
   onOpenAccount: () => void;
   onOpenAdmin: () => void;
   onOpenBrowser: () => void;
@@ -24,7 +23,6 @@ interface Props {
 
 export function Sidebar({
   onClose,
-  onOpenSettings,
   onOpenAccount,
   onOpenAdmin,
   onOpenBrowser,
@@ -226,16 +224,11 @@ export function Sidebar({
             </button>
           )}
 
-          <button
-            className="side-link"
-            onClick={() => {
-              onOpenSettings();
-              onClose();
-            }}
-          >
-            <SettingsIcon size={17} />
-            Sozlamalar
-          </button>
+          {/*
+            * «Sozlamalar» bu yerdan olib tashlandi — u endi profil
+            * ichida. Yon panel faqat ISHGA oid: suhbatlar, Code,
+            * Agent, brauzer.
+            */}
         </div>
       </aside>
     </>
