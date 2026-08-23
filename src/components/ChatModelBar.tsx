@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { publicCatalog, type PublicModel } from '../lib/cloud/catalog';
 import { cloudEnabled } from '../lib/cloud';
 import { updateSettings, useStore } from '../lib/store';
+import { usableChatModels } from '../lib/providers';
 import { Sheet, toast } from './ui';
 
 const ROLE_EMOJI: Record<string, string> = {
@@ -26,18 +27,45 @@ export function ChatModelBar() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (!cloudEnabled) return;
+    if (!cloudEnabled) {
+      setList([]);
+      return;
+    }
     void publicCatalog()
       .then(setList)
       .catch(() => setList([]));
   }, []);
 
-  // Katalog boʻsh boʻlsa (admin hali model qoʻshmagan) — qatorni koʻrsatmaymiz.
-  if (!cloudEnabled || !list?.length) return null;
+  /*
+   * Bulut katalogi boʻsh boʻlsa (admin hali model qoʻshmagan yoki
+   * ilova oʻz kaliti bilan ishlayapti) qator YOʻQOLMASIN: shunda
+   * modelni umuman almashtirib boʻlmasdi. Bunday holda ulangan
+   * provayderlarning modellari koʻrsatiladi.
+   */
+  const mahalliy: PublicModel[] = list?.length
+    ? []
+    : usableChatModels().map((m) => ({
+        slug: m.id,
+        label: m.label,
+        description: m.providerLabel ?? '',
+        role: 'chat',
+        open: true,
+        is_daily: false,
+        supports_tools: false,
+        supports_vision: false,
+        context_tokens: 0,
+        // Oʻz kaliti bilan ishlanganda kredit yechilmaydi.
+        input_credits_per_mtok: 0,
+        output_credits_per_mtok: 0,
+        call_credits: 0,
+      }));
 
-  const ochiq = list.filter((m) => m.open);
-  const yopiq = list.filter((m) => !m.open);
-  const joriy = list.find((m) => m.slug === model);
+  const hammasi = list?.length ? list : mahalliy;
+  if (!hammasi.length) return null;
+
+  const ochiq = hammasi.filter((m) => m.open);
+  const yopiq = hammasi.filter((m) => !m.open);
+  const joriy = hammasi.find((m) => m.slug === model);
 
   return (
     <>

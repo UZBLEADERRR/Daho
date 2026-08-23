@@ -4,7 +4,7 @@
  * Loyihada birga ishlash uchun kerak boʻlgan hamma narsa bitta joyda:
  * kimni chaqirish, kim bor, nima deyilgan va kredit qanchaligi.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatCredits, useCloud } from '../../lib/cloud';
 import {
   createGroup,
@@ -330,7 +330,12 @@ function Wallet({ group, onChanged }: { group: GroupRow; onChanged: () => void }
 
 /* ---------------------------------------------------------------- asosiy */
 
-export function GroupPanel({ onClose }: { onClose: () => void }) {
+/**
+ * `embedded` — sahifa ichida (Daho Code'ning «Guruh» boʻlimi) turadi:
+ * oyna emas, oddiy mazmun. Aks holda ustma-ust oyna ochilib,
+ * foydalanish noqulay boʻlardi.
+ */
+export function GroupPanel({ onClose, embedded }: { onClose?: () => void; embedded?: boolean }) {
   const [groups, setGroups] = useState<GroupRow[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('azolar');
@@ -370,9 +375,30 @@ export function GroupPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const ichki = (mazmun: ReactNode, sarlavha: string, orqaga: () => void) =>
+    embedded ? (
+      <div className="scroll">
+        <div className="pad">
+          <div className="row" style={{ alignItems: 'center', marginBottom: 10 }}>
+            {sarlavha !== 'Guruhlar' && (
+              <button className="icon-btn" onClick={orqaga} aria-label="Orqaga">
+                <span style={{ fontSize: 22 }}>‹</span>
+              </button>
+            )}
+            <b className="grow">{sarlavha}</b>
+          </div>
+          {mazmun}
+        </div>
+      </div>
+    ) : (
+      <Sheet title={sarlavha} onClose={orqaga}>
+        {mazmun}
+      </Sheet>
+    );
+
   if (group) {
-    return (
-      <Sheet title={group.name} onClose={() => setOpenId(null)}>
+    return ichki(
+      <>
         <div className="seg">
           <button className={tab === 'azolar' ? 'on' : ''} onClick={() => setTab('azolar')}>
             Aʼzolar
@@ -396,12 +422,14 @@ export function GroupPanel({ onClose }: { onClose: () => void }) {
         )}
         {tab === 'suhbat' && <Chat group={group} />}
         {tab === 'kredit' && <Wallet group={group} onChanged={load} />}
-      </Sheet>
+      </>,
+      group.name,
+      () => setOpenId(null),
     );
   }
 
-  return (
-    <Sheet title="Guruhlar" onClose={onClose}>
+  return ichki(
+    <>
       <InviteList onJoined={load} />
 
       <div className="section-label">Guruhlarim</div>
@@ -437,6 +465,8 @@ export function GroupPanel({ onClose }: { onClose: () => void }) {
           Ochish
         </button>
       </div>
-    </Sheet>
+    </>,
+    'Guruhlar',
+    () => onClose?.(),
   );
 }

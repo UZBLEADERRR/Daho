@@ -1,6 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
+import WsTransport from 'ws';
 import { env } from './env.js';
 import { cachedUser } from './limits.js';
+
+/*
+ * Node 22+ da global `WebSocket` bor — oʻshani ishlatamiz, chunki u
+ * platformaning oʻzi. Boʻlmasa `ws` paketiga tushamiz.
+ */
+const WebSocketImpl = globalThis.WebSocket ?? WsTransport;
 
 let admin = null;
 
@@ -9,6 +16,16 @@ export function adminClient() {
   if (!admin) {
     admin = createClient(env.supabaseUrl, env.serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
+      /*
+       * Realtime bu yerda umuman ishlatilmaydi, lekin kutubxona
+       * mijozni yaratishdayoq WebSocket qidiradi. Node 22 da u
+       * NATIV bor; Node 20 da esa yoʻq va mijoz «Node.js 20 detected
+       * without native WebSocket support» deb yiqilardi — natijada
+       * serverning HAMMA chaqiruvi «Supabaseʼga ulanib boʻlmadi»
+       * boʻlib qaytardi. `ws` ni ochiq berib qoʻyamiz: ikkala
+       * versiyada ham ishlaydi.
+       */
+      realtime: { transport: WebSocketImpl },
     });
   }
   return admin;

@@ -32,6 +32,7 @@ import { Back, Check, Close, Copy, Download, Mic, Plus, Refresh, Send, Stop, Tra
 import { copyText } from '../lib/exporter';
 import { Empty, Sheet, toast } from './ui';
 import { GroupPanel } from './cloud/GroupPanel';
+import { RoleBar } from './RoleBar';
 import { cloudEnabled } from '../lib/cloud';
 
 /* ------------------------------------------------------------------ */
@@ -179,7 +180,15 @@ async function connectSelfRepo(projectId: string): Promise<void> {
 /*  Ish maydoni                                                        */
 /* ------------------------------------------------------------------ */
 
-type Tab = 'suhbat' | 'fayllar' | 'korinish' | 'nashr';
+type Tab = 'suhbat' | 'fayllar' | 'korinish' | 'nashr' | 'guruh';
+
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'suhbat', label: 'Suhbat' },
+  { id: 'fayllar', label: 'Fayllar' },
+  { id: 'korinish', label: 'Koʻrinish' },
+  { id: 'nashr', label: 'Nashr' },
+  { id: 'guruh', label: 'Guruh' },
+];
 
 /**
  * Agentning joriy rejasi. Nima bajarilgani va nima qolganini koʻrsatadi —
@@ -250,7 +259,6 @@ function PlanCard({ project }: { project: CodeProject }) {
 function Workspace({ project, onBack }: { project: CodeProject; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>('suhbat');
   const [modelPicker, setModelPicker] = useState(false);
-  const [groups, setGroups] = useState(false);
   const settings = useStore((s) => s.settings);
   // Barcha ulangan provayderlarning modellari — Gemini, Kimi, Qwen, GPT…
   const chatModels = usableChatModels();
@@ -283,17 +291,6 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
               {project.repo ? ` · ${project.repo.owner}/${project.repo.repo}` : ''}
             </span>
           </div>
-          {/* Birga ishlash: odam chaqirish, guruh suhbati va guruh hamyoni. */}
-          {cloudEnabled && (
-            <button
-              className="icon-btn"
-              onClick={() => setGroups(true)}
-              aria-label="Guruhlar"
-              title="Guruh bo‘lib ishlash"
-            >
-              <span style={{ fontSize: 17 }}>👥</span>
-            </button>
-          )}
           <button className="model-chip" onClick={() => setModelPicker(true)}>
             {pinned ? '📌 ' : auto ? '⚡ ' : ''}
             {parseRef(activeModel).model.replace(/^gemini-/, '')}
@@ -365,27 +362,25 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
         </Sheet>
       )}
 
+        {/*
+          * Boʻlimlar yuqorida, bitta qatorda. «Guruh» ham shu yerda:
+          * ilgari u alohida 👥 tugmasi ostidagi oynada edi va
+          * qidirmasdan topib boʻlmasdi.
+          */}
         <div className="seg tight">
-          {(['suhbat', 'fayllar', 'korinish', 'nashr'] as Tab[]).map((t) => (
-            <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-              {t === 'suhbat'
-                ? 'Suhbat'
-                : t === 'fayllar'
-                  ? 'Fayllar'
-                  : t === 'korinish'
-                    ? 'Koʻrinish'
-                    : 'Nashr'}
+          {TABS.filter((t) => t.id !== 'guruh' || cloudEnabled).map((t) => (
+            <button key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
+              {t.label}
             </button>
           ))}
         </div>
       </div>
 
-      {groups && <GroupPanel onClose={() => setGroups(false)} />}
-
       {tab === 'suhbat' && <CodeChat project={project} />}
       {tab === 'fayllar' && <Files project={project} />}
       {tab === 'korinish' && <Preview project={project} />}
       {tab === 'nashr' && <Publish project={project} onDeleted={onBack} />}
+      {tab === 'guruh' && <GroupPanel embedded />}
     </>
   );
 }
@@ -731,6 +726,9 @@ function CodeChat({ project }: { project: CodeProject }) {
             </button>
           )}
         </div>
+
+        {/* Rollar — aynan input ostida, ish ustida almashtirish uchun. */}
+        <RoleBar />
       </div>
     </>
   );
