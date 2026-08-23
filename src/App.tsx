@@ -106,7 +106,14 @@ export default function App() {
       setSidebar(true);
     }
   };
-  const [settingsOpen, setSettingsOpen] = useState(!ready);
+  /*
+   * Sozlamalar oynasi endi oʻzi ochilmaydi.
+   *
+   * Bulut yoqilgan boʻlsa yangi foydalanuvchi kirish ekranini koʻradi,
+   * kalit soʻralmaydi — barcha sozlama profil ichida. Faqat bulutsiz
+   * (mahalliy) yigʻilmada birinchi ishga tushirishda ochiladi.
+   */
+  const [settingsOpen, setSettingsOpen] = useState(!ready && !cloudEnabled);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);

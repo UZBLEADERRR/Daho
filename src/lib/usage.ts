@@ -13,6 +13,7 @@
  * token qaytarmaydi) — bunda faqat soʻrovlar soni koʻrinadi.
  */
 
+import { displayModel } from './modelname';
 import { modelCaps, parseRef, priceLabel } from './providers';
 
 export interface UsageEntry {
@@ -130,7 +131,8 @@ export function byModel(sinceDays = 30): Array<{ model: string; label: string } 
   return [...groups.entries()]
     .map(([model, entries]) => ({
       model,
-      label: parseRef(model).model,
+      // Ekranda admin qoʻygan nom turadi — provayder nomi emas.
+      label: displayModel(model) || parseRef(model).model,
       ...sum(entries),
     }))
     .sort((a, b) => b.cost - a.cost || b.requests - a.requests);

@@ -8,6 +8,10 @@ export interface CloudPlan {
   period: 'monthly' | 'yearly' | 'once' | 'free';
   credit_grant: number;
   daily_credit_cap: number | null;
+  hourly_credit_cap?: number | null;
+  weekly_credit_cap?: number | null;
+  daily_model_access?: 'none' | 'limited' | 'unlimited';
+  daily_model_quota?: number;
   allow_background: boolean;
   max_queued_jobs: number;
   max_jobs_per_day: number;
@@ -45,6 +49,22 @@ export interface Account {
   usage_today: number;
   usage_month: number;
   active_jobs: number;
+  /** Soatlik va haftalik oynadagi sarf (limitga sanaladigan qismi). */
+  usage_hour?: number;
+  usage_week?: number;
+  /** Bugungi HAQIQIY xarajat — bepul yoʻl va guruh toʻlagani bilan birga. */
+  spend_today?: number;
+  tokens_today?: number;
+  /** Bepul zaxira modelning bugungi hisobi. */
+  daily_free?: {
+    access: 'none' | 'limited' | 'unlimited';
+    quota: number;
+    used: number;
+    left: number;
+    tokens: number;
+    credits: number;
+    label: string;
+  };
 }
 
 export interface CloudJob {

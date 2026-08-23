@@ -75,6 +75,16 @@ const TTS_LANGS = [
   { id: 'tr-TR', label: 'Turkcha' },
 ];
 
+/** Sozlamalarning bitta boʻlimi — profil ichida alohida sahifa boʻlib ochiladi. */
+export interface SettingGroup {
+  id: string;
+  icon: JSX.Element;
+  title: string;
+  hint: string;
+  show?: boolean;
+  body: JSX.Element;
+}
+
 interface SettingsProps {
   /** Profil ichida sahifa boʻlib turadi — oyna emas. */
   inline?: boolean;
@@ -82,10 +92,24 @@ interface SettingsProps {
   onOpenAccount: () => void;
 }
 
-export function Settings({ onClose, onOpenAccount, inline }: SettingsProps) {
+/**
+ * Sozlama boʻlimlari — bitta joyda.
+ *
+ * Ilgari bu roʻyxat `Settings` ichida yashirin turardi va profildan
+ * unga faqat «Sozlamalar» degan bitta qator orqali kirilardi: odam ikki
+ * qadam bosib, yana bir menyu koʻrardi. Endi roʻyxat tashqariga
+ * chiqarildi — profil uni oʻz qatorlari qilib chizadi, «Sozlamalar»
+ * degan oraliq sahifa umuman qolmadi.
+ */
+export function useSettingGroups({
+  onClose,
+  onOpenAccount,
+}: {
+  onClose: () => void;
+  onOpenAccount: () => void;
+}): SettingGroup[] {
   const settings = useStore((s) => s.settings);
   const cloud = useCloud();
-  const install = useInstallPrompt();
   const [models, setModels] = useState<ModelInfo[]>(cachedModels());
   const [loadingModels, setLoadingModels] = useState(false);
   const [deviceVoices, setDeviceVoices] = useState<DeviceVoice[]>([]);
@@ -93,7 +117,6 @@ export function Settings({ onClose, onOpenAccount, inline }: SettingsProps) {
   const [testing, setTesting] = useState(false);
   const [ghChecking, setGhChecking] = useState(false);
   const [micChecks, setMicChecks] = useState<MicCheck[] | null>(null);
-  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [micBusy, setMicBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -834,6 +857,20 @@ export function Settings({ onClose, onOpenAccount, inline }: SettingsProps) {
       ),
     },
   ];
+
+  return groups.filter((g) => g.show !== false);
+}
+
+/**
+ * Sozlamalar oynasi — endi faqat zaxira yoʻl.
+ *
+ * Asosiy joyi profil ichida. Bu komponent eski chaqiruvlar (masalan
+ * ishlab chiquvchi rejimidagi tezkor tugma) uchun qoldirildi.
+ */
+export function Settings({ onClose, onOpenAccount, inline }: SettingsProps) {
+  const groups = useSettingGroups({ onClose, onOpenAccount });
+  const install = useInstallPrompt();
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const current = groups.find((g) => g.id === openGroup);
 

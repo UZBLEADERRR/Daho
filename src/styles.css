@@ -4465,6 +4465,22 @@ iframe {
   margin-top: 5px;
 }
 
+/* Bugungi xarajat — hisoblagichning eng katta raqami. */
+.limit-today {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.limit-sum {
+  font-size: 21px;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
 .meter i.low {
   background: var(--danger);
 }

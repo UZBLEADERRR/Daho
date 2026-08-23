@@ -94,7 +94,10 @@ import type {
 } from './types';
 import { fmtDuration, todayISO, uid, weekdayIndex } from './utils';
 import {
+  chunkCaptions,
+  clock,
   findVideos,
+  keepReal,
   languageName,
   parseYouTube,
   readVideo,
@@ -485,13 +488,21 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     description:
       'YouTube videoni koʻrib chiqadi: mazmunini yozadi va subtitrini tarjima qiladi. ' +
       'Foydalanuvchi «bu videoda nima deyilyapti», «tarjima qil», «subtitr qilib ber» desa ishlat. ' +
-      'format="srt" boʻlsa subtitr fayli ham yasaladi.',
+      'format="srt" boʻlsa subtitr fayli ham yasaladi. '
+      + 'Uzun videoda aniq narsa soʻralsa `question` ni ber — ichidan oʻsha joy topiladi.',
     parameters: {
       type: 'OBJECT',
       properties: {
         url: { type: 'STRING', description: 'YouTube havolasi' },
         lang: { type: 'STRING', description: 'Qaysi tilga tarjima qilinsin: uz-UZ, ru-RU, en-US, tr-TR' },
         format: { type: 'STRING', description: '«matn» (standart) yoki «srt»' },
+        question: {
+          type: 'STRING',
+          description:
+            'Videodan NIMA topish kerakligi. Berilsa butun subtitr emas, faqat shu '
+            + 'savolga tegishli boʻlaklar (vaqti bilan) qaytariladi — uzun videoda '
+            + 'token behuda sarflanmaydi.',
+        },
       },
       required: ['url'],
     },
@@ -2218,21 +2229,39 @@ export async function executeTool(
           ];
           const unique = found.filter((v, i) => found.findIndex((o) => o.id === v.id) === i);
 
-          if (unique.length) {
+          /*
+           * HAVOLA TEKSHIRILADI.
+           *
+           * Model havolani oʻylab topishi mumkin — eng koʻp uchraydigani
+           * `dQw4w9WgXcQ`. Ilgari oʻsha id javobga tushib ketardi va
+           * odam butunlay boshqa video koʻrardi. Endi har bir nomzod
+           * haqiqatan mavjudligi tekshiriladi va sarlavhasi olinadi.
+           */
+          const real = await keepReal(unique, ctx.signal);
+
+          if (real.length) {
             return {
               ok: true,
-              summary: `${unique.length} ta video topildi`,
+              summary: `${real.length} ta video topildi`,
               payload: {
                 izoh: answer.text,
-                videolar: unique.map((v) => v.url),
+                videolar: real.map((v: { url: string; title: string }) => ({
+                  havola: v.url,
+                  sarlavha: v.title || '(nomaʼlum)',
+                })),
                 youtube_qidiruv: browse,
                 koʻrsatma:
-                  'Havolalarni javobingda yoz — ular chatda pleyer boʻlib chiqadi. ' +
-                  'Har biri haqida bir jumla ayt.',
+                  'Havolalarni javobingda yoz — ular chatda pleyer boʻlib chiqadi. '
+                  + 'MUHIM: yuqoridagi `sarlavha` — videoning HAQIQIY nomi. Agar u '
+                  + 'soʻralgan mavzuga mos kelmasa, oʻsha videoni tavsiya qilma va '
+                  + 'buni ochiq ayt. Sarlavhani oʻzingdan toʻqima.',
               },
             };
           }
-          note = answer.text;
+
+          note = unique.length
+            ? 'Model bergan havolalar tekshiruvdan oʻtmadi — bunday videolar mavjud emas.'
+            : answer.text;
         } catch (err) {
           if ((err as Error)?.name === 'AbortError') throw err;
           note = String((err as Error)?.message ?? err);
@@ -2278,10 +2307,35 @@ export async function executeTool(
           });
         }
 
-        const preview = read.captions
-          .slice(0, 40)
-          .map((c) => `[${Math.floor(c.start / 60)}:${String(Math.floor(c.start % 60)).padStart(2, '0')}] ${c.text}`)
-          .join('\n');
+        /*
+         * Uzun videoda BUTUN subtitrni bermaymiz.
+         *
+         * Soatlik suhbat — oʻn minglab token. Savol berilgan boʻlsa
+         * subtitr boʻlaklarga boʻlinadi va faqat eng mos boʻlaklar
+         * (vaqti bilan) qaytariladi. Savol boʻlmasa — boshidan
+         * qisqa parcha, mazmuni esa baribir toʻliq.
+         */
+        const savol = str(args.question);
+        const parchalar = chunkCaptions(read.captions);
+        let preview: string;
+        let topildi = 0;
+
+        if (savol && parchalar.length > 6) {
+          const { rank } = await import('./context/retrieve');
+          const mos = rank(parchalar, savol, (p) => p.text, { top: 6, threshold: 0.05 });
+          topildi = mos.length;
+          const tanlangan = (mos.length ? mos.map((m) => m.item) : parchalar.slice(0, 6))
+            .slice()
+            .sort((a, b) => a.start - b.start);
+          preview = tanlangan
+            .map((p) => `[${clock(p.start)}] ${p.text}`)
+            .join('\n\n');
+        } else {
+          preview = parchalar
+            .slice(0, 12)
+            .map((p) => `[${clock(p.start)}] ${p.text}`)
+            .join('\n');
+        }
 
         return {
           ok: true,
@@ -2292,11 +2346,24 @@ export async function executeTool(
             asl_til: read.language,
             mazmuni: read.summary,
             subtitr_boʻlaklari: read.captions.length,
-            tarjima_boshi: preview,
+            davomiyligi: read.captions.length
+              ? clock(read.captions[read.captions.length - 1].end)
+              : undefined,
+            ...(savol
+              ? {
+                  savol: savol,
+                  mos_joylar: preview || '(mos joy topilmadi)',
+                  topilgan_boʻlaklar: topildi,
+                }
+              : { tarjima_boshi: preview }),
             fayl: wantSrt && artifacts.length ? '.srt fayli tayyor' : undefined,
             koʻrsatma:
-              'Mazmunini oʻz soʻzing bilan yoz. Subtitrni toʻliq koʻchirma — ' +
-              'asosiy fikrlarni va muhim joylarni vaqti bilan ayt.',
+              savol
+                ? 'Yuqoridagi `mos_joylar` — videoning aynan shu savolga tegishli '
+                  + 'qismlari. Javobni shulardan ber va qaysi daqiqada aytilganini '
+                  + 'koʻrsat (masalan «12:40 da»). Butun videoni qayta soʻzlab berma.'
+                : 'Mazmunini oʻz soʻzing bilan yoz. Subtitrni toʻliq koʻchirma — '
+                  + 'asosiy fikrlarni va muhim joylarni vaqti bilan ayt.',
           },
         };
       } catch (err) {

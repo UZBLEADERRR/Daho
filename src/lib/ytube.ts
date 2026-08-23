@@ -125,6 +125,126 @@ export function languageName(code: string): string {
   return LANG_NAME[code] ?? LANG_NAME[code.slice(0, 2)] ?? code;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Video haqiqatan bormi                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Video mavjudligini tekshiradi.
+ *
+ * NEGA KERAK: model «video top» deyilganda havolani OʻYLAB TOPISHI
+ * mumkin. Eng koʻp uchraydigani `dQw4w9WgXcQ` — mashq maʼlumotidagi
+ * eng mashhur id (Rick Astley). Ilgari shu id javobga tushib ketardi
+ * va foydalanuvchi butunlay boshqa video koʻrardi.
+ *
+ * Tekshiruv RASM orqali: `hqdefault.jpg` mavjud video uchun katta
+ * surat, mavjud boʻlmagani uchun 120×90 kulrang oʻrinbosar qaytaradi.
+ * Bu yoʻl CORS talab qilmaydi, shuning uchun brauzerda ishonchli.
+ */
+export function videoExists(id: string, timeoutMs = 6000): Promise<boolean> {
+  if (typeof Image === 'undefined') return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const img = new Image();
+    const timer = setTimeout(() => {
+      img.src = '';
+      resolve(false);
+    }, timeoutMs);
+
+    img.onload = () => {
+      clearTimeout(timer);
+      // Oʻrinbosar surat 120×90 — undan kattasi haqiqiy video.
+      resolve(img.naturalWidth > 120);
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    img.src = `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
+  });
+}
+
+/**
+ * Videoning haqiqiy sarlavhasi (oEmbed).
+ *
+ * Kalit talab qilmaydi. Tarmoq yoki CORS toʻsib qoʻysa boʻsh satr
+ * qaytadi — bu holda sarlavhasiz davom etamiz, chunki mavjudlikni
+ * `videoExists` allaqachon tasdiqlagan.
+ */
+export async function videoTitle(id: string, signal?: AbortSignal): Promise<string> {
+  try {
+    const url =
+      'https://www.youtube.com/oembed?format=json&url=' +
+      encodeURIComponent(`https://www.youtube.com/watch?v=${id}`);
+    const res = await fetch(url, { signal });
+    if (!res.ok) return '';
+    const data = (await res.json()) as { title?: string };
+    return String(data?.title ?? '');
+  } catch {
+    return '';
+  }
+}
+
+/** Roʻyxatdan faqat HAQIQATAN mavjud videolarni qoldiradi. */
+export async function keepReal(
+  refs: VideoRef[],
+  signal?: AbortSignal,
+): Promise<Array<VideoRef & { title: string }>> {
+  const checked = await Promise.all(
+    refs.slice(0, 8).map(async (ref) => {
+      if (!(await videoExists(ref.id))) return null;
+      return { ...ref, title: await videoTitle(ref.id, signal) };
+    }),
+  );
+  return checked.filter((v): v is VideoRef & { title: string } => v !== null);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Subtitr ichidan qidirish                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Uzun videodan faqat KERAKLI qismni ajratadi.
+ *
+ * Soatlab davom etgan suhbatning butun matnini modelga berish —
+ * oʻn minglab token. Buning oʻrniga subtitr boʻlaklarga boʻlinadi,
+ * savolga eng mos boʻlaklar tanlanadi va faqat oʻshalar beriladi.
+ * Har boʻlak vaqt belgisi bilan keladi, shunda javobda «12:40 da
+ * aytilgan» deb koʻrsatish mumkin.
+ */
+export interface Parcha {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** Subtitrni ~40 soniyalik boʻlaklarga yigʻadi. */
+export function chunkCaptions(captions: Caption[], seconds = 40): Parcha[] {
+  const out: Parcha[] = [];
+  let joriy: Parcha | null = null;
+
+  for (const c of captions) {
+    if (!joriy || c.start - joriy.start >= seconds) {
+      if (joriy) out.push(joriy);
+      joriy = { start: c.start, end: c.end, text: c.text };
+    } else {
+      joriy.end = c.end;
+      joriy.text += ` ${c.text}`;
+    }
+  }
+  if (joriy) out.push(joriy);
+  return out;
+}
+
+/** `754` → `12:34` */
+export function clock(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+}
+
 /**
  * Videoni oʻqiydi: sarlavha, asl til, qisqacha mazmun va tarjima qilingan
  * subtitrlar (vaqt belgilari bilan).

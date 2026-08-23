@@ -18,13 +18,20 @@ import {
 import { clearSyncShadow, getSyncState, syncNow } from '../../lib/cloud/sync';
 import { JobsTab, LimitBars, ModelList, PlansTab, ProfileBlock, UsageTab } from './AccountSheet';
 import { InviteList } from './GroupPanel';
-import { Settings } from '../Settings';
+import { useSettingGroups } from '../Settings';
 import { Close } from '../Icons';
 import { toast } from '../ui';
 
-type Page = 'bosh' | 'profil' | 'tarif' | 'sarf' | 'fon' | 'modellar' | 'sync' | 'sozlama';
+/*
+ * Sahifa — yo profilning oʻz boʻlimi, yo sozlamaning bir boʻlimi.
+ *
+ * Sozlama boʻlimlari `set:` prefiksi bilan keladi: `set:ovoz`,
+ * `set:korinish`. Shu bilan «Sozlamalar» degan oraliq menyu kerak
+ * boʻlmay qoldi — har bir boʻlim profilda oʻz qatori bilan turadi.
+ */
+type Page = 'bosh' | 'profil' | 'tarif' | 'sarf' | 'fon' | 'modellar' | 'sync' | `set:${string}`;
 
-const SARLAVHA: Record<Page, string> = {
+const SARLAVHA: Record<string, string> = {
   bosh: 'Profil',
   profil: 'Ism va parol',
   tarif: 'Tarif',
@@ -32,8 +39,33 @@ const SARLAVHA: Record<Page, string> = {
   fon: 'Fon vazifalari',
   modellar: 'Modellar',
   sync: 'Sinxronizatsiya',
-  sozlama: 'Sozlamalar',
 };
+
+/* Har bir sozlama boʻlimiga emoji — profil qatorlari bir xil koʻrinsin. */
+const BELGI: Record<string, string> = {
+  cloud: '☁️',
+  ai: '🧩',
+  telegram: '✈️',
+  instagram: '📷',
+  google: '🌐',
+  server: '🖥',
+  xarajat: '📈',
+  ovoz: '🎙',
+  github: '🐙',
+  supabase: '🗄',
+  qiyofa: '✨',
+  shaxsiy: '🙋',
+  korinish: '🌙',
+  malumot: '💾',
+};
+
+/* Qaysi boʻlim qaysi guruhga tushadi. */
+const GURUH: Array<{ nom: string; ichida: string[] }> = [
+  { nom: 'Ilova', ichida: ['shaxsiy', 'korinish', 'ovoz', 'qiyofa'] },
+  { nom: 'Ulanishlar', ichida: ['telegram', 'instagram', 'google', 'github', 'supabase'] },
+  { nom: 'Maʼlumot', ichida: ['malumot', 'xarajat'] },
+  { nom: 'Ishlab chiquvchi', ichida: ['ai', 'server', 'cloud'] },
+];
 
 /** Ism yoki pochtadan bitta harf — avatar oʻrniga. */
 function boshHarf(text: string): string {
@@ -71,7 +103,11 @@ export function ProfileScreen({
 }) {
   const { account } = useCloud();
   const [page, setPage] = useState<Page>('bosh');
+  const sozlama = useSettingGroups({ onClose, onOpenAccount: () => setPage('tarif') });
   if (!account) return null;
+
+  const boLim = (id: string) => sozlama.find((g) => g.id === id);
+  const ochiq = page.startsWith('set:') ? boLim(page.slice(4)) : undefined;
 
   const ism = account.full_name || account.email.split('@')[0];
   const sync = getSyncState();
@@ -86,7 +122,7 @@ export function ProfileScreen({
         >
           {page === 'bosh' ? <Close /> : <span className="prof-back">‹</span>}
         </button>
-        <div className="prof-title">{SARLAVHA[page]}</div>
+        <div className="prof-title">{ochiq ? ochiq.title : SARLAVHA[page] ?? 'Profil'}</div>
         <span style={{ width: 38 }} />
       </header>
 
@@ -134,10 +170,33 @@ export function ProfileScreen({
               />
             </div>
 
+            {/*
+              * Sozlamaning HAR BIR boʻlimi shu yerda — oʻz qatori bilan.
+              * «Sozlamalar» degan oraliq sahifa yoʻq: odam qidirmaydi,
+              * koʻzi tushgan qatorni bosadi.
+              */}
+            {GURUH.map(({ nom, ichida }) => {
+              const qatorlar = ichida.map(boLim).filter(Boolean) as typeof sozlama;
+              if (!qatorlar.length) return null;
+              return (
+                <div key={nom}>
+                  <div className="prof-group">{nom}</div>
+                  <div className="prof-list">
+                    {qatorlar.map((g) => (
+                      <Qator
+                        key={g.id}
+                        emoji={BELGI[g.id] ?? '•'}
+                        label={g.title}
+                        onClick={() => setPage(`set:${g.id}`)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
             <div className="prof-group">Tizim</div>
             <div className="prof-list">
-              {/* Sozlamalar endi shu yerda — alohida oyna emas. */}
-              <Qator emoji="⚙️" label="Sozlamalar" onClick={() => setPage('sozlama')} />
               {account.is_admin && (
                 <>
                   <Qator emoji="📊" label="Sarf tarixi" onClick={() => setPage('sarf')} />
@@ -183,9 +242,7 @@ export function ProfileScreen({
         {page === 'sarf' && <UsageTab />}
         {page === 'fon' && <JobsTab />}
         {page === 'modellar' && <ModelList />}
-        {page === 'sozlama' && (
-          <Settings inline onClose={() => setPage('bosh')} onOpenAccount={() => setPage('bosh')} />
-        )}
+        {ochiq && <div className="prof-card">{ochiq.body}</div>}
         {page === 'sync' && (
           <div className="prof-card">
             <div className="tiny">

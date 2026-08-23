@@ -310,10 +310,23 @@ function AdminHint({ email: sessionEmail }: { email: string }) {
 
 export function LimitBars() {
   const [win, setWin] = useState<UsageWindows | null>(null);
+  const { account } = useCloud();
+
+  /*
+   * Hisoblagich «tirik» boʻlishi kerak.
+   *
+   * Ilgari u faqat ochilganda bir marta olinardi — soʻrov yuborilsa ham
+   * chiziq joyida turardi va odam «limit umuman oʻzgarmayapti» derdi.
+   * Endi hisob yangilanishi bilan (har javobdan keyin `refreshAccount`
+   * chaqiriladi) raqamlar ham qayta olinadi.
+   */
+  const belgi = `${account?.usage_today ?? ''}|${account?.spend_today ?? ''}|${
+    account?.daily_free?.used ?? ''
+  }`;
 
   useEffect(() => {
     void usageWindows().then(setWin).catch(() => undefined);
-  }, []);
+  }, [belgi]);
 
   if (!win) return null;
 
@@ -326,9 +339,26 @@ export function LimitBars() {
 
   const visible = rows.filter(([, w]) => !w.unlimited);
   const daily = win.daily_model;
+  const sarf = win.spend_today ?? account?.spend_today ?? 0;
 
   return (
     <div className="limits">
+      {/*
+        Eng muhim raqam tepada: bugun qancha ketdi. Bepul yoʻl bilan
+        yuborilgan soʻrov ham shu yerda koʻrinadi — narxi tokendan
+        hisoblanadi, faqat hisobdan yechilmaydi.
+      */}
+      <div className="limit-today">
+        <div>
+          <div className="limit-sum">{formatCredits(sarf)}</div>
+          <div className="tiny">bugungi xarajat</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div className="limit-sum">{formatCredits(account?.balance ?? 0)}</div>
+          <div className="tiny">qolgan kredit</div>
+        </div>
+      </div>
+
       {visible.length === 0 ? (
         <div className="tiny">Limitsiz reja — cheklov yoʻq.</div>
       ) : (
@@ -336,7 +366,12 @@ export function LimitBars() {
           <div className="limit" key={label}>
             <div className="between tiny">
               <span>{label}</span>
-              <b className={w.left_percent <= 15 ? 'danger-text' : ''}>{w.left_percent}%</b>
+              {/* Foiz emas, aniq raqam: «142 / 200 kredit». */}
+              <b className={w.left_percent <= 15 ? 'danger-text' : ''}>
+                {w.cap
+                  ? `${formatCredits(w.used ?? 0)} / ${formatCredits(w.cap)}`
+                  : `${w.left_percent}%`}
+              </b>
             </div>
             <div className="meter">
               <i
@@ -360,7 +395,8 @@ export function LimitBars() {
           Limit tugasa <b>Daho Daily</b> modeli ishlaydi
           {daily.access === 'unlimited'
             ? ' — cheksiz, lekin sekinroq.'
-            : ` — bugun ${Math.max(daily.quota - daily.used, 0)} ta xabar qoldi.`}
+            : ` — bugun ${Math.max(daily.quota - daily.used, 0)} ta xabar qoldi` +
+              (daily.used ? ` (${daily.used} tasi ishlatildi).` : '.')}
         </div>
       )}
     </div>

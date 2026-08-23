@@ -68,6 +68,9 @@ export async function whoami(): Promise<Record<string, unknown> | null> {
 export interface WindowState {
   unlimited: boolean;
   left_percent: number;
+  /** Shu oynada sarflangan kredit va chegara — aniq raqam. */
+  used?: number;
+  cap?: number | null;
 }
 
 /**
@@ -84,7 +87,16 @@ export interface UsageWindows {
   period: WindowState;
   wallet: number;
   allow_payg: boolean;
-  daily_model: { access: 'none' | 'limited' | 'unlimited'; used: number; quota: number };
+  daily_model: {
+    access: 'none' | 'limited' | 'unlimited';
+    used: number;
+    quota: number;
+    tokens?: number;
+    credits?: number;
+  };
+  /** Bugungi haqiqiy xarajat (bepul yoʻl ham kiradi) va token soni. */
+  spend_today?: number;
+  tokens_today?: number;
   period_end: string | null;
 }
 
