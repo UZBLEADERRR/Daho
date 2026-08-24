@@ -1,1 +1,0 @@
-{"name":"dirox","private":true,"type":"module","version":"1.0.0","scripts":{"start":"node api/server.js"},"engines":{"node":">=18"}}
