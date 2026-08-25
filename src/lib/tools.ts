@@ -1,7 +1,51 @@
 import { askUser } from './ask';
 import { b64ToBytes } from './audio';
-import { saveBytes } from './exporter';
-import { generateImage, generateJson, generateText, searchAnswer } from './gemini';
+import { createBook, writeBook } from './book';
+import { activeConnectors, callConnector, findAction, findConnector } from './connectors';
+import { helperRole, runHelper } from './helper';
+import {
+  addEvent,
+  googleReady,
+  listDrive,
+  listEvents,
+  readDrive,
+  readMail,
+  searchMail,
+  sendMail,
+} from './google';
+import {
+  igComments,
+  igConversations,
+  igHide,
+  igMedia,
+  igMessages,
+  igReady,
+  igReply,
+  igSend,
+  ytComments,
+  ytReply,
+  ytVideos,
+} from './social';
+import {
+  tgBroadcast,
+  tgBusiness,
+  tgChatInfo,
+  tgChats,
+  tgContacts,
+  tgMe,
+  tgPin,
+  tgReady,
+  tgSend,
+  tgPostStory,
+  tgSchedule,
+  tgSendAs,
+  tgSendMediaAs,
+  tgSetCommands,
+  tgSync,
+} from './telegram';
+import { fetchImageData, searchImages } from './imagesearch';
+import { canSearchWeb, imageAny, jsonAny, searchAny, visionAny } from './providers';
+import { DOC_LABEL, exportDocument, saveBytes, saveZip, type DocFormat } from './exporter';
 import {
   DOCX_MIME,
   buildDocxWithImages,
@@ -22,6 +66,17 @@ import {
   type Spot,
   type TravelMode,
 } from './place';
+import { openSite } from './browserbus';
+import { synthesize } from './speech';
+import {
+  connectable,
+  connected,
+  startConnect,
+  type OauthProvider,
+  type ProviderInfo,
+} from './oauth';
+import { SKILLS, skillById } from './skills';
+import { TOOL_GROUPS } from './toolpick';
 import { getState, setState } from './store';
 import { DAYS } from './types';
 import type {
@@ -38,6 +93,18 @@ import type {
   TimeLog,
 } from './types';
 import { fmtDuration, todayISO, uid, weekdayIndex } from './utils';
+import {
+  chunkCaptions,
+  clock,
+  findVideos,
+  keepReal,
+  languageName,
+  parseYouTube,
+  readVideo,
+  searchUrl,
+  toNarration,
+  toSrt,
+} from './ytube';
 
 export interface ToolOutcome {
   ok: boolean;
@@ -210,6 +277,99 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'search_images',
+    description:
+      'INTERNETDAN haqiqiy rasm qidiradi va manbasi bilan qaytaradi ' +
+      '(Openverse va Wikimedia — bepul, litsenziyali rasmlar).\n' +
+      'Qachon ishlatiladi: foydalanuvchi «rasmini koʻrsat», «qanday koʻrinadi», ' +
+      '«namuna/misol rasm», «ilhom uchun rasmlar» desa; yoki haqiqiy joy, ' +
+      'odam, hayvon, tarixiy voqea, mahsulot haqida gapirilsa.\n' +
+      'Rasm YASASH kerak boʻlsa (chizma, logotip, muqova) — `generate_image` ishlat. ' +
+      'Bu vosita esa mavjud, haqiqiy rasmlarni topadi.\n' +
+      'Qidiruv soʻzini INGLIZ tilida yoz — natija ancha koʻp boʻladi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: {
+          type: 'STRING',
+          description: 'Qidiruv soʻzi, ingliz tilida (masalan "korean skincare routine")',
+        },
+        count: { type: 'NUMBER', description: 'Nechta rasm kerak (standart 8, koʻpi 20)' },
+        save: {
+          type: 'STRING',
+          description:
+            '"true" — rasmlarni ilovaga saqlash (hujjatga qoʻyish yoki koʻrish uchun). ' +
+            'Standart: faqat havola va manba qaytariladi.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'write_book',
+    description:
+      'KITOB yozishni boshlaydi. Foydalanuvchi «kitob yozmoqchiman», «menga kitob yozib ber», ' +
+      '«qissa/roman/qoʻllanma yoz» desa shuni chaqir.\n' +
+      'MUHIM: chaqirishdan OLDIN `ask_user` bilan kamida 3 ta narsani aniqla — ' +
+      'kitob nima haqida va turi (badiiy/oʻquv/biznes), kim uchun, hajmi (necha bob). ' +
+      'Rasm kerakmi, ohangi qanday boʻlsin — buni ham soʻrasang yaxshi.\n' +
+      'Vosita ishga tushgach kitob oʻzi yoziladi: reja va qahramonlar, muqova rasmi, ' +
+      'soʻng bob-bob matn. Foydalanuvchi jarayonni «Agent → Kitoblar» boʻlimida koʻradi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        request: {
+          type: 'STRING',
+          description:
+            'Kitob haqida toʻliq tavsif: mavzu, tur, ohang, kim uchun, foydalanuvchi ' +
+            'aytgan barcha tafsilotlar bir joyda.',
+        },
+        kind: { type: 'STRING', description: 'badiiy | oʻquv qoʻllanma | biznes | bolalar…' },
+        chapters: { type: 'NUMBER', description: 'Boblar soni (standart 12)' },
+        words: { type: 'NUMBER', description: 'Har bobda taxminan necha soʻz (standart 1200)' },
+        images: { type: 'STRING', description: '"false" — rasmsiz kitob' },
+      },
+      required: ['request'],
+    },
+  },
+  {
+    name: 'send_file',
+    description:
+      'Foydalanuvchining telefoniga FAYL yuboradi: PDF, Word, matn (.md), slayd ' +
+      'yoki ZIP. Ulashish oynasi ochiladi — u saqlaydi yoki boshqa ilovaga yuboradi.\n' +
+      'Foydalanuvchi «pdf qilib ber», «word qilib yubor», «fayl qilib tashla», ' +
+      '«yuklab olaman» desa chaqir. Uzun matnni chatga koʻchirib yozmasdan shu ' +
+      'vosita bilan fayl qilib ber.\n' +
+      'ZIP uchun `files` massivini toʻldir (bir nechta fayl), qolgan turlar uchun ' +
+      '`content` ga markdown matnni yoz.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        name: { type: 'STRING', description: 'Fayl nomi (kengaytmasiz)' },
+        format: {
+          type: 'STRING',
+          description: 'pdf | docx | md | pptx | zip',
+        },
+        content: {
+          type: 'STRING',
+          description: 'Markdown matn (pdf/docx/md/pptx uchun). Sarlavhalar # bilan.',
+        },
+        files: {
+          type: 'ARRAY',
+          description: 'ZIP uchun fayllar',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              path: { type: 'STRING', description: 'Fayl nomi, masalan "reja.md"' },
+              content: { type: 'STRING' },
+            },
+          },
+        },
+      },
+      required: ['name', 'format'],
+    },
+  },
+  {
     name: 'ask_user',
     description:
       'Foydalanuvchidan aniqlik soʻraydi va javobini kutadi. Ish yoʻnalishi ' +
@@ -292,6 +452,77 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'open_site',
+    description:
+      'Saytni ilovaning ichki brauzerida ochib beradi. Foydalanuvchi «shu saytni och», ' +
+      '«hujjatini koʻrsat», «ro‘yxatdan o‘tkaz» desa yoki javobda muhim manba boʻlsa ishlat.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'Toʻliq manzil' },
+        why: { type: 'STRING', description: 'Nima uchun ochilyapti — bir jumla' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'find_video',
+    description:
+      'Mavzu boʻyicha YouTube dan video topadi. Foydalanuvchi «video topib ber», ' +
+      '«videosini koʻrsat», «tushuntiruvchi video» desa shuni chaqir. ' +
+      'Topilgan havolalar chatda pleyer boʻlib chiqadi — havolani matnda qayta yozma.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: { type: 'STRING', description: 'Nima haqida video kerak' },
+        language: {
+          type: 'STRING',
+          description: 'Qaysi tildagi video afzal (masalan «oʻzbek», «rus», «ingliz»). Boʻsh boʻlsa farqi yoʻq.',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'read_video',
+    description:
+      'YouTube videoni koʻrib chiqadi: mazmunini yozadi va subtitrini tarjima qiladi. ' +
+      'Foydalanuvchi «bu videoda nima deyilyapti», «tarjima qil», «subtitr qilib ber» desa ishlat. ' +
+      'format="srt" boʻlsa subtitr fayli ham yasaladi. '
+      + 'Uzun videoda aniq narsa soʻralsa `question` ni ber — ichidan oʻsha joy topiladi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'YouTube havolasi' },
+        lang: { type: 'STRING', description: 'Qaysi tilga tarjima qilinsin: uz-UZ, ru-RU, en-US, tr-TR' },
+        format: { type: 'STRING', description: '«matn» (standart) yoki «srt»' },
+        question: {
+          type: 'STRING',
+          description:
+            'Videodan NIMA topish kerakligi. Berilsa butun subtitr emas, faqat shu '
+            + 'savolga tegishli boʻlaklar (vaqti bilan) qaytariladi — uzun videoda '
+            + 'token behuda sarflanmaydi.',
+        },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'dub_video',
+    description:
+      'YouTube videoni soʻralgan tilda BITTA ovozli fayl qilib oʻqib beradi ' +
+      '(videoning ovozini almashtirmaydi — alohida audio yasaladi). ' +
+      'Foydalanuvchi «videoni tarjima qilib oʻqib ber», «ovozini oʻzbekchaga oʻgir» desa ishlat.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: 'YouTube havolasi' },
+        lang: { type: 'STRING', description: 'Ovoz tili: uz-UZ, ru-RU, en-US, tr-TR' },
+      },
+      required: ['url'],
+    },
+  },
+  {
     name: 'plan_route',
     description:
       'Hozirgi joylashuvdan berilgan manzilgacha yoʻl kartasini ochadi: masofa, ' +
@@ -329,6 +560,225 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'delegate',
+    description:
+      'YORDAMCHI AGENT chaqiradi — ish katta boʻlsa boʻlaklab, har boʻlagini '
+      + 'alohida mutaxassisga berasan. Yordamchi oʻz modeli bilan ishlaydi, '
+      + 'kerak boʻlsa internetdan qidiradi, sayt va video oʻqiydi, keyin senga '
+      + 'hisobot qaytaradi.\n'
+      + 'Rollar: "tadqiqot" (maʼlumot yigʻish), "matn" (yozish, tahrirlash, '
+      + 'tarjima), "tekshir" (xato va nomuvofiqlik qidirish), "reja" '
+      + '(bosqichlarga ajratish).\n'
+      + 'Qachon ishlatasan: mavzu keng boʻlsa va bir nechta yoʻnalishni '
+      + 'parallel oʻrganish kerak boʻlsa; uzun matnni yozdirib, keyin '
+      + 'tekshirtirish kerak boʻlsa. Oddiy savolga chaqirma — oʻzing javob ber.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        role: { type: 'STRING', description: 'tadqiqot | matn | tekshir | reja' },
+        task: {
+          type: 'STRING',
+          description:
+            'Toʻliq va aniq topshiriq. Yordamchi suhbat tarixini KOʻRMAYDI — '
+            + 'kerakli kontekstni shu yerda yozib ber.',
+        },
+      },
+      required: ['role', 'task'],
+    },
+  },
+  {
+    name: 'google',
+    description:
+      'Foydalanuvchining Google hisobi bilan ishlaydi — Gmail, Drive, Kalendar.\n'
+      + 'Amallar:\n'
+      + '- `mail_search` — xat qidirish (`query`: Gmail sintaksisi, masalan '
+      + '"from:dekanat is:unread" yoki "subject:imtihon")\n'
+      + '- `mail_read` — xatning toʻliq matni (`id`)\n'
+      + '- `mail_send` — xat yuborish (`to`, `subject`, `body`)\n'
+      + '- `drive_list` — fayllar (`query` — nom boʻyicha)\n'
+      + '- `drive_read` — fayl matni (`id`); Google Docs ham oʻqiladi\n'
+      + '- `calendar_list` — yaqin kunlardagi voqealar (`days`)\n'
+      + '- `calendar_add` — voqea qoʻshish (`summary`, `start`, `end` — ISO vaqt)\n'
+      + 'Xat yuborishdan OLDIN foydalanuvchiga matnini koʻrsatib tasdiqlat — '
+      + 'yuborilgan xatni qaytarib boʻlmaydi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'mail_search | mail_read | mail_send | drive_list | drive_read | calendar_list | calendar_add' },
+        query: { type: 'STRING' },
+        id: { type: 'STRING' },
+        to: { type: 'STRING' },
+        subject: { type: 'STRING' },
+        body: { type: 'STRING' },
+        summary: { type: 'STRING' },
+        start: { type: 'STRING', description: 'ISO vaqt, masalan 2026-08-25T14:00:00+05:00' },
+        end: { type: 'STRING' },
+        days: { type: 'NUMBER' },
+        limit: { type: 'NUMBER' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'instagram',
+    description:
+      'Instagram Business/Creator hisobi bilan ishlaydi — RASMIY Graph API '
+      + 'orqali. Minglab izoh va DM ga javob berish uchun aynan shu yoʻl.\n'
+      + 'Amallar:\n'
+      + '- `media` — oxirgi postlar (id, izohlar soni)\n'
+      + '- `comments` — postdagi izohlar (`media_id`); javob berilganlari belgilanadi\n'
+      + '- `reply` — izohga javob (`comment_id`, `message`)\n'
+      + '- `hide` — izohni yashirish (`comment_id`) — spam yoki haqorat uchun\n'
+      + '- `chats` — Direct suhbatlar roʻyxati\n'
+      + '- `messages` — suhbatdagi xabarlar (`conversation_id`)\n'
+      + '- `send` — Direct xabar yuborish (`user_id`, `message`)\n'
+      + 'MUHIM: Instagram faqat odam SIZGA yozgan boʻlsa va oxirgi xabardan '
+      + '24 soat oʻtmagan boʻlsa javob berishga ruxsat beradi. Bu Meta ning '
+      + 'qoidasi, chetlab oʻtib boʻlmaydi.\n'
+      + 'Koʻp odamga javob berayotganda har biriga ALOHIDA, savoliga mos '
+      + 'javob yoz — bir xil matnni koʻchirma, buni Instagram spam deb '
+      + 'belgilaydi va odamlar ham sezadi.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'media | comments | reply | hide | chats | messages | send' },
+        media_id: { type: 'STRING' },
+        comment_id: { type: 'STRING' },
+        conversation_id: { type: 'STRING' },
+        user_id: { type: 'STRING' },
+        message: { type: 'STRING' },
+        limit: { type: 'NUMBER' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'telegram',
+    description:
+      'Telegram boti bilan toʻliq ishlaydi — xabar oʻqish, javob berish, '
+      + 'guruh va kanal boshqarish, koʻp odamga birdan yuborish.\n'
+      + 'Amallar:\n'
+      + '- `bot` — bot haqida maʼlumot (ulanish tekshiruvi)\n'
+      + '- `sync` — yangi xabarlarni oʻqiydi va kim yozganini eslab qoladi\n'
+      + '- `contacts` — yozganlar roʻyxati; `hours` bilan cheklash mumkin '
+      + '(masalan 24 — sutkada yozganlar)\n'
+      + '- `chats` — bot aʼzo boʻlgan guruh va kanallar\n'
+      + '- `chat_info` — guruh haqida (`chat_id`): aʼzolar soni, bot admin mi\n'
+      + '- `send` — bitta odamga/guruhga xabar (`chat_id`, `message`)\n'
+      + '- `broadcast` — koʻpga birdan (`chat_ids` yoki `hours`, `message`)\n'
+      + '- `pin` — xabarni qadash (`chat_id`, `message_id`)\n'
+      + '- `commands` — bot menyusidagi buyruqlarni belgilash (`commands`)\n'
+      + '- `schedule` — xabarni KEYINGA qoʻyish (`chat_ids` yoki `hours`, '
+      + '`message`, `at`). Telefon oʻchiq boʻlsa ham server yuboradi. '
+      + '`at` — ISO vaqt, masalan 2026-08-22T09:00:00Z. Buning uchun '
+      + 'hisobga kirgan va fon vazifalari ochiq reja kerak.\n'
+      + 'Ish tartibi: avval `sync`, keyin `contacts`/`chats`. `sync` '
+      + 'qilinmagan boʻlsa roʻyxat boʻsh chiqadi — Telegram xabarni faqat '
+      + 'soʻralganda beradi.\n'
+      + 'MUHIM: `broadcast` — bu haqiqiy odamlarga haqiqiy xabar. Yuborishdan '
+      + 'oldin MATNNI va NECHTA odamga ketishini koʻrsatib, foydalanuvchidan '
+      + 'tasdiq ol. Bir xil matnni hammaga tashlama — odam oʻzi haqida '
+      + 'yozilmaganini sezadi; savoliga qarab guruhla.\n'
+      + 'Guruh yoki kanalga yozish uchun bot oʻsha yerda ADMIN boʻlishi kerak '
+      + '— `chat_info` bilan tekshir.\n\n'
+      + 'SHAXSIY HISOB («secretary mode» / Telegram Business) — bot '
+      + 'foydalanuvchining OʻZI boʻlib yozadi, odam bot bilan emas, u bilan '
+      + 'gaplashayotgandek koʻradi:\n'
+      + '- `business` — ulanish bormi, qaysi ruxsatlar berilgan\n'
+      + '- `send_as` — uning nomidan xabar (`chat_id`, `message`)\n'
+      + '- `media_as` — uning nomidan rasm/video (`chat_id`, `file` — havola '
+      + 'yoki file_id, `media` — photo|video|document|animation|voice|video_note)\n'
+      + '- `story` — uning nomidan story (`file`, `media`: photo|video, '
+      + '`hours`: 6|12|24|48, `message` — izoh)\n'
+      + 'Avval `business` bilan tekshir: har bir ruxsat alohida beriladi va '
+      + 'yoʻq boʻlsa soʻrov rad etiladi. Ruxsat yoʻq boʻlsa foydalanuvchiga '
+      + 'aynan qaysi ruxsatni yoqish kerakligini ayt.\n'
+      + 'Story oʻlchami qatʼiy: rasm 1080×1920, video 720×1280 va 60 '
+      + 'soniyagacha. Boshqa oʻlcham berilsa Telegram rad etadi.\n'
+      + 'Odamning nomidan yozish — jiddiy ish. Matnni koʻrsatib TASDIQ ol.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: {
+          type: 'STRING',
+          description:
+            'bot | sync | contacts | chats | chat_info | send | broadcast | pin '
+            + '| commands | schedule | business | send_as | media_as | story',
+        },
+        chat_id: { type: 'STRING' },
+        chat_ids: { type: 'ARRAY', items: { type: 'STRING' } },
+        message: { type: 'STRING' },
+        message_id: { type: 'NUMBER' },
+        hours: { type: 'NUMBER', description: 'Necha soat ichida yozganlar (contacts/broadcast)' },
+        at: { type: 'STRING', description: 'schedule uchun: ISO vaqt (UTC)' },
+        file: { type: 'STRING', description: 'media_as/story: havola yoki file_id' },
+        media: { type: 'STRING', description: 'photo | video | document | animation | voice | video_note' },
+        format: { type: 'STRING', description: 'Markdown yoki HTML' },
+        commands: {
+          type: 'ARRAY',
+          description: 'Bot menyusi: [{command, description}]',
+          items: {
+            type: 'OBJECT',
+            properties: { command: { type: 'STRING' }, description: { type: 'STRING' } },
+          },
+        },
+        limit: { type: 'NUMBER' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'youtube_manage',
+    description:
+      'Oʻz YouTube kanalingizni boshqaradi (Google ulanishi kerak).\n'
+      + '- `videos` — oxirgi videolar (koʻrishlar, izohlar soni)\n'
+      + '- `comments` — videodagi izohlar (`video_id`)\n'
+      + '- `reply` — izohga javob (`comment_id`, `message`)\n'
+      + 'Izohlarni tahlil qilib, koʻp takrorlanadigan savollarni topsang — '
+      + 'foydalanuvchiga qoʻllanma yozishni taklif qil.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', description: 'videos | comments | reply' },
+        video_id: { type: 'STRING' },
+        comment_id: { type: 'STRING' },
+        message: { type: 'STRING' },
+        limit: { type: 'NUMBER' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'connect_app',
+    description:
+      'BOSHQA ILOVAGA soʻrov yuboradi — foydalanuvchi ulab qoʻygan xizmatlar: '
+      + 'Telegram, Discord, Slack, Notion, Airtable, Home Assistant, webhook va '
+      + 'boshqalar. Xabar yuborish, yozuv qoʻshish, qurilmani yoqish, maʼlumot '
+      + 'oʻqish — hammasi shu vosita orqali.\n'
+      + 'Qaysi ulanishlar borligini «connect_list» aytadi. Ulanish yoʻq boʻlsa '
+      + 'foydalanuvchiga Agent → Ulanishlar boʻlimidan qoʻshishni ayt.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        connector: { type: 'STRING', description: 'Ulanish nomi, masalan "Telegram"' },
+        action: { type: 'STRING', description: 'Amal nomi, masalan "xabar yuborish"' },
+        data: {
+          type: 'OBJECT',
+          description:
+            'Amal talab qiladigan maydonlar. Masalan Telegram uchun {"text": "Salom"}.',
+        },
+      },
+      required: ['connector', 'action'],
+    },
+  },
+  {
+    name: 'connect_list',
+    description:
+      'Foydalanuvchi ulab qoʻygan ilovalar va ularning amallari roʻyxatini beradi. '
+      + 'Tashqi xizmat kerak boʻlsa avval shuni chaqir.',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
     name: 'read_data',
     description:
       'Foydalanuvchining saqlangan maʼlumotlarini oʻqiydi: jadval, vazifalar, konspektlar, loyihalar, ish vaqti qaydlari.',
@@ -342,6 +792,53 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         query: { type: 'STRING', description: 'Ixtiyoriy qidiruv soʻzi' },
       },
       required: ['what'],
+    },
+  },
+  {
+    name: 'use_skill',
+    description:
+      'Ish turi uchun tayyor koʻnikmani ochadi (kitob, test, ilmiy ish, rasmiy xat, '
+      + 'rezyume, tahlil, tarjima, mijoz, taqdimot, tushuntirish). Keyingi qadamda '
+      + 'shu ish uchun toʻliq koʻrsatma keladi. Oddiy savolga chaqirma.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        skill: { type: 'STRING', description: 'Koʻnikma nomi (id)' },
+      },
+      required: ['skill'],
+    },
+  },
+  {
+    name: 'connect_service',
+    description:
+      'Xizmatga ulanishni TAKLIF qiladi: foydalanuvchiga tugma chiqadi va u bir bosishda '
+      + 'ruxsat beradi. Token soʻrama — buning oʻrniga shuni chaqir. '
+      + 'Xizmatlar: github, supabase, google.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        service: { type: 'STRING', description: 'github | supabase | google' },
+        why: { type: 'STRING', description: 'Nima uchun kerakligi — bir jumla' },
+      },
+      required: ['service'],
+    },
+  },
+  {
+    name: 'use_tools',
+    description:
+      'Yopiq vosita guruhini ochadi. Kerakli vosita roʻyxatda koʻrinmasa shuni chaqir — '
+      + 'keyingi qadamda oʻsha guruh vositalari ishlaydi. Guruhlar: reja, ijod, video, joy, '
+      + 'ulanish, telegram, ijtimoiy.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        groups: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Ochiladigan guruhlar nomi',
+        },
+      },
+      required: ['groups'],
     },
   },
 ];
@@ -359,6 +856,121 @@ export async function executeTool(
   ctx: { chatId: string; signal?: AbortSignal },
 ): Promise<ToolOutcome> {
   switch (name) {
+    /*
+     * Guruhni ochish. Bu vosita hech narsa QILMAYDI — u faqat keyingi
+     * qadamda qaysi eʼlonlar yuborilishini belgilaydi. Ochilishning
+     * oʻzi agent siklida (`agent.ts`) hisobga olinadi.
+     */
+    /*
+     * Xizmatga ulanish taklifi.
+     *
+     * Foydalanuvchidan token soʻrash notoʻgʻri: u qayerdan olishni
+     * bilmaydi. Shuning uchun tayyor tugma chiqaramiz — «Ulash» bosilsa
+     * xizmat sahifasi ochiladi va qolganini server bajaradi.
+     */
+    /*
+     * Koʻnikmani ochish.
+     *
+     * Bu ham `use_tools` kabi hech narsa bajarmaydi — u keyingi qadamda
+     * qaysi koʻrsatma yuborilishini belgilaydi. Toʻliq matnlar promptda
+     * doim turmasin: hammasi birga ~8 000 token.
+     */
+    case 'use_skill': {
+      const wanted = str(args.skill).toLowerCase();
+      const found = skillById(wanted);
+      if (!found) {
+        return {
+          ok: false,
+          summary: `«${wanted}» koʻnikmasi yoʻq`,
+          payload: { bor: SKILLS.map((sk) => sk.id) },
+        };
+      }
+      return {
+        ok: true,
+        summary: `koʻnikma: ${found.name}`,
+        payload: {
+          skill: found.id,
+          nomi: found.name,
+          eslatma: 'Toʻliq koʻrsatma keyingi qadamda keladi — shunga amal qil.',
+        },
+      };
+    }
+
+    case 'connect_service': {
+      const service = str(args.service).toLowerCase() as OauthProvider;
+      if (!['github', 'supabase', 'google'].includes(service)) {
+        return {
+          ok: false,
+          summary: 'nomaʼlum xizmat',
+          payload: { xato: 'github, supabase yoki google boʻlishi kerak' },
+        };
+      }
+      if (connected(service)) {
+        return { ok: true, summary: `${service} allaqachon ulangan`, payload: { ulangan: true } };
+      }
+
+      const list = await connectable().catch((): Record<string, ProviderInfo> => ({}));
+      if (!list[service]?.ready) {
+        return {
+          ok: false,
+          summary: `${service} ulanishi sozlanmagan`,
+          payload: {
+            xato: `Serverda ${service} ulanishi sozlanmagan.`,
+            eslatma: 'Foydalanuvchiga Sozlamalardan qoʻlda kalit kiritish mumkinligini ayt.',
+          },
+        };
+      }
+
+      const why = str(args.why, 'shu ish uchun kerak');
+      const answer = await askUser({
+        scope: 'chat',
+        targetId: ctx.chatId,
+        question: `${list[service].label} ga ulanish kerak — ${why}. Ulaymizmi?`,
+        options: ['Ulash', 'Hozir emas'],
+        multi: false,
+        signal: ctx.signal,
+      });
+
+      if (!/ulash/i.test(answer)) {
+        return {
+          ok: false,
+          summary: 'ulanish rad etildi',
+          payload: { javob: answer, eslatma: 'Ulanishsiz qila oladigan ishni davom ettir.' },
+        };
+      }
+
+      await startConnect(service);
+      return {
+        ok: true,
+        summary: `${service} ulanish sahifasi ochildi`,
+        payload: {
+          ochildi: true,
+          eslatma:
+            'Foydalanuvchi ruxsat berib qaytadi. Shu javobingda «qaytganingizda davom ettiraman» deb yoz.',
+        },
+      };
+    }
+
+    case 'use_tools': {
+      const asked = Array.isArray(args.groups)
+        ? args.groups.map((g) => String(g).trim().toLowerCase())
+        : [String(args.groups ?? '').trim().toLowerCase()];
+      const known = asked.filter((g) => g && g in TOOL_GROUPS && g !== 'yadro');
+      const unknown = asked.filter((g) => g && !known.includes(g));
+      return {
+        ok: known.length > 0,
+        summary: known.length ? `vositalar ochildi: ${known.join(', ')}` : 'bunday guruh yoʻq',
+        payload: {
+          opened: known,
+          tools: known.flatMap((g) => TOOL_GROUPS[g] ?? []),
+          ...(unknown.length ? { nomaʼlum: unknown } : {}),
+          eslatma: known.length
+            ? 'Endi shu vositalarni chaqirishing mumkin.'
+            : 'Mavjud guruhlar: reja, ijod, video, joy, ulanish, telegram, ijtimoiy.',
+        },
+      };
+    }
+
     case 'ask_user': {
       const question = str(args.question, 'Qanday davom etay?');
       const answer = await askUser({
@@ -374,6 +986,767 @@ export async function executeTool(
         summary: `Soʻraldi: ${question.slice(0, 50)} → ${answer.slice(0, 40)}`,
         payload: { javob: answer },
       };
+    }
+
+    case 'delegate': {
+      const role = helperRole(str(args.role, 'reja'));
+      const task = str(args.task);
+      if (!task) {
+        return { ok: false, summary: 'Topshiriq boʻsh', payload: { xato: 'task kerak' } };
+      }
+      try {
+        const report = await runHelper(role, task, {
+          chatId: ctx.chatId,
+          signal: ctx.signal,
+        });
+        if (!report.text) {
+          return {
+            ok: false,
+            summary: `${role} yordamchisi javob qaytarmadi`,
+            payload: { xato: 'Yordamchidan boʻsh javob keldi — oʻzing bajar.' },
+          };
+        }
+        return {
+          ok: true,
+          summary: `${role} yordamchisi ishladi${report.steps ? ` (${report.steps} qadam)` : ''}`,
+          payload: { rol: role, model: report.model, hisobot: report.text },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'Yordamchi ishlamadi',
+          payload: { xato: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'google': {
+      if (!googleReady()) {
+        return {
+          ok: false,
+          summary: 'Google hisobi ulanmagan',
+          payload: {
+            error: 'ulanmagan',
+            izoh:
+              'Foydalanuvchiga ayt: Sozlamalar → Google boʻlimidan hisobini ulasin. '
+              + 'Bir marta ulansa pochta, Drive va kalendar ochiladi.',
+          },
+        };
+      }
+
+      const action = str(args.action);
+      const limit = Math.max(1, Math.min(25, Number(args.limit) || 10));
+
+      try {
+        if (action === 'mail_search') {
+          const mails = await searchMail(str(args.query, 'is:unread'), limit);
+          return {
+            ok: true,
+            summary: `${mails.length} ta xat`,
+            payload: {
+              xatlar: mails.map((m) => ({
+                id: m.id,
+                kimdan: m.from,
+                mavzu: m.subject,
+                sana: m.date,
+                boshlanishi: m.snippet,
+              })),
+            },
+          };
+        }
+
+        if (action === 'mail_read') {
+          const id = str(args.id);
+          if (!id) return { ok: false, summary: 'id kerak', payload: { error: 'id' } };
+          const text = await readMail(id);
+          return { ok: true, summary: 'Xat oʻqildi', payload: { matn: text } };
+        }
+
+        if (action === 'mail_send') {
+          const to = str(args.to);
+          const subject = str(args.subject);
+          const body = str(args.body);
+          if (!to || !body) {
+            return { ok: false, summary: 'to va body kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const id = await sendMail(to, subject, body);
+          return { ok: true, summary: `Xat yuborildi: ${to}`, payload: { id } };
+        }
+
+        if (action === 'drive_list') {
+          const files = await listDrive(str(args.query), limit);
+          return {
+            ok: true,
+            summary: `${files.length} ta fayl`,
+            payload: {
+              fayllar: files.map((f) => ({
+                id: f.id,
+                nom: f.name,
+                turi: f.mimeType,
+                oʻzgargan: f.modifiedTime,
+              })),
+            },
+          };
+        }
+
+        if (action === 'drive_read') {
+          const id = str(args.id);
+          if (!id) return { ok: false, summary: 'id kerak', payload: { error: 'id' } };
+          return { ok: true, summary: 'Fayl oʻqildi', payload: { matn: await readDrive(id) } };
+        }
+
+        if (action === 'calendar_list') {
+          const events = await listEvents(Math.max(1, Math.min(60, Number(args.days) || 7)));
+          return {
+            ok: true,
+            summary: `${events.length} ta voqea`,
+            payload: {
+              voqealar: events.map((e) => ({
+                nom: e.summary,
+                boshlanish: e.start,
+                tugash: e.end,
+                joy: e.location,
+              })),
+            },
+          };
+        }
+
+        if (action === 'calendar_add') {
+          const summary = str(args.summary);
+          const start = str(args.start);
+          const end = str(args.end);
+          if (!summary || !start || !end) {
+            return {
+              ok: false,
+              summary: 'summary, start va end kerak',
+              payload: { error: 'toʻliqmas' },
+            };
+          }
+          const link = await addEvent(summary, start, end, str(args.body));
+          return { ok: true, summary: `«${summary}» qoʻshildi`, payload: { havola: link } };
+        }
+
+        return { ok: false, summary: `Nomaʼlum amal: ${action}`, payload: { error: 'amal' } };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'Google xatosi',
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'telegram': {
+      if (!tgReady()) {
+        return {
+          ok: false,
+          summary: 'Telegram boti ulanmagan',
+          payload: {
+            error: 'ulanmagan',
+            izoh:
+              'Sozlamalar → Telegram boʻlimiga bot tokenini qoʻying. '
+              + 'Tokenni @BotFather dan olasiz: /newbot → nom → username. '
+              + 'Guruh yoki kanalni boshqarish uchun botni oʻsha yerga '
+              + 'ADMIN qilib qoʻshing.',
+          },
+        };
+      }
+
+      const action = str(args.action);
+      const limit = Math.max(1, Math.min(200, Number(args.limit) || 50));
+      const hours = Number(args.hours) || 0;
+      const format = str(args.format) as 'Markdown' | 'HTML' | '';
+
+      try {
+        if (action === 'bot') {
+          const me = await tgMe(ctx.signal);
+          return {
+            ok: true,
+            summary: `@${me.username}`,
+            payload: {
+              nomi: me.first_name,
+              username: `@${me.username}`,
+              guruhga_qoshiladi: me.can_join_groups !== false,
+              guruh_xabarlarini_oqiydi: me.can_read_all_group_messages === true,
+              izoh:
+                me.can_read_all_group_messages === false
+                  ? 'Bot guruhdagi HAMMA xabarni oʻqiy olmaydi. @BotFather → '
+                    + '/setprivacy → Disable qilsangiz hammasini koʻradi.'
+                  : undefined,
+            },
+          };
+        }
+
+        if (action === 'sync') {
+          const fresh = await tgSync(ctx.signal);
+          return {
+            ok: true,
+            summary: `${fresh.length} ta yangi xabar`,
+            payload: {
+              xabarlar: fresh.slice(0, limit).map((m) => ({
+                kim: m.from,
+                chat_id: m.chatId,
+                qayerda: m.chatType === 'private' ? 'shaxsiy' : m.chatTitle,
+                matn: m.text.slice(0, 400),
+                message_id: m.messageId,
+                sana: new Date(m.at).toISOString(),
+              })),
+            },
+          };
+        }
+
+        if (action === 'contacts') {
+          const list = await tgContacts(hours);
+          return {
+            ok: true,
+            summary: hours
+              ? `${list.length} kishi soʻnggi ${hours} soatda yozgan`
+              : `${list.length} kishi yozgan`,
+            payload: {
+              odamlar: list.slice(0, limit).map((c) => ({
+                chat_id: c.id,
+                ism: c.name,
+                username: c.username ? `@${c.username}` : undefined,
+                oxirgi_xabari: c.lastText.slice(0, 200),
+                oxirgi_marta: new Date(c.lastAt).toISOString(),
+                nechta_yozgan: c.count,
+              })),
+              izoh: list.length ? undefined : 'Avval `sync` qiling.',
+            },
+          };
+        }
+
+        if (action === 'chats') {
+          const list = await tgChats();
+          return {
+            ok: true,
+            summary: `${list.length} ta guruh/kanal`,
+            payload: {
+              chatlar: list.map((c) => ({
+                chat_id: c.id,
+                nomi: c.title,
+                turi: c.type,
+                username: c.username ? `@${c.username}` : undefined,
+              })),
+              izoh: list.length
+                ? undefined
+                : 'Bot hali hech qaysi guruhga qoʻshilmagan yoki `sync` qilinmagan.',
+            },
+          };
+        }
+
+        if (action === 'chat_info') {
+          const id = str(args.chat_id);
+          if (!id) return { ok: false, summary: 'chat_id kerak', payload: { error: 'id' } };
+          const info = await tgChatInfo(id, ctx.signal);
+          return {
+            ok: true,
+            summary: `${info.title}${info.botIsAdmin ? ' (bot admin)' : ''}`,
+            payload: {
+              nomi: info.title,
+              turi: info.type,
+              azolar: info.members,
+              tavsif: info.description,
+              bot_admin: info.botIsAdmin,
+              izoh: info.botIsAdmin
+                ? undefined
+                : 'Bot bu yerda admin emas — yozish va boshqarish ishlamaydi.',
+            },
+          };
+        }
+
+        if (action === 'send') {
+          const id = str(args.chat_id);
+          const message = str(args.message);
+          if (!id || !message) {
+            return { ok: false, summary: 'chat_id va message kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const mid = await tgSend(
+            id,
+            message,
+            { format: format || undefined },
+            ctx.signal,
+          );
+          return { ok: true, summary: 'Yuborildi', payload: { message_id: mid } };
+        }
+
+        if (action === 'broadcast') {
+          const message = str(args.message);
+          if (!message) {
+            return { ok: false, summary: 'message kerak', payload: { error: 'matn yoʻq' } };
+          }
+
+          let targets = Array.isArray(args.chat_ids)
+            ? (args.chat_ids as unknown[]).map((v) => String(v))
+            : [];
+
+          if (!targets.length) {
+            const list = await tgContacts(hours || 24);
+            targets = list.map((c) => String(c.id));
+          }
+          if (!targets.length) {
+            return {
+              ok: false,
+              summary: 'Kimga yuborish nomaʼlum',
+              payload: { error: 'boʻsh', izoh: 'Avval `sync`, keyin `contacts` qiling.' },
+            };
+          }
+
+          const res = await tgBroadcast(
+            targets,
+            message,
+            { format: format || undefined },
+            ctx.signal,
+          );
+          return {
+            ok: res.sent > 0,
+            summary: `${res.sent}/${targets.length} yuborildi`,
+            payload: {
+              yuborildi: res.sent,
+              yetmadi: res.failed.length,
+              xatolar: res.failed.slice(0, 10),
+              izoh: res.failed.length
+                ? 'Yetmaganlar odatda botni bloklagan yoki suhbatni oʻchirgan.'
+                : undefined,
+            },
+          };
+        }
+
+        if (action === 'business') {
+          const b = await tgBusiness(true, ctx.signal);
+          if (!b) {
+            return {
+              ok: false,
+              summary: 'Shaxsiy hisob ulanmagan',
+              payload: {
+                error: 'ulanmagan',
+                izoh:
+                  'Telegram → Sozlamalar → Telegram Business → Chatbots '
+                  + 'boʻlimidan botni ulang (Telegram Premium kerak). '
+                  + 'Ulagach botga bir marta yozing va `sync` qiling — '
+                  + 'ulanish shundan keyin koʻrinadi.',
+              },
+            };
+          }
+          const berilgan = Object.entries(b.rights)
+            .filter(([, v]) => v)
+            .map(([k]) => k);
+          return {
+            ok: b.enabled,
+            summary: b.enabled ? `${b.user} nomidan ishlay oladi` : 'Ulanish oʻchiq',
+            payload: {
+              kim: b.user,
+              yoqilgan: b.enabled,
+              ruxsatlar: berilgan,
+              yozolladimi: Boolean(b.rights.can_reply),
+              story_qoyoladimi: Boolean(b.rights.can_manage_stories),
+              oqiladimi: Boolean(b.rights.can_read_messages),
+            },
+          };
+        }
+
+        if (action === 'send_as') {
+          const id = str(args.chat_id);
+          const message = str(args.message);
+          if (!id || !message) {
+            return { ok: false, summary: 'chat_id va message kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const mid = await tgSendAs(id, message, { format: format || undefined }, ctx.signal);
+          return {
+            ok: true,
+            summary: 'Sizning nomingizdan yuborildi',
+            payload: { message_id: mid },
+          };
+        }
+
+        if (action === 'media_as') {
+          const id = str(args.chat_id);
+          const file = str(args.file);
+          const kind = (str(args.media) || 'photo') as
+            'photo' | 'video' | 'document' | 'animation' | 'voice' | 'video_note';
+          if (!id || !file) {
+            return { ok: false, summary: 'chat_id va file kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const mid = await tgSendMediaAs(id, kind, file, str(args.message), ctx.signal);
+          return {
+            ok: true,
+            summary: `${kind} yuborildi`,
+            payload: { message_id: mid },
+          };
+        }
+
+        if (action === 'story') {
+          const file = str(args.file);
+          if (!file) {
+            return {
+              ok: false,
+              summary: 'file kerak',
+              payload: { error: 'fayl', izoh: 'Rasm yoki video havolasi (yoki file_id).' },
+            };
+          }
+          const kind = str(args.media) === 'video' ? 'video' : 'photo';
+          const hours = Number(args.hours) || 24;
+          const storyId = await tgPostStory(
+            { kind, url: file },
+            {
+              activePeriod: hours * 3600,
+              caption: str(args.message) || undefined,
+            },
+            ctx.signal,
+          );
+          return {
+            ok: true,
+            summary: `Story joylandi (${hours} soat)`,
+            payload: { story_id: storyId, turi: kind },
+          };
+        }
+
+        if (action === 'schedule') {
+          const message = str(args.message);
+          const at = new Date(str(args.at));
+          if (!message) return { ok: false, summary: 'message kerak', payload: { error: 'matn' } };
+          if (Number.isNaN(at.getTime())) {
+            return {
+              ok: false,
+              summary: 'at notoʻgʻri',
+              payload: { error: 'vaqt', izoh: 'ISO koʻrinishida bering: 2026-08-22T09:00:00Z' },
+            };
+          }
+
+          let targets = Array.isArray(args.chat_ids)
+            ? (args.chat_ids as unknown[]).map((v) => String(v))
+            : [];
+          if (!targets.length) {
+            const list = await tgContacts(hours || 24);
+            targets = list.map((c) => String(c.id));
+          }
+          if (!targets.length) {
+            return { ok: false, summary: 'Kimga yuborish nomaʼlum', payload: { error: 'boʻsh' } };
+          }
+
+          const jobId = await tgSchedule(
+            targets,
+            message,
+            at,
+            (format || undefined) as 'Markdown' | 'HTML' | undefined,
+          );
+          return {
+            ok: true,
+            summary: `${targets.length} kishiga ${at.toLocaleString('uz')} da yuboriladi`,
+            payload: {
+              vazifa: jobId,
+              qachon: at.toISOString(),
+              kimga: targets.length,
+              izoh: 'Telefon oʻchiq boʻlsa ham server yuboradi.',
+            },
+          };
+        }
+
+        if (action === 'pin') {
+          const id = str(args.chat_id);
+          const mid = Number(args.message_id);
+          if (!id || !mid) {
+            return { ok: false, summary: 'chat_id va message_id kerak', payload: { error: 'toʻliqmas' } };
+          }
+          await tgPin(id, mid, ctx.signal);
+          return { ok: true, summary: 'Qadaldi', payload: { chat_id: id, message_id: mid } };
+        }
+
+        if (action === 'commands') {
+          const raw = Array.isArray(args.commands) ? (args.commands as unknown[]) : [];
+          const commands = raw
+            .map((c) => c as { command?: unknown; description?: unknown })
+            .map((c) => ({
+              command: String(c.command ?? '').replace(/^\//, '').slice(0, 32),
+              description: String(c.description ?? '').slice(0, 256),
+            }))
+            .filter((c) => c.command && c.description);
+          if (!commands.length) {
+            return { ok: false, summary: 'commands kerak', payload: { error: 'boʻsh' } };
+          }
+          await tgSetCommands(commands, ctx.signal);
+          return {
+            ok: true,
+            summary: `${commands.length} ta buyruq belgilandi`,
+            payload: { buyruqlar: commands },
+          };
+        }
+
+        return { ok: false, summary: `Nomaʼlum amal: ${action}`, payload: { error: 'amal' } };
+      } catch (err) {
+        return {
+          ok: false,
+          summary: 'Telegram xatosi',
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'instagram': {
+      if (!igReady()) {
+        return {
+          ok: false,
+          summary: 'Instagram ulanmagan',
+          payload: {
+            error: 'ulanmagan',
+            izoh:
+              'Sozlamalar → Instagram boʻlimiga Graph API tokeni va Business '
+              + 'hisob ID sini qoʻyish kerak. Hisob Business yoki Creator '
+              + 'boʻlishi va Facebook sahifasiga ulangan boʻlishi shart.',
+          },
+        };
+      }
+
+      const action = str(args.action);
+      const limit = Math.max(1, Math.min(100, Number(args.limit) || 25));
+
+      try {
+        if (action === 'media') {
+          const list = await igMedia(limit, ctx.signal);
+          return {
+            ok: true,
+            summary: `${list.length} ta post`,
+            payload: {
+              postlar: list.map((m) => ({
+                id: m.id,
+                matn: (m.caption ?? '').slice(0, 120),
+                turi: m.media_type,
+                izohlar: m.comments_count,
+                yoqtirishlar: m.like_count,
+                sana: m.timestamp,
+                havola: m.permalink,
+              })),
+            },
+          };
+        }
+
+        if (action === 'comments') {
+          const id = str(args.media_id);
+          if (!id) return { ok: false, summary: 'media_id kerak', payload: { error: 'id' } };
+          const list = await igComments(id, limit, ctx.signal);
+          const pending = list.filter((c) => !c.replied);
+          return {
+            ok: true,
+            summary: `${list.length} ta izoh, ${pending.length} tasiga javob berilmagan`,
+            payload: {
+              izohlar: list.map((c) => ({
+                id: c.id,
+                kim: c.username,
+                matn: c.text,
+                sana: c.timestamp,
+                javob_berilgan: c.replied,
+              })),
+            },
+          };
+        }
+
+        if (action === 'reply') {
+          const id = str(args.comment_id);
+          const message = str(args.message);
+          if (!id || !message) {
+            return { ok: false, summary: 'comment_id va message kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const replyId = await igReply(id, message, ctx.signal);
+          return { ok: true, summary: `Izohga javob berildi`, payload: { id: replyId } };
+        }
+
+        if (action === 'hide') {
+          const id = str(args.comment_id);
+          if (!id) return { ok: false, summary: 'comment_id kerak', payload: { error: 'id' } };
+          await igHide(id, true, ctx.signal);
+          return { ok: true, summary: 'Izoh yashirildi', payload: { id } };
+        }
+
+        if (action === 'chats') {
+          const list = await igConversations(limit, ctx.signal);
+          return {
+            ok: true,
+            summary: `${list.length} ta suhbat`,
+            payload: {
+              suhbatlar: list.map((c) => ({
+                id: c.id,
+                kim: c.username,
+                user_id: c.userId,
+                oxirgi_xabar: c.lastMessage,
+                vaqt: c.updatedAt,
+              })),
+            },
+          };
+        }
+
+        if (action === 'messages') {
+          const id = str(args.conversation_id);
+          if (!id) return { ok: false, summary: 'conversation_id kerak', payload: { error: 'id' } };
+          const list = await igMessages(id, limit, ctx.signal);
+          return { ok: true, summary: `${list.length} ta xabar`, payload: { xabarlar: list } };
+        }
+
+        if (action === 'send') {
+          const userId = str(args.user_id);
+          const message = str(args.message);
+          if (!userId || !message) {
+            return { ok: false, summary: 'user_id va message kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const id = await igSend(userId, message, ctx.signal);
+          return { ok: true, summary: 'Xabar yuborildi', payload: { id } };
+        }
+
+        return { ok: false, summary: `Nomaʼlum amal: ${action}`, payload: { error: 'amal' } };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'Instagram xatosi',
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'youtube_manage': {
+      if (!googleReady()) {
+        return {
+          ok: false,
+          summary: 'Google ulanmagan',
+          payload: { error: 'Sozlamalar → Google hisobi boʻlimidan ulang.' },
+        };
+      }
+
+      const action = str(args.action);
+      const limit = Math.max(1, Math.min(100, Number(args.limit) || 25));
+
+      try {
+        if (action === 'videos') {
+          const list = await ytVideos(limit, ctx.signal);
+          return {
+            ok: true,
+            summary: `${list.length} ta video`,
+            payload: {
+              videolar: list.map((v) => ({
+                id: v.id,
+                sarlavha: v.title,
+                korishlar: v.views,
+                izohlar: v.comments,
+                sana: v.publishedAt,
+              })),
+            },
+          };
+        }
+
+        if (action === 'comments') {
+          const id = str(args.video_id);
+          if (!id) return { ok: false, summary: 'video_id kerak', payload: { error: 'id' } };
+          const list = await ytComments(id, limit, ctx.signal);
+          return {
+            ok: true,
+            summary: `${list.length} ta izoh`,
+            payload: {
+              izohlar: list.map((c) => ({
+                id: c.id,
+                kim: c.author,
+                matn: c.text,
+                yoqtirish: c.likes,
+                javoblar: c.replyCount,
+                sana: c.publishedAt,
+              })),
+            },
+          };
+        }
+
+        if (action === 'reply') {
+          const id = str(args.comment_id);
+          const message = str(args.message);
+          if (!id || !message) {
+            return { ok: false, summary: 'comment_id va message kerak', payload: { error: 'toʻliqmas' } };
+          }
+          const replyId = await ytReply(id, message, ctx.signal);
+          return { ok: true, summary: 'Izohga javob berildi', payload: { id: replyId } };
+        }
+
+        return { ok: false, summary: `Nomaʼlum amal: ${action}`, payload: { error: 'amal' } };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: 'YouTube xatosi',
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'connect_list': {
+      const list = activeConnectors();
+      if (!list.length) {
+        return {
+          ok: true,
+          summary: 'Hech qanday ulanish qoʻshilmagan',
+          payload: {
+            ulanishlar: [],
+            izoh:
+              'Foydalanuvchi Agent → Ulanishlar boʻlimidan Telegram, Notion, '
+              + 'webhook va boshqa xizmatlarni ulashi mumkin.',
+          },
+        };
+      }
+      return {
+        ok: true,
+        summary: `${list.length} ta ulanish`,
+        payload: {
+          ulanishlar: list.map((c) => ({
+            nom: c.name,
+            amallar: c.actions.map((a) => ({ nom: a.name, izoh: a.description })),
+          })),
+        },
+      };
+    }
+
+    case 'connect_app': {
+      const wanted = str(args.connector);
+      const connector = findConnector(wanted);
+      if (!connector) {
+        const have = activeConnectors().map((c) => c.name);
+        return {
+          ok: false,
+          summary: `«${wanted}» ulanishi topilmadi`,
+          payload: {
+            xato: have.length
+              ? `Bunday ulanish yoʻq. Bor ulanishlar: ${have.join(', ')}.`
+              : 'Hali hech qanday ilova ulanmagan. Agent → Ulanishlar boʻlimidan qoʻshish kerak.',
+          },
+        };
+      }
+      const action = findAction(connector, str(args.action));
+      if (!action) {
+        return {
+          ok: false,
+          summary: `«${connector.name}» da bunday amal yoʻq`,
+          payload: { amallar: connector.actions.map((a) => a.name) },
+        };
+      }
+
+      const data =
+        args.data && typeof args.data === 'object'
+          ? (args.data as Record<string, unknown>)
+          : {};
+
+      try {
+        const res = await callConnector(connector, action, data, ctx.signal);
+        return {
+          ok: res.ok,
+          summary: `${connector.icon} ${connector.name} → ${action.name}: ${res.ok ? 'yuborildi' : `xato ${res.status}`}`,
+          payload: res.ok
+            ? { holat: res.status, javob: res.body.slice(0, 1200) }
+            : { holat: res.status, xato: res.body.slice(0, 1200) },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `${connector.name} ga ulanib boʻlmadi`,
+          payload: { xato: String((err as Error)?.message ?? err) },
+        };
+      }
     }
 
     case 'create_note': {
@@ -530,26 +1903,181 @@ export async function executeTool(
       };
     }
 
+    case 'send_file': {
+      const name = str(args.name, 'daho-fayl');
+      const format = str(args.format, 'pdf').toLowerCase();
+
+      try {
+        if (format === 'zip') {
+          const raw = Array.isArray(args.files) ? args.files : [];
+          const files = raw
+            .map((f) => {
+              const item = (f ?? {}) as Record<string, unknown>;
+              return { path: str(item.path), content: String(item.content ?? '') };
+            })
+            .filter((f) => f.path);
+          if (!files.length) {
+            return {
+              ok: false,
+              summary: 'ZIP uchun fayl berilmadi',
+              payload: { error: 'files boʻsh — har biriga path va content bering' },
+            };
+          }
+          const status = await saveZip(name, files);
+          return {
+            ok: true,
+            summary: `${files.length} ta fayl ZIP qilib yuborildi`,
+            payload: { status, eslatma: 'Ulashish oynasi ochildi — foydalanuvchiga ayt.' },
+          };
+        }
+
+        const content = str(args.content);
+        if (!content) {
+          return {
+            ok: false,
+            summary: 'Fayl mazmuni berilmadi',
+            payload: { error: 'content boʻsh' },
+          };
+        }
+        const allowed: DocFormat[] = ['pdf', 'docx', 'md', 'pptx'];
+        const kind = (allowed as string[]).includes(format) ? (format as DocFormat) : 'pdf';
+        const status = await exportDocument(content, kind, name);
+
+        // Faylni artifact sifatida ham saqlaymiz — keyin qayta yuklab olsa boʻladi.
+        const artifact: Artifact = {
+          id: uid('a_'),
+          kind: 'markdown',
+          title: name,
+          content,
+          chatId: ctx.chatId,
+          createdAt: Date.now(),
+        };
+        return {
+          ok: true,
+          summary: `${DOC_LABEL[kind]} yuborildi: ${name}`,
+          payload: {
+            status,
+            eslatma:
+              'Ulashish oynasi ochildi. Matnni chatga qayta koʻchirib yozma — ' +
+              'foydalanuvchi faylni oldi.',
+          },
+          artifacts: [artifact],
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Fayl yuborilmadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'search_images': {
+      const query = str(args.query);
+      if (!query) {
+        return { ok: false, summary: 'Qidiruv soʻzi yoʻq', payload: { error: 'boʻsh' } };
+      }
+      const count = Math.max(1, Math.min(20, num(args.count, 8)));
+      const found = await searchImages(query, count, ctx.signal);
+      if (!found.length) {
+        return {
+          ok: false,
+          summary: `Rasm topilmadi: ${query}`,
+          payload: { error: 'topilmadi', maslahat: 'Qidiruv soʻzini ingliz tilida va soddaroq yozing.' },
+        };
+      }
+
+      // Soʻralsa rasmlarni ilovaga koʻchirib olamiz — shunda ular chatda
+      // koʻrinadi va hujjatga qoʻyish mumkin boʻladi.
+      const made: Artifact[] = [];
+      if (str(args.save) === 'true') {
+        for (const img of found.slice(0, 8)) {
+          const data = await fetchImageData(img.thumb, ctx.signal);
+          if (!data) continue;
+          made.push({
+            id: uid('a_'),
+            kind: 'image',
+            title: img.title,
+            content: data.data,
+            mimeType: data.mimeType,
+            chatId: ctx.chatId,
+            createdAt: Date.now(),
+          });
+        }
+      }
+
+      return {
+        ok: true,
+        summary: `${found.length} ta rasm topildi: ${query.slice(0, 32)}`,
+        payload: {
+          rasmlar: found.map((img) => ({
+            nomi: img.title,
+            manba: img.source,
+            muallif: img.author,
+            litsenziya: img.license,
+            havola: img.url,
+          })),
+          saqlandi: made.length,
+          eslatma:
+            'Foydalanuvchiga rasmlarni MANBA havolasi bilan koʻrsat (nomi + havola). ' +
+            'Rasmlarni matn bilan qayta tasvirlab oʻtirma.',
+        },
+        artifacts: made.length ? made : undefined,
+      };
+    }
+
+    case 'write_book': {
+      const request = str(args.request);
+      if (!request) {
+        return {
+          ok: false,
+          summary: 'Kitob tavsifi berilmadi',
+          payload: { error: 'avval ask_user bilan kitob haqida soʻrang' },
+        };
+      }
+      const chapters = Math.max(3, Math.min(60, num(args.chapters, 12)));
+      const book = createBook({
+        request,
+        kind: str(args.kind, 'aniqlanmagan'),
+        wordsPerChapter: Math.max(400, Math.min(4000, num(args.words, 1200))),
+        withImages: str(args.images) !== 'false',
+        chatId: ctx.chatId,
+      });
+      // Yozish fon vazifasi boʻlib ketadi — suhbat bloklanmaydi va
+      // foydalanuvchi boshqa boʻlimga oʻtsa ham davom etaveradi.
+      void writeBook(book.id, { chapterCount: chapters });
+      return {
+        ok: true,
+        summary: `Kitob boshlandi: ${chapters} bob`,
+        payload: {
+          status: 'yozish boshlandi',
+          id: book.id,
+          boblar: chapters,
+          eslatma:
+            'Kitob fonda yozilmoqda: avval reja va qahramonlar, keyin muqova, ' +
+            'soʻng boblar. Foydalanuvchiga «Agent → Kitoblar» boʻlimidan kuzatishi ' +
+            'mumkinligini ayt. Sen kitob matnini bu yerda yozma.',
+        },
+      };
+    }
+
     case 'generate_image': {
       const prompt = str(args.prompt);
       if (!prompt) {
         return { ok: false, summary: 'Rasm tavsifi berilmadi', payload: { error: 'prompt_yoq' } };
       }
-      const { settings, artifacts: saved } = getState();
+      const { artifacts: saved } = getState();
       const refs: Attachment[] = [];
       if (str(args.edit_last) === 'true') {
         const last = saved.find((a) => a.kind === 'image' && a.chatId === ctx.chatId);
         if (last) refs.push({ mimeType: last.mimeType ?? 'image/png', data: last.content });
       }
       try {
-        const result = await generateImage(
-          settings.apiKey,
-          settings.imageModel,
-          prompt,
-          refs,
-          ctx.signal,
-        );
-        const made: Artifact[] = result.images.map((img, i) => ({
+        // Gemini kaliti boʻlsa oʻsha bilan, boʻlmasa ulangan provayderning
+        // rasm modeli bilan (masalan OpenRouter’dagi Gemini image).
+        const images = await imageAny(prompt, refs, ctx.signal);
+        const made: Artifact[] = images.map((img, i) => ({
           id: uid('a_'),
           kind: 'image',
           title: prompt.slice(0, 40) || `Rasm ${i + 1}`,
@@ -627,11 +2155,23 @@ export async function executeTool(
     }
 
     case 'search_web': {
+      if (!canSearchWeb()) {
+        return {
+          ok: false,
+          summary: 'Internet qidiruvi mavjud emas',
+          payload: {
+            error:
+              'Google qidiruvi faqat Gemini kaliti bilan ishlaydi. Hozir u yoʻq. ' +
+              'Foydalanuvchiga ochiq ayt: jonli maʼlumotni tekshira olmayapsan, ' +
+              'shuning uchun taxminiy javob berasan yoki Sozlamalarda Gemini ' +
+              'kalitini kiritishini soʻra. Maʼlumotni oʻzingdan oʻylab TOPMA.',
+          },
+        };
+      }
       const query = str(args.query);
       if (!query) return { ok: false, summary: 'Savol berilmadi', payload: { error: 'query_yoq' } };
-      const { settings } = getState();
       try {
-        const answer = await searchAnswer(settings.apiKey, settings.model, query, ctx.signal);
+        const answer = await searchAny(query, ctx.signal);
         return {
           ok: true,
           summary: `Qidirildi: ${query.slice(0, 40)}`,
@@ -645,6 +2185,282 @@ export async function executeTool(
           payload: { error: String((err as Error)?.message ?? err) },
         };
       }
+    }
+
+
+    case 'open_site': {
+      const url = str(args.url);
+      if (!url) return { ok: false, summary: 'Manzil berilmadi', payload: { error: 'url_yoq' } };
+      openSite(url);
+      return {
+        ok: true,
+        summary: `Ochildi: ${url.replace(/^https?:\/\//, '').slice(0, 40)}`,
+        payload: {
+          ochildi: url,
+          koʻrsatma: 'Sayt foydalanuvchining ekranida ochildi — havolani qayta yozma.',
+        },
+      };
+    }
+
+    case 'find_video': {
+      const query = str(args.query);
+      if (!query) return { ok: false, summary: 'Mavzu berilmadi', payload: { error: 'query_yoq' } };
+      const language = str(args.language);
+      const ask =
+        `YouTube dan «${query}» mavzusidagi eng foydali 3-5 ta videoni top` +
+        (language ? ` (${language} tilida boʻlsa afzal)` : '') +
+        `. Har biri uchun toʻliq youtube.com/watch?v=... havolasini, sarlavhasini va ` +
+        `nima haqidaligini bir jumlada yoz. Faqat haqiqatan mavjud videolarni ber.`;
+
+      const browse = searchUrl(query);
+      let note = '';
+
+      /*
+       * Qidiruv band boʻlishi mumkin — ikki marta urinamiz. Avval har
+       * bir model bilan alohida urinilardi, lekin endi model tanlashni
+       * `searchAny` oʻzi qiladi (Gemini yoki OpenRouter `:online`).
+       */
+      for (let urinish = 0; urinish < 2; urinish += 1) {
+        try {
+          const answer = await searchAny(ask, ctx.signal);
+          const found = [
+            ...findVideos(answer.text),
+            ...findVideos(answer.sources.map((src) => src.url).join(' ')),
+          ];
+          const unique = found.filter((v, i) => found.findIndex((o) => o.id === v.id) === i);
+
+          /*
+           * HAVOLA TEKSHIRILADI.
+           *
+           * Model havolani oʻylab topishi mumkin — eng koʻp uchraydigani
+           * `dQw4w9WgXcQ`. Ilgari oʻsha id javobga tushib ketardi va
+           * odam butunlay boshqa video koʻrardi. Endi har bir nomzod
+           * haqiqatan mavjudligi tekshiriladi va sarlavhasi olinadi.
+           */
+          const real = await keepReal(unique, ctx.signal);
+
+          if (real.length) {
+            return {
+              ok: true,
+              summary: `${real.length} ta video topildi`,
+              payload: {
+                izoh: answer.text,
+                videolar: real.map((v: { url: string; title: string }) => ({
+                  havola: v.url,
+                  sarlavha: v.title || '(nomaʼlum)',
+                })),
+                youtube_qidiruv: browse,
+                koʻrsatma:
+                  'Havolalarni javobingda yoz — ular chatda pleyer boʻlib chiqadi. '
+                  + 'MUHIM: yuqoridagi `sarlavha` — videoning HAQIQIY nomi. Agar u '
+                  + 'soʻralgan mavzuga mos kelmasa, oʻsha videoni tavsiya qilma va '
+                  + 'buni ochiq ayt. Sarlavhani oʻzingdan toʻqima.',
+              },
+            };
+          }
+
+          note = unique.length
+            ? 'Model bergan havolalar tekshiruvdan oʻtmadi — bunday videolar mavjud emas.'
+            : answer.text;
+        } catch (err) {
+          if ((err as Error)?.name === 'AbortError') throw err;
+          note = String((err as Error)?.message ?? err);
+        }
+      }
+
+      // Qidiruv natija bermadi — YouTube ni ilovaning oʻzida ochib beramiz.
+      openSite(browse);
+      return {
+        ok: true,
+        summary: 'YouTube qidiruvi ochildi',
+        payload: {
+          izoh: note,
+          youtube_qidiruv: browse,
+          koʻrsatma:
+            'Qidiruv natija bermadi, shuning uchun YouTube qidiruvi ilovaning ichki ' +
+            'brauzerida ochildi — foydalanuvchi videoni oʻzi tanlaydi. Buni bir jumlada ayt ' +
+            'va agar aniq video havolasini bersa, uni tarjima qilib bera olishingni eslat.',
+        },
+      };
+    }
+
+    case 'read_video': {
+      const ref = parseYouTube(str(args.url));
+      if (!ref) {
+        return { ok: false, summary: 'YouTube havolasi notoʻgʻri', payload: { error: 'url_yoq' } };
+      }
+      const lang = str(args.lang, getState().settings.ttsLang || 'uz-UZ');
+      const wantSrt = /srt|subtitr|fayl/i.test(str(args.format));
+
+      try {
+        const read = await readVideo(ref, lang, ctx.signal);
+        const artifacts: Artifact[] = [];
+
+        if (wantSrt && read.captions.length) {
+          artifacts.push({
+            id: uid('art'),
+            kind: 'code',
+            lang: 'srt',
+            title: `${read.title || 'Video'} — subtitr (${languageName(lang)})`,
+            content: toSrt(read.captions),
+            createdAt: Date.now(),
+          });
+        }
+
+        /*
+         * Uzun videoda BUTUN subtitrni bermaymiz.
+         *
+         * Soatlik suhbat — oʻn minglab token. Savol berilgan boʻlsa
+         * subtitr boʻlaklarga boʻlinadi va faqat eng mos boʻlaklar
+         * (vaqti bilan) qaytariladi. Savol boʻlmasa — boshidan
+         * qisqa parcha, mazmuni esa baribir toʻliq.
+         */
+        const savol = str(args.question);
+        const parchalar = chunkCaptions(read.captions);
+        let preview: string;
+        let topildi = 0;
+
+        if (savol && parchalar.length > 6) {
+          const { rank } = await import('./context/retrieve');
+          const mos = rank(parchalar, savol, (p) => p.text, { top: 6, threshold: 0.05 });
+          topildi = mos.length;
+          const tanlangan = (mos.length ? mos.map((m) => m.item) : parchalar.slice(0, 6))
+            .slice()
+            .sort((a, b) => a.start - b.start);
+          preview = tanlangan
+            .map((p) => `[${clock(p.start)}] ${p.text}`)
+            .join('\n\n');
+        } else {
+          preview = parchalar
+            .slice(0, 12)
+            .map((p) => `[${clock(p.start)}] ${p.text}`)
+            .join('\n');
+        }
+
+        return {
+          ok: true,
+          summary: `Video oʻqildi: ${read.title || ref.id}`,
+          artifacts,
+          payload: {
+            sarlavha: read.title,
+            asl_til: read.language,
+            mazmuni: read.summary,
+            subtitr_boʻlaklari: read.captions.length,
+            davomiyligi: read.captions.length
+              ? clock(read.captions[read.captions.length - 1].end)
+              : undefined,
+            ...(savol
+              ? {
+                  savol: savol,
+                  mos_joylar: preview || '(mos joy topilmadi)',
+                  topilgan_boʻlaklar: topildi,
+                }
+              : { tarjima_boshi: preview }),
+            fayl: wantSrt && artifacts.length ? '.srt fayli tayyor' : undefined,
+            koʻrsatma:
+              savol
+                ? 'Yuqoridagi `mos_joylar` — videoning aynan shu savolga tegishli '
+                  + 'qismlari. Javobni shulardan ber va qaysi daqiqada aytilganini '
+                  + 'koʻrsat (masalan «12:40 da»). Butun videoni qayta soʻzlab berma.'
+                : 'Mazmunini oʻz soʻzing bilan yoz. Subtitrni toʻliq koʻchirma — '
+                  + 'asosiy fikrlarni va muhim joylarni vaqti bilan ayt.',
+          },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Video oʻqilmadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'dub_video': {
+      const ref = parseYouTube(str(args.url));
+      if (!ref) {
+        return { ok: false, summary: 'YouTube havolasi notoʻgʻri', payload: { error: 'url_yoq' } };
+      }
+      const lang = str(args.lang, getState().settings.ttsLang || 'uz-UZ');
+
+      try {
+        const read = await readVideo(ref, lang, ctx.signal);
+        const narration = toNarration(read);
+        if (!narration) {
+          return { ok: false, summary: 'Videodan matn chiqmadi', payload: { error: 'matn_yoq' } };
+        }
+
+        let wav: string;
+        try {
+          wav = await synthesize(narration, undefined, ctx.signal);
+        } catch {
+          // Uzun matn ovozga sigʻmasa — qisqacha mazmunni oʻqiymiz.
+          wav = await synthesize(read.summary, undefined, ctx.signal);
+        }
+
+        return {
+          ok: true,
+          summary: `Ovozli tarjima tayyor (${languageName(lang)})`,
+          artifacts: [
+            {
+              id: uid('art'),
+              kind: 'audio',
+              mimeType: 'audio/wav',
+              title: `${read.title || 'Video'} — ${languageName(lang)} ovoz`,
+              content: wav,
+              createdAt: Date.now(),
+            },
+          ],
+          payload: {
+            sarlavha: read.title,
+            mazmuni: read.summary,
+            koʻrsatma:
+              'Ovozli fayl chatda oʻzi chiqadi — uni matn bilan qayta tasvirlama. ' +
+              'Faqat qisqacha mazmunini ayt.',
+          },
+        };
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err;
+        return {
+          ok: false,
+          summary: `Ovozli tarjima boʻlmadi: ${(err as Error).message}`,
+          payload: { error: String((err as Error)?.message ?? err) },
+        };
+      }
+    }
+
+    case 'search_web': {
+      const query = str(args.query);
+      if (!query) return { ok: false, summary: 'Savol berilmadi', payload: { error: 'query_yoq' } };
+
+      // Qidiruv serveri band boʻlsa yana bir marta urinib koʻramiz.
+      let lastError = '';
+
+      for (let urinish = 0; urinish < 2; urinish += 1) {
+        try {
+          const answer = await searchAny(query, ctx.signal);
+          return {
+            ok: true,
+            summary: `Qidirildi: ${query.slice(0, 40)}`,
+            payload: { natija: answer.text, manbalar: answer.sources },
+          };
+        } catch (err) {
+          if ((err as Error)?.name === 'AbortError') throw err;
+          lastError = String((err as Error)?.message ?? err);
+        }
+      }
+
+      return {
+        ok: false,
+        summary: `Qidiruv ishlamadi: ${lastError}`,
+        payload: {
+          error: lastError,
+          koʻrsatma:
+            'Qidiruv serveri band. Foydalanuvchiga aytib, kerak boʻlsa open_site bilan ' +
+            'tegishli saytni ochib ber yoki oʻzingdagi bilim bilan javob ber (lekin ' +
+            'maʼlumot eskirgan boʻlishi mumkinligini ayt).',
+        },
+      };
     }
 
     case 'plan_route': {
@@ -705,7 +2521,7 @@ export async function executeTool(
     }
 
     case 'illustrate_document': {
-      const { settings, chats } = getState();
+      const { chats } = getState();
       const chat = chats.find((c) => c.id === ctx.chatId);
 
       // Suhbatdagi eng oxirgi hujjatni topamiz.
@@ -736,11 +2552,14 @@ export async function executeTool(
       if (source.mimeType === DOCX_MIME) {
         text = readDocx(b64ToBytes(source.data));
       } else {
-        text = await generateText(
-          settings.apiKey,
-          settings.model,
-          'Ushbu PDF hujjatning BARCHA matnini oʻzgartirmasdan, tartibi bilan yozib ber. ' +
-            'Izoh qoʻshma, faqat matnning oʻzi.',
+        /*
+         * PDF ni faqat KOʻRADIGAN model oʻqiy oladi. Avval bu yerda
+         * Gemini qattiq yozilgan edi — OpenRouter bilan ishlaydigan
+         * odamda hujjatga rasm qoʻshish umuman ishlamasdi.
+         */
+        text = await visionAny(
+          'Ushbu PDF hujjatning BARCHA matnini oʻzgartirmasdan, tartibi bilan yozib ber. '
+            + 'Izoh qoʻshma, faqat matnning oʻzi.',
           [source],
           ctx.signal,
         );
@@ -751,11 +2570,9 @@ export async function executeTool(
       const forPlan = text.length > 24000 ? `${text.slice(0, 24000)}\n…` : text;
 
       // 2. Qayerga qanday rasm kerakligini modeldan soʻraymiz.
-      const plan = await generateJson<{
+      const plan = await jsonAny<{
         images: Array<{ prompt: string; caption?: string; after?: string }>;
       }>(
-        settings.apiKey,
-        settings.model,
         `Quyidagi hujjatga ${count} ta rasm qoʻshamiz. Uslub: ${style}.` +
           (note ? ` Qoʻshimcha talab: ${note}.` : '') +
           `\n\nHar bir rasm uchun:\n` +
@@ -796,14 +2613,12 @@ export async function executeTool(
       const drawn: string[] = [];
       for (const item of wanted) {
         try {
-          const result = await generateImage(
-            settings.apiKey,
-            settings.imageModel,
+          const drawnImages = await imageAny(
             `${item.prompt}. Style: ${style}.${note ? ` ${note}.` : ''} No text or letters in the image.`,
             [],
             ctx.signal,
           );
-          const first = result.images[0];
+          const first = drawnImages[0];
           if (!first) continue;
           const size = await imageSize(first.data, first.mimeType);
           images.push({

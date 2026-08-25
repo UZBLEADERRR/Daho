@@ -1,6 +1,11 @@
 node_modules/
 dist/
 *.local
+
+# Muhit sozlamalari — kalitlar repozitoriyga tushmasin
+.env
+.env.*
+!.env.example
 .DS_Store
 .vscode/
 .idea/
@@ -17,3 +22,14 @@ android/app/src/main/assets/capacitor.plugins.json
 *.iml
 *.keystore
 *.jks
+
+server/node_modules
+
+# Kengaytma arxivi — build paytida yasaladi
+public/daho-extension.zip
+
+# Yigʻilishda yasaladi
+extension/config.json
+
+# Dizayn kanvasi — ishchi fayllardan qayta yigʻiladi (2 MB, repoda saqlanmaydi).
+design/dahocode/daho-code-loyiha.html

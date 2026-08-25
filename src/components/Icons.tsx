@@ -175,3 +175,90 @@ export const Back = ({ size = 20, className }: IconProps) => (
     <path d="M15 5l-7 7 7 7" />
   </svg>
 );
+
+export const Cloud = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M17.5 19a4.5 4.5 0 0 0 .6-8.96 6 6 0 0 0-11.6-1.3A4 4 0 0 0 7 19z" />
+  </svg>
+);
+
+export const User = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <circle cx="12" cy="8" r="3.4" />
+    <path d="M4.8 20a7.2 7.2 0 0 1 14.4 0" />
+  </svg>
+);
+
+export const Shield = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M12 3.2 19 6v5.4c0 4.2-2.8 7.6-7 9.4-4.2-1.8-7-5.2-7-9.4V6z" />
+    <path d="m9.2 12 2 2 3.6-3.8" />
+  </svg>
+);
+
+export const Wave = ({ size = 20, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M3 12v0M7 8v8M11 4.5v15M15 8v8M19 11v2" />
+  </svg>
+);
+
+export const Book = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M4 4.5A1.5 1.5 0 015.5 3H19v16H5.5A1.5 1.5 0 004 20.5z" />
+    <path d="M4 17.5A1.5 1.5 0 015.5 16H19" />
+  </svg>
+);
+
+export const Bolt = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M13 2L4.5 13.5H11l-1 8.5 8.5-11.5H12z" />
+  </svg>
+);
+
+export const Cpu = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <rect x="6.5" y="6.5" width="11" height="11" rx="2" />
+    <path d="M10 3v3.5M14 3v3.5M10 17.5V21M14 17.5V21M3 10h3.5M3 14h3.5M17.5 10H21M17.5 14H21" />
+  </svg>
+);
+
+export const Chart = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
+  </svg>
+);
+
+export const Globe = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M3.5 12h17M12 3.5c4.5 5 4.5 12 0 17-4.5-5-4.5-12 0-17z" />
+  </svg>
+);
+
+export const Puzzle = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M10 4.5a2 2 0 1 1 4 0V6h3.5A1.5 1.5 0 0 1 19 7.5V11h-1.5a2 2 0 1 0 0 4H19v3.5a1.5 1.5 0 0 1-1.5 1.5H14v-1.5a2 2 0 1 0-4 0V20H6.5A1.5 1.5 0 0 1 5 18.5V15h1.5a2 2 0 1 0 0-4H5V7.5A1.5 1.5 0 0 1 6.5 6H10z" />
+  </svg>
+);
+
+export const Server = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <rect x="3.5" y="4" width="17" height="6.5" rx="2" />
+    <rect x="3.5" y="13.5" width="17" height="6.5" rx="2" />
+    <path d="M7 7.25h.01M7 16.75h.01" />
+  </svg>
+);
+
+export const Database = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <ellipse cx="12" cy="6" rx="7.5" ry="3" />
+    <path d="M4.5 6v12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6" />
+    <path d="M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3" />
+  </svg>
+);
+
+export const Moon = ({ size = 19, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z" />
+  </svg>
+);

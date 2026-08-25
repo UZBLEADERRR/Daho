@@ -13,6 +13,23 @@
  * Shu tariqa API sinxron qoladi, maʼlumot esa yoʻqolmaydi.
  */
 
+/**
+ * Qumboxdagi ilovaga beriladigan qurilma imkoniyatlari.
+ * `allow` boʻlmasa brauzer kamera/mikrofonni umuman soʻramaydi.
+ */
+export const IFRAME_ALLOW =
+  'camera; microphone; geolocation; autoplay; clipboard-write; fullscreen; ' +
+  'encrypted-media; picture-in-picture; accelerometer; gyroscope; magnetometer; ' +
+  'xr-spatial-tracking; midi';
+
+/**
+ * Qumbox darajasi. `allow-same-origin` ATAYLAB yoʻq — aks holda ilova
+ * ota-oynadagi maʼlumotga (API kalit, suhbatlar) qoʻl ura olardi.
+ * Kamera va joylashuv oʻrniga qurilma koʻprigi ishlaydi (bridgeScript).
+ */
+export const IFRAME_SANDBOX =
+  'allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads';
+
 const PREFIX = 'daho.sandbox.';
 const LIMIT = 2_000_000; // bitta ilova uchun ~2 MB
 
@@ -83,6 +100,158 @@ function storeScript(id: string): string {
 })();</script>`;
 }
 
+/**
+ * Qurilma koʻprigi — iframe tomoni.
+ *
+ * `getUserMedia`, `geolocation` va `clipboard` ni ota-oynaga uzatadi.
+ * Sabab: qumboxdagi oyna «opaque origin» da boʻlgani uchun brauzer unga
+ * kamera/mikrofon ruxsatini bermaydi (`NotAllowedError`). Kadrlar ota-oynadan
+ * `ImageBitmap` boʻlib keladi, biz ularni canvas ga chizamiz va shu canvas dan
+ * haqiqiy `MediaStream` yasaymiz — ilova farqni sezmaydi.
+ */
+function bridgeScript(): string {
+  return `<script>(function(){
+  var seq=0, media={}, geo={};
+  function id(){seq+=1;return 'r'+seq+'_'+Date.now()}
+  function tell(msg){try{parent.postMessage(msg,'*')}catch(e){}}
+
+  window.addEventListener('message',function(ev){
+    var d=ev.data; if(!d||typeof d.__daho!=='string')return;
+    var m=media[d.req], g=geo[d.req];
+    if(d.__daho==='media-ok'&&m){m.ready(d)}
+    else if(d.__daho==='media-err'&&m){m.fail(d)}
+    else if(d.__daho==='frame'&&m&&m.draw){m.draw(d.bitmap)}
+    else if(d.__daho==='pcm'&&m&&m.audio){m.audio(d.data,d.rate)}
+    else if(d.__daho==='geo'&&g){g.ok({coords:d.coords,timestamp:d.timestamp})}
+    else if(d.__daho==='geo-err'&&g){g.fail({code:d.code||1,message:d.message||'xato',
+      PERMISSION_DENIED:1,POSITION_UNAVAILABLE:2,TIMEOUT:3})}
+  });
+
+  function getUserMedia(c){
+    c=c||{};
+    var wantVideo=!!c.video, wantAudio=!!c.audio;
+    if(!wantVideo&&!wantAudio)return Promise.reject(new Error('TypeError: video yoki audio kerak'));
+    var facing='user';
+    if(c.video&&typeof c.video==='object'){
+      var f=c.video.facingMode;
+      if(typeof f==='string')facing=f;
+      else if(f&&(f.exact||f.ideal))facing=f.exact||f.ideal;
+    }
+    var req=id();
+    return new Promise(function(resolve,reject){
+      var slot={};
+      media[req]=slot;
+      slot.fail=function(d){delete media[req];var e=new Error(d.message||'ruxsat berilmadi');e.name=d.name||'NotAllowedError';reject(e)};
+      slot.ready=function(d){
+        var stream, canvas, ctx;
+        if(d.video){
+          canvas=document.createElement('canvas');
+          canvas.width=d.width||640; canvas.height=d.height||480;
+          ctx=canvas.getContext('2d');
+          stream=canvas.captureStream(20);
+          slot.draw=function(bitmap){
+            try{
+              if(bitmap.width&&(canvas.width!==bitmap.width||canvas.height!==bitmap.height)){
+                canvas.width=bitmap.width; canvas.height=bitmap.height;
+              }
+              ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+              if(bitmap.close)bitmap.close();
+            }catch(e){}
+          };
+        } else {
+          stream=new MediaStream();
+        }
+        if(d.audio){
+          try{
+            var AC=window.AudioContext||window.webkitAudioContext;
+            var actx=new AC();
+            var dest=actx.createMediaStreamDestination();
+            var at=0;
+            slot.audio=function(data,rate){
+              try{
+                var buf=actx.createBuffer(1,data.length,rate||actx.sampleRate);
+                buf.copyToChannel?buf.copyToChannel(data,0):buf.getChannelData(0).set(data);
+                var src=actx.createBufferSource();
+                src.buffer=buf; src.connect(dest);
+                var now=actx.currentTime;
+                if(at<now)at=now+0.05;
+                src.start(at); at+=buf.duration;
+              }catch(e){}
+            };
+            var atrack=dest.stream.getAudioTracks()[0];
+            if(atrack&&stream.addTrack)stream.addTrack(atrack);
+          }catch(e){}
+        }
+        // Toʻxtatish ota-oynaga ham yetib borsin.
+        try{
+          stream.getTracks().forEach(function(t){
+            var orig=t.stop.bind(t);
+            t.stop=function(){orig();tell({__daho:'media-stop',req:req});delete media[req]};
+          });
+        }catch(e){}
+        resolve(stream);
+      };
+      tell({__daho:'media-ask',req:req,video:wantVideo,audio:wantAudio,facing:facing});
+      setTimeout(function(){
+        if(media[req]&&!slot.draw&&!slot.audio){
+          // Javob kelmadi — ilova muzlab qolmasin.
+        }
+      },20000);
+    });
+  }
+
+  var devices={
+    getUserMedia:getUserMedia,
+    enumerateDevices:function(){return Promise.resolve([
+      {deviceId:'daho-cam',kind:'videoinput',label:'Kamera',groupId:'daho'},
+      {deviceId:'daho-mic',kind:'audioinput',label:'Mikrofon',groupId:'daho'}
+    ])},
+    getSupportedConstraints:function(){return {facingMode:true,width:true,height:true}},
+    addEventListener:function(){},removeEventListener:function(){}
+  };
+  try{Object.defineProperty(navigator,'mediaDevices',{configurable:true,get:function(){return devices}})}catch(e){}
+  try{navigator.getUserMedia=function(c,ok,err){getUserMedia(c).then(ok,err)};
+      navigator.webkitGetUserMedia=navigator.getUserMedia}catch(e){}
+
+  var geolocation={
+    getCurrentPosition:function(ok,err){
+      var req=id();
+      geo[req]={ok:function(p){delete geo[req];ok&&ok(p)},fail:function(e){delete geo[req];err&&err(e)}};
+      tell({__daho:'geo-ask',req:req,watch:false});
+    },
+    watchPosition:function(ok,err){
+      var req=id();
+      geo[req]={ok:function(p){ok&&ok(p)},fail:function(e){err&&err(e)}};
+      tell({__daho:'geo-ask',req:req,watch:true});
+      return req;
+    },
+    clearWatch:function(req){delete geo[req];tell({__daho:'geo-stop',req:req})}
+  };
+  try{Object.defineProperty(navigator,'geolocation',{configurable:true,get:function(){return geolocation}})}catch(e){}
+
+  try{
+    var clip=navigator.clipboard||{};
+    var write=function(t){tell({__daho:'clipboard',text:String(t)});return Promise.resolve()};
+    Object.defineProperty(navigator,'clipboard',{configurable:true,get:function(){
+      return {writeText:write,readText:clip.readText?clip.readText.bind(clip):function(){return Promise.resolve('')}}
+    }});
+  }catch(e){}
+
+  try{
+    var perms=navigator.permissions;
+    if(perms&&perms.query){
+      var q=perms.query.bind(perms);
+      perms.query=function(o){
+        var n=o&&o.name;
+        if(n==='camera'||n==='microphone'||n==='geolocation')
+          return Promise.resolve({state:'granted',onchange:null,addEventListener:function(){},removeEventListener:function(){}});
+        return q(o);
+      };
+    }
+  }catch(e){}
+})();</script>`;
+}
+
 /** Ota-oyna tomonida: ilovalar saqlagan maʼlumotni qabul qilib qoʻyadi. */
 export function installSandboxStore(): () => void {
   const onMessage = (event: MessageEvent) => {
@@ -114,7 +283,7 @@ export function clearSandboxStore(id: string): void {
  * telefon uchun `viewport` metasini qoʻshadi.
  */
 export function sandboxDocument(html: string, id: string): string {
-  const head = storeScript(id);
+  const head = storeScript(id) + bridgeScript();
   const meta =
     /<meta[^>]+viewport/i.test(html)
       ? ''

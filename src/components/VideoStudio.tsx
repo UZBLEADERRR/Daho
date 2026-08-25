@@ -6,6 +6,7 @@ import { useStore } from '../lib/store';
 import type { SubtitleStyle, VideoProject } from '../lib/types';
 import {
   SUBTITLE_PRESETS,
+  VIDEO_LANGUAGES,
   VIDEO_STYLES,
   deleteProject,
   dimensionsFor,
@@ -15,9 +16,11 @@ import {
   patchProject,
   patchScene,
   renderVideo,
+  revoiceScene,
+  translateProject,
 } from '../lib/video';
 import { Back, Close, Download, Play, Refresh, Speaker, Trash } from './Icons';
-import { Sheet, toast } from './ui';
+import { Sheet, Switch, toast } from './ui';
 
 const STAGE_LABEL: Record<VideoProject['stage'], string> = {
   reja: 'Reja tuzilmoqda',
@@ -163,6 +166,10 @@ export function VideoStudio({ projectId, onClose }: { projectId: string; onClose
 
   const imagesDone = project.scenes.filter((s) => s.imageData).length;
   const voicesDone = project.scenes.filter((s) => s.audioWav).length;
+  // Ilgari render tugmasi faqat HAMMA ovoz chiqqanda koʻrinardi — ovoz
+  // chiqmasa foydalanuvchi tiqilib qolardi. Endi rasmlar tayyor boʻlsa
+  // yigʻish mumkin, ovozsiz sahnalar haqida esa ochiq aytiladi.
+  const canRender = imagesDone > 0 && voicesDone > 0;
   const allReady = imagesDone === project.scenes.length && voicesDone === project.scenes.length;
 
   const run = async (
@@ -214,7 +221,17 @@ export function VideoStudio({ projectId, onClose }: { projectId: string; onClose
   const doRender = () =>
     run('Video yigʻilmoqda', async () => {
       const result = await renderVideo(project.id, setProgress);
-      toast(`Video tayyor — ${Math.round(result.durationSec)} soniya`);
+      toast(
+        result.silentScenes
+          ? `Video tayyor, ammo ${result.silentScenes} ta sahna ovozsiz qoldi`
+          : `Video tayyor — ${Math.round(result.durationSec)} soniya`,
+      );
+    });
+
+  const retranslate = (language: string) =>
+    run('Tarjima qilinmoqda', async (signal) => {
+      await translateProject(project.id, language, signal);
+      toast(`Matn ${language} tiliga oʻgirildi — endi ovozni qayta yozing`);
     });
 
   const download = async () => {
@@ -223,7 +240,10 @@ export function VideoStudio({ projectId, onClose }: { projectId: string; onClose
       toast('Avval videoni yigʻing');
       return;
     }
-    const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+    // Kengaytmani blob.type dan olib boʻlmaydi: Chrome «video/mp4» deb
+    // atab, ichiga VP9 solib qoʻyishi mumkin. Render qaysi kodek
+    // yozganini aytadi — shuni ishlatamiz.
+    const ext = project.outputExt ?? (blob.type.includes('mp4') ? 'mp4' : 'webm');
     const bytes = new Uint8Array(await blob.arrayBuffer());
     try {
       toast(await saveBytes(`${project.title.slice(0, 40) || 'video'}.${ext}`, bytes, blob.type));
@@ -307,7 +327,21 @@ export function VideoStudio({ projectId, onClose }: { projectId: string; onClose
                 </button>
               </div>
 
-              {allReady && (
+              {!canRender && (
+                <div className="tiny" style={{ marginBottom: 12, opacity: 0.8 }}>
+                  Videoni yigʻish uchun kamida bitta sahnada rasm ham, ovoz ham
+                  boʻlishi kerak.
+                </div>
+              )}
+
+              {canRender && !allReady && (
+                <div className="tiny" style={{ marginBottom: 8, color: 'var(--warn)' }}>
+                  {project.scenes.length - voicesDone} ta sahna ovozsiz —
+                  shu joylari jim oʻtadi.
+                </div>
+              )}
+
+              {canRender && (
                 <button
                   className="btn wide"
                   disabled={!!busy}
@@ -359,6 +393,19 @@ export function VideoStudio({ projectId, onClose }: { projectId: string; onClose
 
           {tab === 'subtitr' && (
             <>
+              <Switch
+                on={project.subtitle.enabled !== false}
+                onChange={(on) => setSubtitle({ enabled: on })}
+                label="Subtitr videoga yozilsin"
+                hint="Oʻchirilsa kadrda faqat rasm va ovoz qoladi — pastdagi qorayish ham olib tashlanadi."
+              />
+
+              {project.subtitle.enabled === false ? (
+                <p className="muted">
+                  Subtitr oʻchirilgan. Uslubni sozlash uchun avval yuqoridagi tugmani yoqing.
+                </p>
+              ) : (
+                <>
               <canvas ref={previewRef} className="subtitle-preview" />
 
               <div className="section-label" style={{ padding: '10px 0 6px' }}>
@@ -454,6 +501,8 @@ export function VideoStudio({ projectId, onClose }: { projectId: string; onClose
               >
                 {project.subtitle.uppercase ? 'BOSH HARFLAR yoqilgan' : 'Bosh harflar oʻchiq'}
               </button>
+                </>
+              )}
             </>
           )}
 
@@ -601,6 +650,42 @@ export function VideoStudio({ projectId, onClose }: { projectId: string; onClose
                     </option>
                   ))}
                 </select>
+                <div className="tiny" style={{ marginTop: 5 }}>
+                  Ovozni almashtirgach «Ovozlarni tozalash» ni bosing va qaytadan yozdiring.
+                </div>
+              </div>
+
+              <div className="section-label" style={{ padding: '14px 0 6px' }}>
+                Til
+              </div>
+              <div className="field">
+                <label>Video tili</label>
+                <select
+                  value={project.language ?? VIDEO_LANGUAGES[0]}
+                  onChange={(e) => void retranslate(e.target.value)}
+                  disabled={!!busy}
+                >
+                  {VIDEO_LANGUAGES.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+                <div className="tiny" style={{ marginTop: 5 }}>
+                  Tanlangan tilga barcha sahna matnlari oʻgiriladi. Rasmlar joyida qoladi,
+                  ovozlar esa tozalanadi — keyin «Ovoz yozish» ni bosing.
+                </div>
+              </div>
+              <button
+                className="btn ghost wide"
+                disabled={!!busy}
+                onClick={() => void retranslate(project.language ?? VIDEO_LANGUAGES[0])}
+              >
+                <Refresh size={15} /> Matnni qayta tarjima qilish
+              </button>
+
+              <div className="section-label" style={{ padding: '14px 0 6px' }}>
+                Tozalash
               </div>
 
               <button
@@ -678,6 +763,31 @@ export function VideoStudio({ projectId, onClose }: { projectId: string; onClose
               }
             />
           </div>
+          {scene.audioWav && (
+            <button
+              className="btn ghost wide"
+              style={{ marginBottom: 8 }}
+              onClick={() => playWavBase64(scene.audioWav!)}
+            >
+              <Play size={15} /> Ovozni tinglash
+            </button>
+          )}
+          <button
+            className="btn ghost wide"
+            disabled={!!busy}
+            style={{ marginBottom: 8 }}
+            onClick={() => {
+              const id = scene.id;
+              setEditScene(null);
+              void run('Ovoz yozilmoqda', async (signal) => {
+                patchScene(project.id, id, { audioWav: undefined });
+                await revoiceScene(project.id, id, signal);
+                toast('Sahna ovozi qayta yozildi');
+              });
+            }}
+          >
+            <Speaker size={15} /> Ovozni qayta yozish
+          </button>
           <div className="row">
             <button
               className="btn ghost grow"

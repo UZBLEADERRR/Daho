@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { strToU8, zipSync } from 'fflate';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { fileExtension } from './artifacts';
@@ -20,6 +21,8 @@ function safeName(title: string): string {
 
 function mimeFor(artifact: Artifact): string {
   if (artifact.kind === 'image') return artifact.mimeType ?? 'image/png';
+  if (artifact.kind === 'audio') return artifact.mimeType ?? 'audio/wav';
+  if (artifact.lang === 'srt') return 'application/x-subrip';
   if (artifact.lang === 'html') return 'text/html';
   if (artifact.lang === 'json') return 'application/json';
   return 'text/plain';
@@ -45,7 +48,7 @@ function webDownload(filename: string, content: string, mime: string, isBase64: 
 export async function saveArtifact(artifact: Artifact): Promise<string> {
   const filename = `${safeName(artifact.title)}.${fileExtension(artifact)}`;
   const mime = mimeFor(artifact);
-  const isBase64 = artifact.kind === 'image';
+  const isBase64 = artifact.kind === 'image' || artifact.kind === 'audio';
 
   if (!Capacitor.isNativePlatform()) {
     webDownload(filename, artifact.content, mime, isBase64);
@@ -157,6 +160,25 @@ export async function saveBytes(
   return `Saqlandi: ${filename}`;
 }
 
+/**
+ * Bir nechta faylni ZIP qilib beradi — kod loyihasini butunlay olish yoki
+ * agent yasagan bir toʻplam faylni bitta arxivda yuborish uchun.
+ */
+export async function saveZip(
+  name: string,
+  files: Array<{ path: string; content: string | Uint8Array }>,
+): Promise<string> {
+  if (!files.length) throw new Error('Arxivga soladigan fayl yoʻq');
+  const entries: Record<string, Uint8Array> = {};
+  for (const f of files) {
+    // Yoʻldagi xavfli belgilarni tozalaymiz (`..` bilan chiqib ketmasin).
+    const path = f.path.replace(/^[./]+/, '').replace(/\.\.+/g, '.') || 'fayl';
+    entries[path] = typeof f.content === 'string' ? strToU8(f.content) : f.content;
+  }
+  const bytes = zipSync(entries, { level: 6 });
+  return saveBytes(`${safeName(name)}.zip`, bytes, 'application/zip');
+}
+
 /** Markdown matnni Word / PDF / slayd qilib chiqaradi. */
 export async function exportDocument(
   markdown: string,
@@ -169,9 +191,9 @@ export async function exportDocument(
   }
   const bytes =
     format === 'docx'
-      ? buildDocx(markdown)
+      ? await buildDocx(markdown)
       : format === 'pptx'
-        ? buildPptx(markdown)
-        : buildPdf(markdown);
+        ? await buildPptx(markdown)
+        : await buildPdf(markdown);
   return saveBytes(name, bytes, DOC_MIME[format]);
 }

@@ -1,13 +1,60 @@
+import { Capacitor } from '@capacitor/core';
 import { useEffect, useRef, useState } from 'react';
 import { blobToWavBytes, bytesToB64, playWavBase64 } from '../lib/audio';
 import { applyAppLook } from '../lib/applook';
-import { saveBackup } from '../lib/exporter';
+import { copyText, saveBackup } from '../lib/exporter';
 import { getRepo, whoAmI } from '../lib/github';
+import { sbPing } from '../lib/supabase';
 import { transcribeAudio } from '../lib/gemini';
-import { byRole, cachedModels, getModels, pickModel, type ModelInfo } from '../lib/models';
-import { VOICES, listDeviceVoices, speak, synthesize, type DeviceVoice } from '../lib/speech';
-import { exportState, getState, importState, resetState, updateSettings, useStore } from '../lib/store';
-import { Refresh } from './Icons';
+import { applyBackupSetting, cloudEnabled, useCloud } from '../lib/cloud';
+import { byRole, cachedModels, geminiModel, getModels, pickModel, type ModelInfo } from '../lib/models';
+import { useInstallPrompt } from '../lib/pwa';
+import { aiAvailable, resolveSource } from '../lib/route';
+import {
+  VOICES,
+  checkMicrophone,
+  listDeviceVoices,
+  speak,
+  synthesize,
+  type DeviceVoice,
+  type MicCheck,
+} from '../lib/speech';
+import {
+  exportState,
+  getState,
+  getStorageError,
+  importState,
+  resetState,
+  updateSettings,
+  useStore,
+} from '../lib/store';
+import { requestPersistentStorage, storageEstimate } from '../lib/storage';
+import { serverHealth } from '../lib/cloud/server';
+import { listProjects } from '../lib/sbadmin';
+import { disconnectGoogle, redirectUri, startGoogleAuth } from '../lib/google';
+import { tgChats, tgContacts, tgMe, tgReady, tgSync } from '../lib/telegram';
+import { igMedia } from '../lib/social';
+import { ChatModelSelect, ModelsPanel } from './ModelsPanel';
+import { UsagePanel } from './UsagePanel';
+import {
+  Chart,
+  Cloud,
+  Code,
+  Copy,
+  Cpu,
+  Database,
+  Download,
+  Globe,
+  Image,
+  Mic,
+  Moon,
+  Refresh,
+  Send,
+  Server,
+  Sparkle,
+  User,
+} from './Icons';
+import { ConnectButton } from './ConnectButton';
 import { Sheet, Switch, toast } from './ui';
 
 const ACCENTS = [
@@ -28,14 +75,49 @@ const TTS_LANGS = [
   { id: 'tr-TR', label: 'Turkcha' },
 ];
 
-export function Settings({ onClose }: { onClose: () => void }) {
+/** Sozlamalarning bitta boʻlimi — profil ichida alohida sahifa boʻlib ochiladi. */
+export interface SettingGroup {
+  id: string;
+  icon: JSX.Element;
+  title: string;
+  hint: string;
+  show?: boolean;
+  body: JSX.Element;
+}
+
+interface SettingsProps {
+  /** Profil ichida sahifa boʻlib turadi — oyna emas. */
+  inline?: boolean;
+  onClose: () => void;
+  onOpenAccount: () => void;
+}
+
+/**
+ * Sozlama boʻlimlari — bitta joyda.
+ *
+ * Ilgari bu roʻyxat `Settings` ichida yashirin turardi va profildan
+ * unga faqat «Sozlamalar» degan bitta qator orqali kirilardi: odam ikki
+ * qadam bosib, yana bir menyu koʻrardi. Endi roʻyxat tashqariga
+ * chiqarildi — profil uni oʻz qatorlari qilib chizadi, «Sozlamalar»
+ * degan oraliq sahifa umuman qolmadi.
+ */
+export function useSettingGroups({
+  onClose,
+  onOpenAccount,
+}: {
+  onClose: () => void;
+  onOpenAccount: () => void;
+}): SettingGroup[] {
   const settings = useStore((s) => s.settings);
+  const cloud = useCloud();
   const [models, setModels] = useState<ModelInfo[]>(cachedModels());
   const [loadingModels, setLoadingModels] = useState(false);
   const [deviceVoices, setDeviceVoices] = useState<DeviceVoice[]>([]);
   const [showKey, setShowKey] = useState(false);
   const [testing, setTesting] = useState(false);
   const [ghChecking, setGhChecking] = useState(false);
+  const [micChecks, setMicChecks] = useState<MicCheck[] | null>(null);
+  const [micBusy, setMicBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -43,8 +125,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
   }, []);
 
   const refreshModels = async (force = true) => {
-    if (!settings.apiKey) {
-      toast('Avval API kalitni kiriting');
+    if (!aiAvailable(settings.apiKey)) {
+      toast('Avval API kalitni kiriting yoki Daho Cloud hisobiga kiring');
       return;
     }
     setLoadingModels(true);
@@ -64,7 +146,6 @@ export function Settings({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const chatModels = byRole(models, 'chat');
   const imageModels = byRole(models, 'image');
   const ttsModels = byRole(models, 'tts');
 
@@ -110,10 +191,84 @@ export function Settings({ onClose }: { onClose: () => void }) {
     );
   };
 
-  return (
-    <Sheet title="Sozlamalar" onClose={onClose}>
-      <div className="section-label" style={{ padding: '0 0 6px' }}>
-        Gemini
+  /*
+   * Ishlab chiquvchi boʻlimlari oddiy foydalanuvchiga koʻrinmaydi.
+   *
+   * API kalit, rol modellari, Daho serveri, GitHub va Supabase —
+   * bular platformani BOSHQARADIGAN odam uchun. Oddiy foydalanuvchi
+   * admin qoʻshgan modellar bilan ishlaydi va bu boʻlimlar unga
+   * faqat chalgʻitadi.
+   *
+   * Bulut oʻchirilgan boʻlsa (mahalliy ishga tushirish) hammasi
+   * koʻrinadi — aks holda kalit kiritishning ILOJI qolmasdi.
+   */
+  const ishlabChiquvchi = !cloudEnabled || Boolean(cloud.account?.is_admin);
+
+  /** Sozlamalar boʻlimlari — bittasi ochiladi, qolgani xalaqit bermaydi. */
+  const groups: Array<{
+    id: string;
+    icon: JSX.Element;
+    title: string;
+    hint: string;
+    show?: boolean;
+    body: JSX.Element;
+  }> = [
+    {
+      id: 'cloud',
+      icon: <Cloud size={18} />,
+      title: 'Daho Cloud',
+      hint: 'Hisob, obuna va sinxronizatsiya',
+      show: cloudEnabled,
+      body: (
+        <>
+
+          <button className="btn ghost wide" onClick={onOpenAccount}>
+            {cloud.status === 'kirgan'
+              ? `Hisobim · ${cloud.account?.plan?.name ?? 'rejasiz'}`
+              : 'Kirish yoki roʻyxatdan oʻtish'}
+          </button>
+
+          {/*
+            * «AI qayerdan ishlaydi» tanlovi olib tashlandi.
+            *
+            * Bulut yoqilgan boʻlsa oddiy foydalanuvchi baribir faqat
+            * shlyuz orqali ishlaydi (`resolveSource` da qatʼiy
+            * chegara), yaʼni bu tanlov unga hech nima bermasdi —
+            * faqat chalgʻitardi. Admin esa oʻz kalitini «AI modellar»
+            * boʻlimida kiritadi.
+            */}
+          {ishlabChiquvchi && (
+            <div className="tiny" style={{ marginTop: 10 }}>
+              Hozir ishlatilmoqda:{' '}
+              <b>{resolveSource(settings.apiKey) === 'cloud' ? 'Daho Cloud' : 'oʻz kalitingiz'}</b>
+              {cloud.account ? ` · qolgan kredit: ${Math.round(cloud.account.balance)}` : ''}
+            </div>
+          )}
+
+          <Switch
+            on={settings.cloudBackup}
+            onChange={(value) => {
+              updateSettings({ cloudBackup: value });
+              applyBackupSetting(value);
+            }}
+            label="Bulutga sinxronlash"
+            hint="Suhbat, konspekt, vazifa va loyihalar barcha qurilmalarda bir xil boʻladi. API kalit va GitHub tokeni hech qachon yuborilmaydi."
+          />
+
+        </>
+      ),
+    },
+    {
+      id: 'ai',
+      show: ishlabChiquvchi,
+      icon: <Cpu size={18} />,
+      title: 'AI modellar',
+      hint: 'Gemini, OpenRouter, rol modellari va ijodkorlik',
+      body: (
+        <>
+
+      <div className="tiny set-intro">
+        Ixtiyoriy — internet qidiruvi, tabiiy ovoz va mikrofon uchun kerak.
       </div>
 
       <div className="field">
@@ -133,8 +288,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
             {showKey ? 'Yashir' : 'Koʻrsat'}
           </button>
         </div>
-        <div className="tiny" style={{ marginTop: 6 }}>
-          Kalitni bepul olish: aistudio.google.com/apikey. Kalit faqat shu telefonda saqlanadi.
+        <div className="tiny set-hint">
+          aistudio.google.com/apikey — bepul. Kalit qurilmada qoladi.
         </div>
       </div>
 
@@ -146,17 +301,13 @@ export function Settings({ onClose }: { onClose: () => void }) {
       >
         <Refresh size={15} /> {loadingModels ? 'Qidirilmoqda…' : 'Modellarni yangilash'}
       </button>
-      <div className="tiny" style={{ margin: '-6px 0 12px' }}>
-        Roʻyxat Google’dan jonli olinadi — yangi model chiqsa shu yerda oʻzi paydo boʻladi.
-        Eski model ishlamay qolsa ham shu tugma tuzatadi.
-      </div>
 
       <div className="field">
         <label>Suhbat modeli</label>
-        <select value={settings.model} onChange={(e) => updateSettings({ model: e.target.value })}>
-          {modelOptions(chatModels, settings.model)}
-        </select>
+        <ChatModelSelect value={settings.model} onChange={(id) => updateSettings({ model: id })} />
       </div>
+
+      <ModelsPanel />
 
       <div className="field">
         <label>Rasm modeli</label>
@@ -188,7 +339,69 @@ export function Settings({ onClose }: { onClose: () => void }) {
         />
       </div>
 
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+        </>
+      ),
+    },
+    {
+      id: 'telegram',
+      icon: <Send size={17} />,
+      title: 'Telegram bot',
+      hint: 'Mijozlar, guruh va kanal boshqaruvi',
+      body: <TelegramPanel />,
+    },
+    {
+      id: 'instagram',
+      icon: <Image size={18} />,
+      title: 'Instagram',
+      hint: 'Izoh va Direct’ga javob berish',
+      body: (
+        <>
+          <InstagramPanel />
+        </>
+      ),
+    },
+    {
+      id: 'google',
+      icon: <Globe size={18} />,
+      title: 'Google hisobi',
+      hint: 'Gmail, Drive va Kalendar',
+      body: (
+        <>
+          <GooglePanel />
+        </>
+      ),
+    },
+    {
+      id: 'server',
+      show: ishlabChiquvchi,
+      icon: <Server size={18} />,
+      title: 'Daho serveri',
+      hint: 'Fon ishlari va haqiqiy terminal',
+      body: (
+        <>
+          <ServerPanel />
+        </>
+      ),
+    },
+    {
+      id: 'xarajat',
+      icon: <Chart size={18} />,
+      title: 'Xarajat va xotira',
+      hint: 'Sarflangan token, narx va eslab qolinganlar',
+      body: (
+        <>
+      <UsagePanel />
+        </>
+      ),
+    },
+    {
+      id: 'ovoz',
+      icon: <Mic size={18} />,
+      title: 'Ovoz va mikrofon',
+      hint: 'Diktor, tillar, nutqni tanish va tekshiruv',
+      body: (
+        <>
+      <div className="section-label set-label">
         Ovoz
       </div>
 
@@ -288,7 +501,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
         {testing ? 'Tayyorlanmoqda…' : 'Ovozni sinab koʻrish'}
       </button>
 
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <div className="section-label set-label">
         Mikrofon
       </div>
 
@@ -301,9 +514,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
           <option value="gemini">Gemini — oʻzbekchani yaxshi tushunadi</option>
           <option value="qurilma">Telefon xizmati — tezroq, lekin aniqligi past</option>
         </select>
-        <div className="tiny" style={{ marginTop: 5 }}>
-          Gemini rejimida gapirib boʻlgach mikrofon tugmasini yana bosing — yozuv matnga
-          aylanadi.
+        <div className="tiny set-hint">
+          Gapirib boʻlgach mikrofon tugmasini yana bosing.
         </div>
       </div>
 
@@ -321,12 +533,76 @@ export function Settings({ onClose }: { onClose: () => void }) {
         </select>
       </div>
 
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <button
+        className="btn ghost wide"
+        style={{ marginTop: 4 }}
+        disabled={micBusy}
+        onClick={async () => {
+          setMicBusy(true);
+          setMicChecks(null);
+          try {
+            setMicChecks(await checkMicrophone());
+          } finally {
+            setMicBusy(false);
+          }
+        }}
+      >
+        {micBusy ? 'Tekshirilmoqda…' : 'Mikrofonni tekshirish'}
+      </button>
+
+      {micChecks && (
+        <div className="card" style={{ marginTop: 10 }}>
+          {micChecks.map((c) => (
+            <div key={c.step} className="between" style={{ marginBottom: 6, gap: 10 }}>
+              <span style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13.5 }}>
+                  {c.step}
+                </div>
+                <div className="tiny" style={{ wordBreak: 'break-word' }}>
+                  {c.detail}
+                </div>
+              </span>
+            </div>
+          ))}
+          <button
+            className="btn mini ghost"
+            style={{ marginTop: 6 }}
+            onClick={async () => {
+              const text = micChecks
+                .map((c) => `${c.ok ? 'OK' : 'XATO'} — ${c.step}: ${c.detail}`)
+                .join('\n');
+              toast((await copyText(text)) ? 'Nusxalandi — menga yuboring' : 'Nusxalab boʻlmadi');
+            }}
+          >
+            <Copy size={12} /> Natijani nusxalash
+          </button>
+        </div>
+      )}
+
+
+            <MicCheck />
+        </>
+      ),
+    },
+    {
+      id: 'github',
+      show: ishlabChiquvchi,
+      icon: <Code size={18} />,
+      title: 'GitHub',
+      hint: 'Daho Code uchun token va nashr domeni',
+      body: (
+        <>
+      <div className="section-label set-label">
         GitHub (Daho Code uchun)
       </div>
 
+      <ConnectButton
+        provider="github"
+        what="Repo ochish, push, PR va Actions uchun. Token yasash shart emas."
+      />
+
       <div className="field">
-        <label>Shaxsiy token</label>
+        <label>Shaxsiy token (agar ulanmasangiz)</label>
         <input
           type="password"
           value={settings.githubToken}
@@ -336,10 +612,9 @@ export function Settings({ onClose }: { onClose: () => void }) {
           autoCorrect="off"
           spellCheck={false}
         />
-        <div className="tiny" style={{ marginTop: 6 }}>
-          github.com → Settings → Developer settings → Personal access tokens →
-          <b> Tokens (classic)</b> → Generate new token. <b>repo</b> va{' '}
-          <b>workflow</b> ruxsatlarini belgilang. Token faqat shu telefonda saqlanadi.
+        <div className="tiny set-hint">
+          GitHub → Developer settings → Tokens (classic). <b>repo</b> va{' '}
+          <b>workflow</b> ruxsatlari kerak.
         </div>
       </div>
 
@@ -352,9 +627,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
           autoCapitalize="off"
           spellCheck={false}
         />
-        <div className="tiny" style={{ marginTop: 6 }}>
-          Loyihani chiqarganda shu domen ishlatiladi. DNS sozlash koʻrsatmasi Daho Code →
-          Nashr boʻlimida.
+        <div className="tiny set-hint">
+          Loyihani chiqarganda ishlatiladi.
         </div>
       </div>
 
@@ -380,11 +654,40 @@ export function Settings({ onClose }: { onClose: () => void }) {
         {ghChecking ? 'Tekshirilmoqda…' : 'GitHub ulanishini tekshirish'}
       </button>
 
-      <MicCheck />
-
+        </>
+      ),
+    },
+    {
+      id: 'supabase',
+      show: ishlabChiquvchi,
+      icon: <Database size={18} />,
+      title: 'Supabase',
+      hint: 'Loyihalaringiz uchun maʼlumot bazasi',
+      body: (
+        <>
+      <SupabasePanel />
+        </>
+      ),
+    },
+    {
+      id: 'qiyofa',
+      icon: <Sparkle size={18} />,
+      title: 'Ilova qiyofasi',
+      hint: 'Ilova nomi va ikonkasini almashtirish',
+      body: (
+        <>
       <AppLook />
-
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+        </>
+      ),
+    },
+    {
+      id: 'shaxsiy',
+      icon: <User size={18} />,
+      title: 'Shaxsiy',
+      hint: 'Ismingiz, oʻqish joyingiz va koʻrsatmalar',
+      body: (
+        <>
+      <div className="section-label set-label">
         Shaxsiy
       </div>
 
@@ -414,7 +717,17 @@ export function Settings({ onClose }: { onClose: () => void }) {
         />
       </div>
 
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+        </>
+      ),
+    },
+    {
+      id: 'korinish',
+      icon: <Moon size={18} />,
+      title: 'Koʻrinish',
+      hint: 'Mavzu, rang va matn oʻlchami',
+      body: (
+        <>
+      <div className="section-label set-label">
         Koʻrinish
       </div>
 
@@ -446,20 +759,55 @@ export function Settings({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="field">
-        <label>Shrift oʻlchami: {Math.round(settings.fontScale * 100)}%</label>
+        <label>Matn oʻlchami: {Math.round(settings.fontScale * 100)}%</label>
         <input
           type="range"
           min={0.85}
-          max={1.3}
+          max={2}
           step={0.05}
           value={settings.fontScale}
           onChange={(e) => updateSettings({ fontScale: Number(e.target.value) })}
           style={{ padding: 0, background: 'none', border: 'none' }}
         />
+        <div className="row" style={{ marginTop: 8 }}>
+          {[0.9, 1, 1.2, 1.5, 1.8].map((value) => (
+            <button
+              key={value}
+              className={
+                Math.abs(settings.fontScale - value) < 0.03 ? 'btn mini' : 'btn mini ghost'
+              }
+              onClick={() => updateSettings({ fontScale: value })}
+            >
+              {Math.round(value * 100)}%
+            </button>
+          ))}
+        </div>
+        <div
+          className="cloud-card"
+          style={{ marginTop: 10, fontSize: `${(15 * settings.fontScale).toFixed(1)}px` }}
+        >
+          Suhbatdagi matn shunday koʻrinadi. Kattalashtirsangiz javoblar,
+          konspekt va kitob matni ham shu oʻlchamda boʻladi.
+        </div>
       </div>
 
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
-        Maʼlumotlar
+        </>
+      ),
+    },
+    {
+      id: 'malumot',
+      icon: <Download size={18} />,
+      title: 'Maʼlumotlar',
+      hint: 'Zaxira nusxa, tiklash va tozalash',
+      body: (
+        <>
+      <div className="section-label set-label">
+        Qurilmadagi joy
+      </div>
+      <StoragePanel />
+
+      <div className="section-label set-label">
+        Zaxira nusxa
       </div>
 
       <input
@@ -504,11 +852,78 @@ export function Settings({ onClose }: { onClose: () => void }) {
         Hamma maʼlumotni oʻchirish
       </button>
 
-      <div className="tiny" style={{ textAlign: 'center', marginTop: 16 }}>
-        Daho 2.0 · maʼlumotlar faqat shu telefonda saqlanadi
+
+        </>
+      ),
+    },
+  ];
+
+  return groups.filter((g) => g.show !== false);
+}
+
+/**
+ * Sozlamalar oynasi — endi faqat zaxira yoʻl.
+ *
+ * Asosiy joyi profil ichida. Bu komponent eski chaqiruvlar (masalan
+ * ishlab chiquvchi rejimidagi tezkor tugma) uchun qoldirildi.
+ */
+export function Settings({ onClose, onOpenAccount, inline }: SettingsProps) {
+  const groups = useSettingGroups({ onClose, onOpenAccount });
+  const install = useInstallPrompt();
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+
+  const current = groups.find((g) => g.id === openGroup);
+
+  if (current) {
+    return inline ? (
+      <div>
+        <button className="btn ghost mini" onClick={() => setOpenGroup(null)}>
+          ‹ Sozlamalar
+        </button>
+        <div style={{ marginTop: 10 }}>{current.body}</div>
       </div>
-    </Sheet>
+    ) : (
+      <Sheet title={current.title} onClose={() => setOpenGroup(null)}>
+        {current.body}
+      </Sheet>
+    );
+  }
+
+  const ichki = (
+    <>
+      {install.available && (
+        <button
+          className="btn wide"
+          style={{ marginBottom: 14 }}
+          onClick={() => void install.install()}
+        >
+          Ilovani qurilmaga oʻrnatish
+        </button>
+      )}
+
+
+      <div className="settings-menu">
+        {groups
+          .filter((g) => g.show !== false)
+          .map((g) => (
+            <button key={g.id} className="settings-row" onClick={() => setOpenGroup(g.id)}>
+              <span className="settings-icon">{g.icon}</span>
+              <span className="grow">
+                <b>{g.title}</b>
+                <i>{g.hint}</i>
+              </span>
+              <span className="settings-arrow">›</span>
+            </button>
+          ))}
+      </div>
+
+      <div className="tiny set-foot">
+        Daho 2.0
+      </div>
+    </>
   );
+
+  return inline ? ichki : <Sheet title="Sozlamalar" onClose={onClose}>{ichki}</Sheet>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -561,7 +976,7 @@ function AppLook() {
 
   return (
     <>
-      <div className="section-label" style={{ padding: '10px 0 6px' }}>
+      <div className="section-label set-label">
         Ilova qiyofasi
       </div>
 
@@ -571,7 +986,7 @@ function AppLook() {
           onClick={() => pickRef.current?.click()}
           aria-label="Ikonka tanlash"
         >
-          {icon ? <img src={icon} alt="" /> : <span>🖼</span>}
+          {icon ? <img src={icon} alt="" /> : <span className="muted">rasm</span>}
         </button>
         <div className="grow">
           <div style={{ fontWeight: 550 }}>Ikonka</div>
@@ -611,10 +1026,8 @@ function AppLook() {
         {busy ? 'Yuborilmoqda…' : 'Yangi APK yigʻish'}
       </button>
 
-      <div className="tiny" style={{ marginTop: 6 }}>
-        Ishlab turgan ilova oʻz ikonkasini almashtira olmaydi — shuning uchun Daho yangi
-        ikonka va nomni GitHub’dagi oʻz repozitoriysiga yozadi va APK’ni qaytadan yigʻadi.
-        5-10 daqiqadan soʻng yangi APK’ni yuklab olib oʻrnatasiz. GitHub token kerak.
+      <div className="tiny set-hint">
+        Yangi ikonka bilan APK qaytadan yigʻiladi — 5-10 daqiqa. GitHub token kerak.
       </div>
 
       {done && (
@@ -648,7 +1061,7 @@ function MicCheck() {
 
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
-        say('❌ Bu qurilmada mikrofon interfeysi yoʻq (getUserMedia).');
+        say('Xato — Bu qurilmada mikrofon interfeysi yoʻq (getUserMedia).');
         return;
       }
       say('⏳ Ruxsat soʻralmoqda…');
@@ -659,16 +1072,16 @@ function MicCheck() {
         const name = String((err as Error)?.name ?? '');
         say(
           name === 'NotAllowedError'
-            ? '❌ Ruxsat berilmadi. Sozlamalar → Ilovalar → Daho → Ruxsatlar → Mikrofon.'
-            : `❌ Mikrofon ochilmadi: ${name || String(err)}`,
+            ? 'Xato — Ruxsat berilmadi. Sozlamalar → Ilovalar → Daho → Ruxsatlar → Mikrofon.'
+            : `Xato — Mikrofon ochilmadi: ${name || String(err)}`,
         );
         return;
       }
-      say('✅ Ruxsat bor, mikrofon ochildi.');
+      say('OK — Ruxsat bor, mikrofon ochildi.');
 
       if (typeof MediaRecorder === 'undefined') {
         stream.getTracks().forEach((t) => t.stop());
-        say('❌ MediaRecorder yoʻq — ovoz yozib boʻlmaydi.');
+        say('Xato — MediaRecorder yoʻq — ovoz yozib boʻlmaydi.');
         return;
       }
 
@@ -679,16 +1092,16 @@ function MicCheck() {
         recorder.onstop = () => resolve();
       });
       recorder.start();
-      say('🎙 3 soniya gapiring…');
+      say('3 soniya gapiring…');
       await new Promise((r) => setTimeout(r, 3000));
       recorder.stop();
       await done;
       stream.getTracks().forEach((t) => t.stop());
 
       const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-      say(`✅ Yozildi: ${(blob.size / 1024).toFixed(1)} KB · ${blob.type || 'nomaʼlum'}`);
+      say(`OK — Yozildi: ${(blob.size / 1024).toFixed(1)} KB · ${blob.type || 'nomaʼlum'}`);
       if (blob.size < 1200) {
-        say('❌ Ovoz juda kichik — mikrofon boshqa ilovada band boʻlishi mumkin.');
+        say('Xato — Ovoz juda kichik — mikrofon boshqa ilovada band boʻlishi mumkin.');
         return;
       }
 
@@ -697,30 +1110,30 @@ function MicCheck() {
       try {
         data = bytesToB64(await blobToWavBytes(blob));
         mimeType = 'audio/wav';
-        say('✅ WAV ga oʻgirildi.');
+        say('OK — WAV ga oʻgirildi.');
       } catch (err) {
         data = '';
-        say(`⚠️ WAV ga oʻgirilmadi: ${(err as Error).message}`);
+        say(`Diqqat — WAV ga oʻgirilmadi: ${(err as Error).message}`);
       }
       if (!data) return;
 
       const { settings } = getState();
-      if (!settings.apiKey) {
-        say('⚠️ API kalit yoʻq — matnga oʻgirib boʻlmaydi.');
+      if (!aiAvailable(settings.apiKey)) {
+        say('Diqqat — Kalit ham, obuna ham yoʻq — matnga oʻgirib boʻlmaydi.');
         return;
       }
       say('⏳ Matnga oʻgirilmoqda…');
       try {
         const text = await transcribeAudio(
           settings.apiKey,
-          settings.model,
+          geminiModel(settings.model),
           { mimeType, data },
           undefined,
           settings.sttLang,
         );
-        say(text.trim() ? `✅ Eshitildi: «${text.trim()}»` : '❌ Model matn qaytarmadi.');
+        say(text.trim() ? `OK — Eshitildi: «${text.trim()}»` : 'Xato — Model matn qaytarmadi.');
       } catch (err) {
-        say(`❌ Gemini xatosi: ${(err as Error).message}`);
+        say(`Xato — Gemini xatosi: ${(err as Error).message}`);
       }
     } finally {
       setBusy(false);
@@ -735,13 +1148,643 @@ function MicCheck() {
         disabled={busy}
         onClick={() => void run()}
       >
-        {busy ? 'Tekshirilmoqda…' : '🎙 Mikrofonni tekshirish'}
+        {busy ? 'Tekshirilmoqda…' : 'Mikrofonni tekshirish'}
       </button>
       {!!lines.length && (
         <div className="tiny" style={{ marginTop: 8, whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
           {lines.join('\n')}
         </div>
       )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Supabase                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Supabase ulanishi — yasalgan ilovalar uchun haqiqiy maʼlumot bazasi.
+ * Faqat ochiq (anon) kalit kiritiladi; u brauzerga chiqarish uchun
+ * moʻljallangan va Supabase tomonida RLS bilan himoyalanadi.
+ */
+function SupabasePanel() {
+  const settings = useStore((s) => s.settings);
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState('');
+  const [projects, setProjects] = useState('');
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
+  const checkToken = async () => {
+    setLoadingProjects(true);
+    setProjects('');
+    try {
+      const list = await listProjects();
+      setProjects(
+        list.length
+          ? `OK — ${list.length} ta loyiha koʻrindi:\n` +
+              list
+                .slice(0, 10)
+                .map((p) => `· ${p.name} (${p.status})`)
+                .join('\n')
+          : 'OK — Token ishlayapti, lekin hali loyiha yoʻq.',
+      );
+    } catch (err) {
+      setProjects(`Xato — ${String((err as Error)?.message ?? err)}`);
+    }
+    setLoadingProjects(false);
+  };
+
+  const check = async () => {
+    setChecking(true);
+    setResult('');
+    try {
+      const res = await sbPing();
+      setResult(res.message);
+      toast(res.message);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="section-label set-label">
+        Agent oʻzi loyiha ochishi uchun
+      </div>
+      <p className="tiny set-hint">
+        Daho loyiha ochib, jadvallarni oʻzi yaratadi.
+      </p>
+      <ConnectButton
+        provider="supabase"
+        what="Loyiha ochish, jadval yaratish va SQL bajarish uchun."
+      />
+
+      <div className="field">
+        <label>Management token (agar ulanmasangiz)</label>
+        <input
+          type="password"
+          value={settings.supabaseToken}
+          onChange={(e) => updateSettings({ supabaseToken: e.target.value.trim() })}
+          placeholder="sbp_…"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+        <div className="tiny set-hint">
+          supabase.com/dashboard/account/tokens dan olinadi.
+        </div>
+      </div>
+      <button
+        className="btn ghost wide"
+        disabled={loadingProjects || !settings.supabaseToken}
+        onClick={() => void checkToken()}
+        style={{ marginBottom: 4 }}
+      >
+        {loadingProjects ? 'Tekshirilmoqda…' : 'Tokenni tekshirish'}
+      </button>
+      {projects && (
+        <pre className="conn-result" style={{ marginBottom: 14 }}>
+          {projects}
+        </pre>
+      )}
+
+      <div className="section-label set-label">
+        Supabase (maʼlumot bazasi)
+      </div>
+
+      <div className="tiny set-hint">
+        Yasagan ilovangizga haqiqiy baza kerak boʻlsa ulang. Bepul.
+      </div>
+
+      <div className="field">
+        <label>Loyiha manzili</label>
+        <input
+          value={settings.supabaseUrl}
+          onChange={(e) => updateSettings({ supabaseUrl: e.target.value.trim() })}
+          placeholder="https://xxxxx.supabase.co"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+      </div>
+
+      <div className="field">
+        <label>Ochiq (anon) kalit</label>
+        <input
+          type="password"
+          value={settings.supabaseAnonKey}
+          onChange={(e) => updateSettings({ supabaseAnonKey: e.target.value.trim() })}
+          placeholder="eyJhbGciOi…"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+        <div className="tiny set-hint">
+          Project Settings → API dan <b>anon public</b> kalitini oling.
+          <b> service_role</b> kalitini kiritmang — u hamma himoyani chetlab oʻtadi.
+        </div>
+      </div>
+
+      <button className="btn ghost wide" disabled={checking} onClick={() => void check()}>
+        {checking ? 'Tekshirilmoqda…' : 'Supabase ulanishini tekshirish'}
+      </button>
+
+      {result && (
+        <div className="tiny" style={{ marginTop: 8, opacity: 0.8 }}>
+          {result}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Qurilmadagi joy                                                    */
+/* ------------------------------------------------------------------ */
+
+function StoragePanel() {
+  const [info, setInfo] = useState<{ usedMb: number; quotaMb: number } | null>(null);
+  const [persistent, setPersistent] = useState<boolean | null>(null);
+  const error = getStorageError();
+
+  useEffect(() => {
+    void storageEstimate().then(setInfo);
+    void requestPersistentStorage().then(setPersistent);
+  }, []);
+
+  const pct = info && info.quotaMb ? Math.min(100, Math.round((info.usedMb / info.quotaMb) * 100)) : 0;
+
+  return (
+    <>
+      {error && <div className="err" style={{ marginBottom: 10 }}>{error}</div>}
+
+      {info ? (
+        <>
+          <div className="progress">
+            <i style={{ width: `${Math.max(2, pct)}%` }} />
+          </div>
+          <div className="tiny" style={{ marginTop: 6 }}>
+            {info.usedMb} MB band · {info.quotaMb} MB ruxsat berilgan ({pct}%)
+          </div>
+        </>
+      ) : (
+        <div className="tiny">Joy hajmi aniqlanmadi.</div>
+      )}
+
+      <div className="tiny" style={{ marginTop: 8, lineHeight: 1.55 }}>
+        {persistent === true
+          ? '✓ Maʼlumot doimiy saqlanadi — brauzer joy tugaganda ham oʻchirmaydi.'
+          : 'Maʼlumot vaqtinchalik omborda. Qurilmada joy tugasa tizim uni tozalab '
+            + 'yuborishi mumkin — muhim narsalarni zaxira nusxaga oling.'}
+      </div>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Daho serveri                                                       */
+/* ------------------------------------------------------------------ */
+
+function ServerPanel() {
+  const settings = useStore((s) => s.settings);
+  const [checking, setChecking] = useState(false);
+  const [health, setHealth] = useState<string>('');
+
+  const check = async () => {
+    setChecking(true);
+    setHealth('');
+    try {
+      const info = await serverHealth();
+      const worker = info.worker;
+      setHealth(
+        [
+          info.ok ? 'OK — Server tayyor' : 'Diqqat — Server sozlanmagan',
+          info.yetishmayapti?.length ? `Yetishmayapti: ${info.yetishmayapti.join(', ')}` : '',
+          worker ? `Navbat: ${worker.polling ? 'kuzatilmoqda' : 'toʻxtagan'}` : '',
+          worker ? `Bajarildi: ${worker.done} · xato: ${worker.failed}` : '',
+          worker?.lastError ? `Oxirgi xato: ${worker.lastError}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      );
+    } catch (err) {
+      setHealth(`Xato — Ulanib boʻlmadi: ${String((err as Error)?.message ?? err)}`);
+    }
+    setChecking(false);
+  };
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0, lineHeight: 1.6 }}>
+        Server ulansa fon vazifalari <b>telefoningiz oʻchiq boʻlsa ham</b> bajariladi:
+        kitob boblari yozilaveradi, jadval boʻyicha topshiriqlar ishlaydi. Daho Code
+        esa haqiqiy terminalga ega boʻladi — <code>npm</code>, <code>node</code>,{' '}
+        <code>python3</code>, <code>git</code>.
+      </p>
+
+      <div className="field">
+        <label>Server manzili</label>
+        <input
+          value={settings.serverUrl}
+          onChange={(e) => updateSettings({ serverUrl: e.target.value.trim() })}
+          placeholder="https://daho-server.up.railway.app"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+        <div className="tiny" style={{ marginTop: 6 }}>
+          Railway’da qanday koʻtarish — <code>server/README.md</code> da yozilgan.
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Maxfiy soʻz (WORKER_SECRET)</label>
+        <input
+          type="password"
+          value={settings.serverSecret}
+          onChange={(e) => updateSettings({ serverSecret: e.target.value.trim() })}
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+        <div className="tiny" style={{ marginTop: 6 }}>
+          Serverdagi qiymat bilan bir xil boʻlsin. Faqat shu qurilmada saqlanadi —
+          bulutga yuborilmaydi.
+        </div>
+      </div>
+
+      <button
+        className="btn ghost wide"
+        disabled={checking || !settings.serverUrl}
+        onClick={() => void check()}
+      >
+        {checking ? 'Tekshirilmoqda…' : 'Ulanishni tekshirish'}
+      </button>
+
+      {health && (
+        <pre className="conn-result" style={{ marginTop: 12 }}>
+          {health}
+        </pre>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Google hisobi                                                      */
+/* ------------------------------------------------------------------ */
+
+function GooglePanel() {
+  const settings = useStore((s) => s.settings);
+  const connected = Boolean(settings.googleAuth?.accessToken);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+
+  // Telefonda qaytish manzili server orqali oʻtadi — u boʻlmasa ulanib
+  // boʻlmaydi, shuning uchun buni oldindan aytamiz.
+  const needsServer =
+    Capacitor.isNativePlatform()
+    && !(settings.serverUrl ?? '').trim()
+    && !(settings.googleRedirect ?? '').trim();
+
+  const connect = async () => {
+    setBusy(true);
+    setNote('');
+    try {
+      await startGoogleAuth();
+    } catch (err) {
+      setNote(`Xato — ${String((err as Error)?.message ?? err)}`);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0, lineHeight: 1.6 }}>
+        Ulansa Daho pochtangizni oʻqiy va yubora oladi, Drive’dagi hujjatlarni
+        ochadi, kalendaringizga voqea qoʻshadi. «Dekanatdan kelgan xatlarni
+        koʻrsat», «bu hujjatni konspekt qil», «imtihonni kalendarga yoz» —
+        shunday ishlaydi.
+      </p>
+
+      {connected ? (
+        <>
+          <div className="conn-row" style={{ marginBottom: 12 }}>
+            <span className="conn-icon">✅</span>
+            <span className="grow">
+              <b>Ulangan</b>
+              <div className="tiny" style={{ marginTop: 2 }}>
+                Gmail · Drive · Kalendar
+              </div>
+            </span>
+            <span className="conn-dot" data-on="true" />
+          </div>
+          <button
+            className="btn ghost wide"
+            style={{ color: 'var(--danger)' }}
+            onClick={() => {
+              disconnectGoogle();
+              setNote('Ulanish uzildi.');
+            }}
+          >
+            Hisobni uzish
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="field">
+            <label>Google mijoz ID si</label>
+            <input
+              value={settings.googleClientId}
+              onChange={(e) => updateSettings({ googleClientId: e.target.value.trim() })}
+              placeholder="…apps.googleusercontent.com"
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+            <div className="tiny" style={{ marginTop: 6, lineHeight: 1.55 }}>
+              console.cloud.google.com → APIs &amp; Services → Credentials →
+              <b> OAuth client ID</b> → <b>Web application</b>. Maxfiy soʻz
+              kerak emas (PKCE).
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Ruxsat etilgan qaytish manzili</label>
+            <input
+              value={settings.googleRedirect || redirectUri()}
+              onChange={(e) => updateSettings({ googleRedirect: e.target.value.trim() })}
+              onFocus={(e) => e.target.select()}
+              placeholder={redirectUri()}
+              autoCapitalize="off"
+              spellCheck={false}
+            />
+            <div className="row" style={{ gap: 8, marginTop: 8 }}>
+              <button
+                className="btn ghost"
+                onClick={() => void copyText(settings.googleRedirect || redirectUri())}
+              >
+                Nusxa olish
+              </button>
+              {settings.googleRedirect && (
+                <button
+                  className="btn ghost"
+                  onClick={() => updateSettings({ googleRedirect: '' })}
+                >
+                  Avtomatikka qaytarish
+                </button>
+              )}
+            </div>
+            <div className="tiny" style={{ marginTop: 8, lineHeight: 1.55 }}>
+              Shu manzilni Google Console’da «Authorized redirect URIs» ga
+              aynan koʻchiring — aks holda ulanish rad etiladi. Odatda oʻzi
+              toʻgʻri toʻldiriladi; boshqa xostingdan foydalansangiz shu
+              yerga qoʻlda yozing.
+              {needsServer && (
+                <>
+                  {' '}
+                  <b style={{ color: 'var(--danger)' }}>
+                    Telefonda «localhost» ishlamaydi:
+                  </b>{' '}
+                  Google bunday manzilga qaytara olmaydi. «Daho serveri»
+                  boʻlimiga Railway manzilini kiriting — shunda bu maydon
+                  <code> …/oauth/callback</code> ga oʻzgaradi. Yoki oʻzingiz
+                  boshqaradigan https sahifani shu yerga yozing.
+                </>
+              )}
+            </div>
+          </div>
+
+          <button
+            className="btn wide"
+            disabled={busy || !settings.googleClientId || needsServer}
+            onClick={() => void connect()}
+          >
+            {busy ? 'Google ochilmoqda…' : 'Google hisobini ulash'}
+          </button>
+        </>
+      )}
+
+      {note && (
+        <pre className="conn-result" style={{ marginTop: 12 }}>
+          {note}
+        </pre>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Telegram                                                           */
+/* ------------------------------------------------------------------ */
+
+function TelegramPanel() {
+  const settings = useStore((s) => s.settings);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState('');
+
+  const check = async () => {
+    setBusy(true);
+    setResult('');
+    try {
+      const me = await tgMe();
+      // Ulanish tasdiqlangach darhol xabarlarni ham olib qoʻyamiz —
+      // aks holda roʻyxatlar boʻsh koʻrinib, ishlamayaptidek tuyuladi.
+      const fresh = await tgSync();
+      const people = await tgContacts();
+      const groups = await tgChats();
+
+      setResult(
+        `OK — @${me.username} ulandi\n`
+        + `· yangi xabar: ${fresh.length}\n`
+        + `· yozganlar: ${people.length}\n`
+        + `· guruh/kanal: ${groups.length}`
+        + (me.can_read_all_group_messages === false
+          ? '\n\nDiqqat — Bot guruhdagi hamma xabarni oʻqiy olmaydi. '
+            + '@BotFather → /setprivacy → Disable qiling.'
+          : ''),
+      );
+    } catch (err) {
+      setResult(`Xato — ${String((err as Error)?.message ?? err)}`);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0, lineHeight: 1.6 }}>
+        Bot ulansa Daho sizga yozgan odamlarni biladi, har biriga alohida
+        javob yozadi, guruh va kanalingizga eʼlon qoʻyadi, sutkalik
+        mijozlarga birdan xabar tarqatadi.
+      </p>
+
+      <div className="field">
+        <label>Bot tokeni</label>
+        <input
+          type="password"
+          value={settings.tgToken}
+          onChange={(e) => updateSettings({ tgToken: e.target.value.trim() })}
+          placeholder="123456789:AA…"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+      </div>
+
+      <button className="btn wide" disabled={busy || !tgReady()} onClick={() => void check()}>
+        {busy ? 'Tekshirilmoqda…' : 'Ulanishni tekshirish'}
+      </button>
+
+      {result && (
+        <pre className="conn-result" style={{ marginTop: 12 }}>
+          {result}
+        </pre>
+      )}
+
+      <div className="tiny" style={{ marginTop: 16, lineHeight: 1.7 }}>
+        <b>Bot qanday ochiladi</b>
+        <br />
+        1. Telegramda <b>@BotFather</b> ga <code>/newbot</code> yozing
+        <br />
+        2. Nom va username bering → token beradi, shuni yuqoriga qoʻying
+        <br />
+        3. Guruh yoki kanalni boshqarishi uchun botni oʻsha yerga qoʻshib{' '}
+        <b>admin</b> qiling
+        <br />
+        4. Guruhdagi hamma xabarni koʻrishi uchun: @BotFather →{' '}
+        <code>/setprivacy</code> → <b>Disable</b>
+      </div>
+
+      <div className="tiny" style={{ marginTop: 16, lineHeight: 1.7 }}>
+        <b>Oʻz nomingizdan ishlashi uchun</b> («secretary mode»)
+        <br />
+        Telegram → Sozlamalar → <b>Telegram Business</b> → <b>Chatbots</b> →
+        botni tanlang va ruxsatlarni yoqing. Telegram Premium kerak.
+        <br />
+        <br />
+        Shundan keyin Daho <b>sizning nomingizdan</b> yozadi, rasm va video
+        yuboradi, story joylaydi — odam bot bilan emas, siz bilan
+        gaplashayotgandek koʻradi.
+        <br />
+        Ruxsatlar alohida beriladi: yozish, oʻqilgan deb belgilash, story
+        boshqarish. Qaysi biri yoqilganini Daho’dan «shaxsiy hisob holati»
+        deb soʻrasangiz aytadi.
+      </div>
+
+      <div className="tiny" style={{ marginTop: 14, lineHeight: 1.7, opacity: 0.85 }}>
+        Diqqat — Telegram shaxsiy hisobdan avtomatik yozishni taqiqlaydi va buning
+        uchun hisobni bloklaydi. Shuning uchun bot ishlatiladi — u aynan shu
+        ish uchun qilingan va cheklovi yoʻq darajada katta.
+        <br />
+        Odam botga birinchi boʻlib yozishi kerak; shundan keyin unga
+        istagancha yozish mumkin.
+        <br />
+        <br />
+        Xabarni keyinga qoʻymoqchi boʻlsangiz («ertaga soatt 9 da yubor»)
+        hisobingizga kirgan boʻling — server oʻsha paytda yuboradi,
+        telefon oʻchiq boʻlsa ham.
+      </div>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Instagram                                                          */
+/* ------------------------------------------------------------------ */
+
+function InstagramPanel() {
+  const settings = useStore((s) => s.settings);
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState('');
+
+  const check = async () => {
+    setChecking(true);
+    setResult('');
+    try {
+      const media = await igMedia(3);
+      setResult(
+        media.length
+          ? `OK — Ulandi — oxirgi ${media.length} ta post koʻrindi:\n` +
+              media
+                .map((m) => `· ${(m.caption ?? '(matnsiz)').slice(0, 40)} — ${m.comments_count ?? 0} izoh`)
+                .join('\n')
+          : 'OK — Token ishlayapti, lekin post topilmadi.',
+      );
+    } catch (err) {
+      setResult(`Xato — ${String((err as Error)?.message ?? err)}`);
+    }
+    setChecking(false);
+  };
+
+  return (
+    <>
+      <p className="muted" style={{ marginTop: 0, lineHeight: 1.6 }}>
+        Ulansa Daho postlaringizdagi izohlarni oʻqiydi va har biriga alohida
+        javob yozadi, Direct’dagi savollarga javob beradi. Kuniga minglab
+        xabar boʻlsa ham uddalaydi — bu rasmiy API, brauzerni bosib turish
+        emas.
+      </p>
+
+      <div className="field">
+        <label>Graph API tokeni</label>
+        <input
+          type="password"
+          value={settings.igToken}
+          onChange={(e) => updateSettings({ igToken: e.target.value.trim() })}
+          placeholder="EAAG…"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+      </div>
+
+      <div className="field">
+        <label>Instagram Business hisob ID si</label>
+        <input
+          value={settings.igUserId}
+          onChange={(e) => updateSettings({ igUserId: e.target.value.trim() })}
+          placeholder="17841…"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+      </div>
+
+      <button
+        className="btn ghost wide"
+        disabled={checking || !settings.igToken || !settings.igUserId}
+        onClick={() => void check()}
+      >
+        {checking ? 'Tekshirilmoqda…' : 'Ulanishni tekshirish'}
+      </button>
+
+      {result && (
+        <pre className="conn-result" style={{ marginTop: 12 }}>
+          {result}
+        </pre>
+      )}
+
+      <div className="section-label set-label">
+        Qanday olinadi
+      </div>
+      <div className="tiny" style={{ lineHeight: 1.7 }}>
+        1. Instagram hisobingiz <b>Business</b> yoki <b>Creator</b> boʻlsin
+        (Sozlamalar → Hisob turi).
+        <br />
+        2. Uni Facebook sahifasiga ulang.
+        <br />
+        3. developers.facebook.com da ilova oching → <b>Instagram Graph API</b>{' '}
+        va <b>Messenger API for Instagram</b> qoʻshing.
+        <br />
+        4. Graph API Explorer’dan token oling — ruxsatlar:{' '}
+        <code>instagram_basic</code>, <code>instagram_manage_comments</code>,{' '}
+        <code>instagram_manage_messages</code>,{' '}
+        <code>pages_show_list</code>.
+        <br />
+        5. Hisob ID sini shu soʻrov bilan olasiz:{' '}
+        <code>/me/accounts?fields=instagram_business_account</code>
+      </div>
+
+      <div className="tiny" style={{ marginTop: 12, color: 'var(--warn)', lineHeight: 1.6 }}>
+        Diqqat — Instagram faqat odam sizga yozgan boʻlsa va oxirgi xabardan 24 soat
+        oʻtmagan boʻlsa Direct’ga javob berishga ruxsat beradi. Bu Meta’ning
+        qoidasi — chetlab oʻtib boʻlmaydi.
+      </div>
     </>
   );
 }

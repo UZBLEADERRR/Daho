@@ -9,7 +9,7 @@ import {
   saveApp,
 } from '../lib/creations';
 import { probeApp } from '../lib/probe';
-import { generateImage } from '../lib/gemini';
+import { canChat, imageAny } from '../lib/providers';
 import { speak } from '../lib/speech';
 import { getState, setState, useStore } from '../lib/store';
 import type { Artifact, Attachment, Message } from '../lib/types';
@@ -17,17 +17,12 @@ import { uid } from '../lib/utils';
 import { interject, usePendingQuestion } from '../lib/ask';
 import { noteTask, startTask, stopFor, useTaskFor } from '../lib/tasks';
 import { planVideo } from '../lib/video';
+import { ChatModelBar } from './ChatModelBar';
 import { Composer, type ComposerMode } from './Composer';
 import { MessageView } from './Message';
 import { QuestionCard } from './QuestionCard';
 import { Empty, toast } from './ui';
 
-const STARTERS = [
-  'Bugungi darslarim boʻyicha reja tuz',
-  'Hosila mavzusini misollar bilan tushuntir',
-  'IELTS 7.0 olmoqchiman, kurs ochib ber',
-  'Formulalarni yodlash uchun ilova yasab ber',
-];
 
 interface Props {
   onOpenArtifact: (a: Artifact) => void;
@@ -53,6 +48,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
   const activeChatId = useStore((s) => s.activeChatId);
   const settings = useStore((s) => s.settings);
   const [mode, setMode] = useState<ComposerMode>('chat');
+  /** `/` bilan tanlangan koʻnikma — yuborilgach oʻchadi. */
+  const [skill, setSkill] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
 
@@ -120,14 +117,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
       { kind: 'chat', targetId: chatId, title: 'Rasm chizilmoqda', note: prompt.slice(0, 40) },
       async (signal) => {
     try {
-      const result = await generateImage(
-        settings.apiKey,
-        settings.imageModel,
-        prompt,
-        refs,
-        signal,
-      );
-      const artifacts: Artifact[] = result.images.map((img, i) => ({
+      const images = await imageAny(prompt, refs, signal);
+      const artifacts: Artifact[] = images.map((img, i) => ({
         id: uid('a_'),
         kind: 'image',
         title: prompt.slice(0, 40) || `Rasm ${i + 1}`,
@@ -137,7 +128,7 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         createdAt: Date.now(),
       }));
       setState((s) => ({ artifacts: [...artifacts, ...s.artifacts] }));
-      patch({ text: result.text || 'Rasm tayyor.', artifactIds: artifacts.map((a) => a.id) });
+      patch({ text: 'Rasm tayyor.', artifactIds: artifacts.map((a) => a.id) });
     } catch (err) {
       const aborted = (err as Error)?.name === 'AbortError';
       patch({
@@ -178,8 +169,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
   };
 
   const onSend = async (text: string, attachments: Attachment[]) => {
-    if (!settings.apiKey) {
-      toast('Avval Sozlamalarda Gemini API kalitini kiriting');
+    if (!canChat()) {
+      toast('Avval Sozlamalarda API kalit kiriting (Gemini yoki OpenRouter)');
       return;
     }
     // Ish ketayotgan boʻlsa — yangi soʻrov emas, qoʻshimcha koʻrsatma.
@@ -208,8 +199,14 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         note: text.slice(0, 40) || 'fayl yuborildi',
       },
       (signal, taskId) =>
-        sendMessage(chatId, text, attachments, signal, BRIEFS[mode], (step) =>
-          noteTask(taskId, step),
+        sendMessage(
+          chatId,
+          text,
+          attachments,
+          signal,
+          BRIEFS[mode],
+          (step) => noteTask(taskId, step),
+          skill || undefined,
         ),
     );
     if (!result) return;
@@ -255,6 +252,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
 
   return (
     <>
+      <ChatModelBar />
+
       <div className="scroll" ref={scrollRef} onScroll={onScroll}>
         {messages.length === 0 ? (
           <div style={{ padding: '30px 16px' }}>
@@ -262,18 +261,6 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
               title="Salom! Men Dahoman."
               hint="Fanlarni tushuntiraman, kurs ochaman, ilova va video yasab beraman, jadvalingizni yuritaman."
             />
-            <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
-              {STARTERS.map((s) => (
-                <button
-                  key={s}
-                  className="btn ghost"
-                  style={{ justifyContent: 'flex-start', textAlign: 'left' }}
-                  onClick={() => void onSend(s, [])}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         ) : (
           <div className="msgs">
@@ -282,6 +269,7 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
                 key={m.id}
                 message={m}
                 streaming={busy && i === messages.length - 1 && m.role === 'model'}
+                task={question ? undefined : running}
                 isLast={i === lastModelIndex && !busy}
                 onOpenArtifact={onOpenArtifact}
                 onOpenVideo={onOpenVideo}
@@ -304,6 +292,8 @@ export function ChatView({ onOpenArtifact, onOpenVideo }: Props) {
         allowWhileBusy
         mode={mode}
         onMode={setMode}
+        skill={skill}
+        onSkill={setSkill}
         onSend={onSend}
         onStop={stop}
         onLocation={() => onSend('Men hozir qayerdaman? Yaqin atrofda nima bor?', [])}

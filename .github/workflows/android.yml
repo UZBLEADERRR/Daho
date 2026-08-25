@@ -6,7 +6,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # Reliz yasash uchun yozish huquqi kerak (APK ochiq havolaga chiqadi).
+  contents: write
 
 jobs:
   build:
@@ -58,3 +59,24 @@ jobs:
           path: daho.apk
           if-no-files-found: error
           retention-days: 90
+
+      # Artefaktni yuklab olish uchun GitHub'ga kirish kerak va u zip boʻlib
+      # tushadi — telefonda noqulay. Shuning uchun APK ni relizga ham
+      # qoʻyamiz: ochiq, bitta bosishda oʻrnatiladigan havola boʻladi.
+      - name: Relizga qoʻyish
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          github.ref_name == github.event.repository.default_branch ||
+          contains(github.event.head_commit.message, '[apk]')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: "Daho APK #${{ github.run_number }}"
+          files: daho.apk
+          prerelease: ${{ github.ref_name != github.event.repository.default_branch }}
+          body: |
+            Telefonga oʻrnatish uchun pastdagi **daho.apk** faylini yuklab oling.
+            Android «Nomaʼlum manbalardan oʻrnatish» ruxsatini soʻrashi mumkin.
+
+            Tarmoq: `${{ github.ref_name }}`
+            Commit: ${{ github.sha }}

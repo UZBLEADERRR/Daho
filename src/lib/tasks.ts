@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export type TaskKind = 'chat' | 'code' | 'video' | 'dars' | 'rasm';
+export type TaskKind = 'chat' | 'code' | 'video' | 'dars' | 'rasm' | 'kitob' | 'avto';
 
 export interface RunningTask {
   id: string;
@@ -9,8 +9,21 @@ export interface RunningTask {
   targetId: string;
   title: string;
   note: string;
+  /**
+   * Bajarilgan qadamlar izi — oxirgi bir nechtasi.
+   *
+   * Foydalanuvchi «nima boʻlyapti» degan savolga javob koʻrishi kerak:
+   * bitta qator kam, chunki u tez almashadi va nima qilinganini
+   * bilib boʻlmaydi. Shuning uchun tarix ham saqlanadi.
+   */
+  steps: string[];
+  /** Har qadam qachon boshlangani — davomiyligini koʻrsatish uchun */
+  stepAt: number;
   startedAt: number;
 }
+
+/** Izda nechta qadam qoladi. */
+const STEP_TRAIL = 6;
 
 interface Entry extends RunningTask {
   controller: AbortController;
@@ -61,7 +74,13 @@ export function stopFor(kind: TaskKind, targetId: string): void {
 export function noteTask(id: string, note: string): void {
   const entry = tasks.find((t) => t.id === id);
   if (!entry) return;
-  entry.note = note;
+  const clean = String(note ?? '').trim();
+  if (!clean || clean === entry.note) return;
+  if (entry.note) {
+    entry.steps = [...entry.steps, entry.note].slice(-STEP_TRAIL);
+  }
+  entry.note = clean;
+  entry.stepAt = Date.now();
   emit();
 }
 
@@ -170,6 +189,8 @@ export async function startTask<T>(
     targetId: opts.targetId,
     title: opts.title,
     note: opts.note ?? 'boshlandi',
+    steps: [],
+    stepAt: Date.now(),
     startedAt: Date.now(),
     controller,
   };

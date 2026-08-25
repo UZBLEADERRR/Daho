@@ -12,14 +12,17 @@ import {
 import { saveBytes } from '../lib/exporter';
 import { getRepo, listRepos, whoAmI, type GhRepo } from '../lib/github';
 import { saveLinkApp } from '../lib/creations';
-import { byRole, cachedModels } from '../lib/models';
+import { describeDiff, deleteSnapshot, restore } from '../lib/checkpoint';
+import { modelLabel, pickForProject, usableChatModels } from '../lib/providers';
 import { TEMPLATES } from '../lib/templates';
-import { renderMarkdown } from '../lib/markdown';
-import { sandboxDocument } from '../lib/sandbox';
-import { getState, useStore, updateSettings } from '../lib/store';
-import type { Attachment, CodeProject } from '../lib/types';
+import { Markdown } from './Markdown';
+import { IFRAME_ALLOW, IFRAME_SANDBOX, sandboxDocument } from '../lib/sandbox';
+import { getState, useStore, updateSettings, updateView } from '../lib/store';
+import type { Artifact, Attachment, CodeProject } from '../lib/types';
 import { relativeTime } from '../lib/utils';
 import { prepareFile, fileIcon } from '../lib/attach';
+import { Attachments } from './Attachments';
+import { ProcessTrail } from './ProcessTrail';
 import { startListening, type ListenHandle } from '../lib/speech';
 import { interject, usePendingQuestion } from '../lib/ask';
 import { noteTask, startTask, stopFor, useTaskFor } from '../lib/tasks';
@@ -28,6 +31,11 @@ import { ToolLine, splitByTools } from './ToolLine';
 import { Back, Check, Close, Copy, Download, Mic, Plus, Refresh, Send, Stop, Trash } from './Icons';
 import { copyText } from '../lib/exporter';
 import { Empty, Sheet, toast } from './ui';
+import { ProjectGroup } from './cloud/GroupPanel';
+import { pullGroup, pushGroup } from '../lib/cloud/groupsync';
+import { RoleBar } from './RoleBar';
+import { displayModel } from '../lib/modelname';
+import { cloudEnabled } from '../lib/cloud';
 
 /* ------------------------------------------------------------------ */
 /*  Loyihalar roʻyxati                                                 */
@@ -35,7 +43,9 @@ import { Empty, Sheet, toast } from './ui';
 
 export function CodeView() {
   const projects = useStore((s) => s.code);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // Ochiq loyiha store da — boshqa bo'limga o'tib qaytsangiz ish joyingiz saqlanadi.
+  const openId = useStore((s) => s.view.codeId);
+  const setOpenId = (id: string | null) => updateView({ codeId: id });
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [template, setTemplate] = useState('statik');
@@ -72,7 +82,7 @@ export function CodeView() {
               onClick={() => setOpenId(p.id)}
             >
               <div className="between">
-                <div className="grow" style={{ fontSize: 15.5, fontWeight: 580 }}>
+                <div className="grow ellipsis-2" style={{ fontSize: 15.5, fontWeight: 580 }}>
                   {p.name}
                 </div>
                 {p.publish && <span className="chip accent">jonli</span>}
@@ -82,20 +92,18 @@ export function CodeView() {
                   {p.description}
                 </div>
               )}
-              <div className="row" style={{ gap: 6, marginTop: 8 }}>
+              <div className="card-meta">
                 <span className="chip">
                   {TEMPLATES.find((t) => t.id === p.template)?.icon ?? '📦'}{' '}
                   {TEMPLATES.find((t) => t.id === p.template)?.name ?? 'Loyiha'}
                 </span>
                 <span className="chip">{p.files.length} fayl</span>
                 {p.repo && (
-                  <span className="chip">
-                    {p.repo.owner}/{p.repo.repo}
+                  <span className="chip clip" title={`${p.repo.owner}/${p.repo.repo}`}>
+                    {p.repo.repo}
                   </span>
                 )}
-                <span className="tiny" style={{ marginLeft: 'auto' }}>
-                  {relativeTime(p.updatedAt)}
-                </span>
+                <span className="tiny">{relativeTime(p.updatedAt)}</span>
               </div>
             </button>
           ))
@@ -174,35 +182,161 @@ async function connectSelfRepo(projectId: string): Promise<void> {
 /*  Ish maydoni                                                        */
 /* ------------------------------------------------------------------ */
 
-type Tab = 'suhbat' | 'fayllar' | 'korinish' | 'nashr';
+type Tab = 'suhbat' | 'fayllar' | 'korinish' | 'nashr' | 'guruh';
+
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'suhbat', label: 'Suhbat' },
+  { id: 'fayllar', label: 'Fayllar' },
+  { id: 'korinish', label: 'Koʻrinish' },
+  { id: 'nashr', label: 'Nashr' },
+  { id: 'guruh', label: 'Guruh' },
+];
+
+/**
+ * Agentning joriy rejasi. Nima bajarilgani va nima qolganini koʻrsatadi —
+ * katta loyihada ish qayerga yetganini kuzatib turish uchun.
+ */
+function PlanCard({ project }: { project: CodeProject }) {
+  /*
+   * Yigʻiq holat — standart.
+   *
+   * Avval reja doim ochiq turardi va ekranning yarmini egallardi.
+   * Yigʻib qoʻyilsa ham qayta ochilib ketardi, chunki holat faqat
+   * komponent ichida edi: reja yangilanganda komponent qaytadan
+   * yaratilib, `useState(true)` ni oʻqirdi. Endi tanlov loyiha
+   * boʻyicha saqlanadi va yigʻiq holat sukut boʻyicha.
+   */
+  const kalit = `daho.plan.${project.id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(kalit) === 'ochiq';
+    } catch {
+      return false;
+    }
+  });
+
+  const plan = project.plan ?? [];
+  if (!plan.length) return null;
+
+  const done = plan.filter((s) => s.done).length;
+  const next = plan.find((s) => !s.done);
+  const foiz = Math.round((done / plan.length) * 100);
+
+  const almashtir = () =>
+    setOpen((v) => {
+      try {
+        localStorage.setItem(kalit, v ? 'yigʻiq' : 'ochiq');
+      } catch {
+        /* xotira yopiq boʻlsa ham ishlayveradi */
+      }
+      return !v;
+    });
+
+  return (
+    <div className={open ? 'plan-card open' : 'plan-card'}>
+      <button className="plan-head" onClick={almashtir} aria-expanded={open}>
+        <span className="plan-bar" aria-hidden="true">
+          <i style={{ width: `${foiz}%` }} />
+        </span>
+        <span className="plan-count">
+          {done}/{plan.length}
+        </span>
+        <span className="plan-next">{next ? next.title : 'hammasi bajarildi'}</span>
+        <span className="plan-caret">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="plan-steps">
+          {plan.map((step, i) => (
+            <div key={step.id} className={step.done ? 'plan-step done' : 'plan-step'}>
+              <span className="plan-mark">{step.done ? '✓' : i + 1}</span>
+              <span className="grow">{step.title}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Workspace({ project, onBack }: { project: CodeProject; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>('suhbat');
   const [modelPicker, setModelPicker] = useState(false);
   const settings = useStore((s) => s.settings);
-  const chatModels = byRole(cachedModels(), 'chat');
-  const activeModel = project.model || settings.model;
+  // Barcha ulangan provayderlarning modellari — Gemini, Kimi, Qwen, GPT…
+  const chatModels = usableChatModels();
+
+  /*
+   * Guruh loyihasini sinxronlash.
+   *
+   * Tortish 8 soniyada bir: aʼzo nima yozgan boʻlsa koʻrinadi.
+   * Itarish esa fayllar oʻzgargach 2.5 soniya kutib — bir necha
+   * tahrir bitta yozuvga birlashadi va baza behuda urilmaydi.
+   */
+  const imzo = JSON.stringify(project.files.map((f) => [f.path, f.content.length]));
+
+  useEffect(() => {
+    if (!project.groupId) return;
+    void pullGroup(project);
+    const timer = setInterval(() => void pullGroup(project), 8000);
+    return () => clearInterval(timer);
+  }, [project.groupId, project.id]);
+
+  useEffect(() => {
+    if (!project.groupId) return;
+    const timer = setTimeout(() => void pushGroup(project), 2500);
+    return () => clearTimeout(timer);
+  }, [imzo, project.groupId]);
+  // AVTO yoqilgan boʻlsa Avto ustun — yorliqda ham aynan shu koʻrinsin,
+  // aks holda foydalanuvchi «avtoni yoqdim, lekin eski model turibdi» deb
+  // oʻylaydi.
+  // Uch holat: 📌 loyihaga tanlangan · ⚡ avto · oddiy asosiy model.
+  const pinned = Boolean(project.model);
+  const auto = !pinned && settings.autoPickModel !== false;
+  const activeModel = pickForProject('reja', project.model);
 
   return (
     <>
-      <div className="course-head">
-        <button className="icon-btn" onClick={onBack} aria-label="Orqaga">
-          <Back />
-        </button>
-        <div className="grow" style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 15.5, fontWeight: 600 }}>{project.name}</div>
-          <div className="tiny">
-            {project.files.length} fayl · {(totalSize(project) / 1024).toFixed(1)} KB
-            {project.repo ? ` · ${project.repo.owner}/${project.repo.repo}` : ''}
+      {/*
+        * Sarlavha va boʻlimlar BITTA blokda.
+        *
+        * Ilgari uchta qavat bor edi: yuqoridagi Chat/Agent/Code, loyiha
+        * nomi va boʻlim tugmalari — telefonda ekranning uchdan biri
+        * shularga ketardi. Endi ikkita ingichka qator, bitta chegara.
+        */}
+      <div className="work-head">
+        <div className="work-line">
+          <button className="icon-btn" onClick={onBack} aria-label="Orqaga">
+            <Back />
+          </button>
+          <div className="work-title">
+            {project.name}
+            <span>
+              {project.files.length} fayl · {(totalSize(project) / 1024).toFixed(1)} KB
+              {project.repo ? ` · ${project.repo.owner}/${project.repo.repo}` : ''}
+            </span>
           </div>
+          {/* Provayder nomi emas, Daho nomi — sotuv siri oshkor boʻlmasin. */}
+          <button className="model-chip" onClick={() => setModelPicker(true)}>
+            {pinned ? '📌 ' : auto ? '⚡ ' : ''}
+            {displayModel(activeModel)}
+          </button>
         </div>
-        <button className="model-chip" onClick={() => setModelPicker(true)}>
-          {activeModel.replace(/^gemini-/, '')}
-        </button>
-      </div>
 
       {modelPicker && (
         <Sheet title="Model tanlang" onClose={() => setModelPicker(false)}>
+          {pinned ? (
+            <div className="notice" style={{ marginBottom: 12 }}>
+              <b>📌 Bu loyihaga model qadalgan:</b> {modelLabel(activeModel)}.
+              <br />
+              Avto rejim ishlashi uchun pastdagi «⚡ Avto» ni tanlang.
+            </div>
+          ) : auto ? (
+            <div className="notice" style={{ marginBottom: 12 }}>
+              <b>⚡ Avto yoqilgan.</b> Har bir ish uchun alohida model tanlanadi:
+              reja, kod, dizayn va tekshirish uchun har xil. Rejalashtirishda
+              hozir: <b>{modelLabel(activeModel)}</b>.
+            </div>
+          ) : null}
           <button
             className={!project.model ? 'action-row on' : 'action-row'}
             onClick={() => {
@@ -210,13 +344,18 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
               setModelPicker(false);
             }}
           >
-            <span className="action-icon">⚙️</span>
+            <span className="action-icon">{settings.autoPickModel !== false ? '⚡' : '⚙️'}</span>
             <span className="grow">
-              <b>Umumiy sozlama</b>
-              <div className="tiny">{settings.model}</div>
+              <b>{settings.autoPickModel !== false ? 'Avto — ishga qarab tanlaydi' : 'Umumiy sozlama'}</b>
+              <div className="tiny">
+                {settings.autoPickModel !== false
+                  ? 'reja, kod, dizayn, tekshirish — har biriga mos model'
+                  : modelLabel(settings.model)}
+              </div>
             </span>
           </button>
-          {chatModels.map((m) => (
+          <div style={{ maxHeight: '46vh', overflow: 'auto' }}>
+            {chatModels.map((m) => (
             <button
               key={m.id}
               className={project.model === m.id ? 'action-row on' : 'action-row'}
@@ -229,68 +368,94 @@ function Workspace({ project, onBack }: { project: CodeProject; onBack: () => vo
               <span className="grow">
                 <b>{m.label}</b>
                 <div className="tiny">
-                  {m.id}
+                  {m.providerLabel ?? 'Gemini'}
                   {m.preview ? ' · sinov' : ''}
                 </div>
               </span>
             </button>
           ))}
+          </div>
           {chatModels.length === 0 && (
             <div className="tiny">
               Roʻyxat boʻsh. Sozlamalar → «Modellarni yangilash» tugmasini bosing.
             </div>
           )}
+          <div className="tiny" style={{ marginTop: 10, opacity: 0.7 }}>
+            Yordamchi agentlar (dizayn, kod, tekshir) uchun alohida model tanlash —
+            Sozlamalar → AI modellar → Rollar.
+          </div>
         </Sheet>
       )}
 
-      <div className="seg">
-        {(['suhbat', 'fayllar', 'korinish', 'nashr'] as Tab[]).map((t) => (
-          <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-            {t === 'suhbat'
-              ? 'Suhbat'
-              : t === 'fayllar'
-                ? 'Fayllar'
-                : t === 'korinish'
-                  ? 'Koʻrinish'
-                  : 'Nashr'}
-          </button>
-        ))}
+        {/*
+          * Boʻlimlar yuqorida, bitta qatorda. «Guruh» ham shu yerda:
+          * ilgari u alohida 👥 tugmasi ostidagi oynada edi va
+          * qidirmasdan topib boʻlmasdi.
+          */}
+        <div className="seg tight">
+          {TABS.filter((t) => t.id !== 'guruh' || cloudEnabled).map((t) => (
+            <button key={t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'suhbat' && <CodeChat project={project} />}
       {tab === 'fayllar' && <Files project={project} />}
       {tab === 'korinish' && <Preview project={project} />}
       {tab === 'nashr' && <Publish project={project} onDeleted={onBack} />}
+      {tab === 'guruh' && (
+        <ProjectGroup
+          projectId={project.id}
+          projectName={project.name}
+          groupId={project.groupId}
+          onLinked={(id) => patchCodeProject(project.id, { groupId: id })}
+        />
+      )}
     </>
   );
 }
 
 /* ---------- Suhbat ---------- */
 
-const CODE_STARTERS = [
-  'Portfolio sayt yasab ber',
-  'Bosh sahifaga qorongʻi/yorugʻ tugmasi qoʻsh',
-  'GitHub’dagi repolarimni koʻrsat',
-  'Loyihani internetga chiqar',
-];
 
 function CodeChat({ project }: { project: CodeProject }) {
+  const artifacts = useStore((s) => s.artifacts);
+  /** Kattalashtirib koʻrilayotgan skrinshot */
+  const [viewShot, setViewShot] = useState<Artifact | null>(null);
   const [text, setText] = useState('');
   const [shots, setShots] = useState<Attachment[]>([]);
   const [extraText, setExtraText] = useState<string[]>([]);
   const [mic, setMic] = useState<'oʻchiq' | 'yozilmoqda' | 'tahlil'>('oʻchiq');
   const listenRef = useRef<ListenHandle | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** Foydalanuvchi pastda turibdimi — shunda javob kelganda pastga tushamiz. */
+  const stickRef = useRef(true);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const running = useTaskFor('code', project.id);
   const busy = Boolean(running);
   const question = usePendingQuestion('code', project.id);
 
+  /*
+   * Avtomatik pastga tushish — LEKIN faqat foydalanuvchi pastda tursa.
+   *
+   * Avval har oʻzgarishda pastga tortilardi: agent ishlayotganda
+   * yuqoriga chiqib eski javobni oʻqiy olmasdingiz — matn kelishi
+   * bilan yana pastga uloqtirardi. Endi yuqoriga chiqilsa «yopishish»
+   * oʻchadi va foydalanuvchi oʻzi pastga qaytguncha tegilmaydi.
+   */
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [project.messages]);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
+  };
 
   useEffect(() => {
     const el = areaRef.current;
@@ -361,25 +526,13 @@ function CodeChat({ project }: { project: CodeProject }) {
 
   return (
     <>
-      <div className="scroll" ref={scrollRef}>
+      <div className="scroll" ref={scrollRef} onScroll={onScroll}>
         {project.messages.length === 0 ? (
           <div style={{ padding: '24px 14px' }}>
             <Empty
               title="Nima quramiz?"
               hint="Fayllarni oʻzim oʻqiyman va yozaman, GitHub bilan ishlayman, tayyor boʻlgach internetga chiqarib havola beraman."
             />
-            <div style={{ display: 'grid', gap: 8 }}>
-              {CODE_STARTERS.map((s) => (
-                <button
-                  key={s}
-                  className="btn ghost"
-                  style={{ justifyContent: 'flex-start', textAlign: 'left' }}
-                  onClick={() => void send(s)}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         ) : (
           <div className="msgs">
@@ -389,13 +542,7 @@ function CodeChat({ project }: { project: CodeProject }) {
                   key={m.id}
                   style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                 >
-                  {!!m.attachments?.length && (
-                    <div className="attach-grid" style={{ justifyContent: 'flex-end' }}>
-                      {m.attachments.map((a, i) => (
-                        <img key={i} src={`data:${a.mimeType};base64,${a.data}`} alt="" />
-                      ))}
-                    </div>
-                  )}
+                  {!!m.attachments?.length && <Attachments items={m.attachments} />}
                   {m.text && (
                     <div
                       className="msg user"
@@ -412,16 +559,35 @@ function CodeChat({ project }: { project: CodeProject }) {
                   {splitByTools(m.text, m.toolCalls).map((block, bi) => (
                     <div key={bi}>
                       {block.text.trim() && (
-                        <div
-                          className="md"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(block.text) }}
-                        />
+                        <Markdown text={block.text} />
                       )}
                       {block.calls.map((call, ci) => (
                         <ToolLine key={ci} call={call} />
                       ))}
                     </div>
                   ))}
+                  {/* Agent olgan skrinshotlar — foydalanuvchi ham koʻrsin */}
+                  {!!m.artifactIds?.length && (
+                    <div className="shot-strip">
+                      {m.artifactIds.map((id) => {
+                        const shot = artifacts.find((a) => a.id === id);
+                        if (!shot || shot.kind !== 'image') return null;
+                        return (
+                          <button
+                            key={id}
+                            className="shot-thumb"
+                            onClick={() => setViewShot(shot)}
+                            aria-label="Skrinshotni ochish"
+                          >
+                            <img
+                              src={`data:${shot.mimeType ?? 'image/png'};base64,${shot.content}`}
+                              alt=""
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   {m.error && <div className="err">{m.error}</div>}
                   {m.text.trim() && (
                     <div className="msg-actions">
@@ -438,10 +604,23 @@ function CodeChat({ project }: { project: CodeProject }) {
               ),
             )}
             {question && <QuestionCard question={question} />}
-            {busy && !question && <span className="typing" />}
+            {busy && !question && running && <ProcessTrail task={running} inline />}
+            {busy && !question && !running && <span className="typing" />}
+          </div>
+        )}
+
+        {viewShot && (
+          <div className="shot-full" onClick={() => setViewShot(null)}>
+            <img
+              src={`data:${viewShot.mimeType ?? 'image/png'};base64,${viewShot.content}`}
+              alt=""
+            />
+            <div className="tiny">Yopish uchun bosing</div>
           </div>
         )}
       </div>
+
+      <PlanCard project={project} />
 
       {busy && !question && (
         <div className="interject-hint">
@@ -561,6 +740,9 @@ function CodeChat({ project }: { project: CodeProject }) {
             </button>
           )}
         </div>
+
+        {/* Rollar — aynan input ostida, ish ustida almashtirish uchun. */}
+        <RoleBar />
       </div>
     </>
   );
@@ -568,7 +750,69 @@ function CodeChat({ project }: { project: CodeProject }) {
 
 /* ---------- Fayllar ---------- */
 
+/** Nusxalar roʻyxati — agent buzib qoʻysa orqaga qaytarish. */
+function HistorySheet({ project, onClose }: { project: CodeProject; onClose: () => void }) {
+  const history = project.history ?? [];
+
+  return (
+    <Sheet title="Oldingi holatlar" onClose={onClose}>
+      {history.length === 0 ? (
+        <p className="tiny">
+          Hali nusxa yoʻq. Agentga topshiriq berganingizda oʻzgarishdan oldingi
+          holat avtomatik saqlanadi.
+        </p>
+      ) : (
+        <>
+          <div className="tiny" style={{ marginBottom: 10, opacity: 0.75 }}>
+            Har topshiriqdan oldin loyiha holati saqlanadi. Qaytarsangiz hozirgi
+            holat ham nusxaga tushadi — yaʼni qaytarishni ham qaytarsa boʻladi.
+          </div>
+          {history.map((snap) => (
+            <div className="card" key={snap.id} style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 14, fontWeight: 560 }}>{snap.label}</div>
+              <div className="tiny" style={{ marginTop: 3 }}>
+                {new Date(snap.at).toLocaleString('uz-UZ', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}{' '}
+                · {snap.files.length} fayl
+              </div>
+              <div className="tiny" style={{ marginTop: 4, color: 'var(--accent)' }}>
+                {describeDiff(project.id, snap.id)}
+              </div>
+              <div className="row" style={{ marginTop: 9, gap: 8 }}>
+                <button
+                  className="btn mini"
+                  onClick={() => {
+                    if (!window.confirm('Loyiha shu holatga qaytarilsinmi?')) return;
+                    if (restore(project.id, snap.id)) {
+                      toast('Qaytarildi');
+                      onClose();
+                    }
+                  }}
+                >
+                  <Refresh size={13} /> Qaytarish
+                </button>
+                <button
+                  className="btn mini ghost"
+                  style={{ color: 'var(--danger)' }}
+                  onClick={() => deleteSnapshot(project.id, snap.id)}
+                >
+                  <Trash size={13} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </Sheet>
+  );
+}
+
 function Files({ project }: { project: CodeProject }) {
+  const [history, setHistory] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [newFile, setNewFile] = useState(false);
@@ -609,14 +853,36 @@ function Files({ project }: { project: CodeProject }) {
             <Check size={19} />
           </button>
         </div>
-        <textarea
-          className="code-editor"
-          value={draft}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          onChange={(e) => setDraft(e.target.value)}
-        />
+        {file.base64 ? (
+          // Ikkilik fayl — matn muharriri bilan koʻrsatib boʻlmaydi.
+          <div className="pad" style={{ textAlign: 'center' }}>
+            {file.mimeType?.startsWith('image/') ? (
+              <img
+                src={`data:${file.mimeType};base64,${file.content}`}
+                alt={file.path}
+                style={{ maxWidth: '100%', borderRadius: 12 }}
+              />
+            ) : (
+              <div className="empty">
+                <b>{file.mimeType ?? 'Ikkilik fayl'}</b>
+                Bu fayl matn emas — tahrirlab boʻlmaydi.
+              </div>
+            )}
+            <div className="tiny" style={{ marginTop: 10 }}>
+              {Math.round((file.content.length * 0.75) / 1024)} KB ·{' '}
+              {file.mimeType ?? 'nomaʼlum tur'}
+            </div>
+          </div>
+        ) : (
+          <textarea
+            className="code-editor"
+            value={draft}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            onChange={(e) => setDraft(e.target.value)}
+          />
+        )}
       </>
     );
   }
@@ -624,16 +890,23 @@ function Files({ project }: { project: CodeProject }) {
   return (
     <div className="scroll">
       <div className="pad">
-        <button
-          className="btn ghost wide"
-          style={{ marginBottom: 12 }}
-          onClick={() => {
-            setNewPath('');
-            setNewFile(true);
-          }}
-        >
-          <Plus size={16} /> Fayl qoʻshish
-        </button>
+        <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+          <button
+            className="btn ghost grow"
+            onClick={() => {
+              setNewPath('');
+              setNewFile(true);
+            }}
+          >
+            <Plus size={16} /> Fayl qoʻshish
+          </button>
+          <button className="btn ghost grow" onClick={() => setHistory(true)}>
+            <Refresh size={15} /> Qaytarish
+            {project.history?.length ? ` (${project.history.length})` : ''}
+          </button>
+        </div>
+
+        {history && <HistorySheet project={project} onClose={() => setHistory(false)} />}
 
         {project.files.map((f) => (
           <div className="file-row" key={f.path}>
@@ -711,7 +984,8 @@ function Preview({ project }: { project: CodeProject }) {
           key={key}
           title={project.name}
           srcDoc={doc}
-          sandbox="allow-scripts allow-forms allow-modals allow-popups"
+          sandbox={IFRAME_SANDBOX}
+          allow={IFRAME_ALLOW}
         />
       </div>
     </>

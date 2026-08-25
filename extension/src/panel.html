@@ -1,0 +1,128 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Daho</title>
+<link rel="stylesheet" href="panel.css" />
+
+<header>
+  <span class="mark">Daho</span>
+  <span class="grow"></span>
+  <select id="model" class="model" title="Model"></select>
+  <button id="open-settings" class="icon" title="Sozlamalar">⚙</button>
+</header>
+
+<div id="account-bar" class="account-bar" hidden></div>
+
+<nav class="tabs" role="tablist">
+  <button data-tab="chat" role="tab" aria-selected="true">Suhbat</button>
+  <button data-tab="code" role="tab" aria-selected="false">Kod</button>
+  <button data-tab="tools" role="tab" aria-selected="false">Vositalar</button>
+</nav>
+
+<main>
+  <!-- ------------------------------------------------ birinchi ochish -->
+  <section id="pane-setup" class="pane setup" hidden>
+    <div class="welcome">
+      <div class="welcome-mark">Daho</div>
+      <p class="welcome-sub">
+        Ochiq sahifani oʻqiydi va tushuntiradi — YouTube videosining
+        subtitrigacha. Hisobingizdagi modellar shu yerda ham ishlaydi.
+      </p>
+    </div>
+
+    <div class="seg" id="auth-mode">
+      <button data-mode="kirish" class="on">Kirish</button>
+      <button data-mode="royxat">Roʻyxatdan oʻtish</button>
+    </div>
+
+    <div class="field" id="name-field" hidden>
+      <label for="login-name">Ismingiz</label>
+      <input id="login-name" placeholder="Sarvarbek" autocomplete="name" />
+    </div>
+    <div class="field">
+      <label for="login-email">Pochta</label>
+      <input id="login-email" type="email" placeholder="siz@example.com" autocomplete="username" />
+    </div>
+    <div class="field">
+      <label for="login-pass">Parol</label>
+      <input id="login-pass" type="password" autocomplete="current-password" />
+    </div>
+
+    <button id="do-login" class="btn primary">Kirish</button>
+    <button id="do-reset" class="btn link">Parolni unutdingizmi?</button>
+    <p id="login-note" class="hint"></p>
+
+    <p class="hint tiny-note">
+      Hisobingiz yoʻqmi? Roʻyxatdan oʻtish bepul — bepul modellar darhol
+      ochiladi. Kalit yoki token kiritish kerak emas.
+    </p>
+  </section>
+
+  <!-- ------------------------------------------------------- suhbat -->
+  <section id="pane-chat" class="pane">
+    <div id="thread"></div>
+    <div id="steps" class="steps" hidden><span class="dot"></span><span id="step-text"></span></div>
+  </section>
+
+  <!-- ---------------------------------------------------------- kod -->
+  <section id="pane-code" class="pane" hidden>
+    <div id="code-list"></div>
+  </section>
+
+  <!-- ----------------------------------------------------- vositalar -->
+  <section id="pane-tools" class="pane" hidden>
+    <div class="section">Daho serveri</div>
+    <div id="server-state" class="card" style="cursor: default">
+      <b><span class="dot-ok dot-off"></span><span id="server-title">tekshirilmoqda</span></b>
+      <i id="server-sub">Manzil kengaytma ichida — kiritish shart emas</i>
+    </div>
+    <button id="server-check" class="btn">Holatni yangilash</button>
+
+    <div class="section">Telegram</div>
+    <div id="tg-state" class="card" style="cursor: default">
+      <b><span class="dot-ok dot-off"></span><span id="tg-title">ulanmagan</span></b>
+      <i id="tg-sub">Ilovadan ulanadi — bu yerda token kiritilmaydi</i>
+    </div>
+    <button id="tg-check" class="btn">Botni tekshirish</button>
+
+    <div class="section">Saqlanganlar</div>
+    <div id="notes"></div>
+  </section>
+
+  <!-- ---------------------------------------------------- sozlamalar -->
+  <section id="pane-settings" class="pane" hidden>
+    <div class="section">Hisob</div>
+    <div id="account-card" class="card" style="cursor: default">
+      <b><span id="acc-email">—</span></b>
+      <i id="acc-plan">yuklanmoqda…</i>
+    </div>
+
+    <div class="section">Koʻrinish</div>
+    <div class="seg" id="theme-seg">
+      <button data-theme="tizim" class="on">Tizim</button>
+      <button data-theme="tun">Tun</button>
+      <button data-theme="kun">Kun</button>
+    </div>
+
+    <div class="section">Suhbat</div>
+    <button id="clear-chat" class="btn">Suhbatni tozalash</button>
+    <button id="do-logout" class="btn danger">Hisobdan chiqish</button>
+
+    <p id="settings-note" class="hint"></p>
+    <p class="hint tiny-note">
+      Kengaytma hech qanday kalit yoki token soʻramaydi: hammasi Daho
+      hisobingiz orqali ishlaydi.
+    </p>
+  </section>
+
+</main>
+
+<footer id="composer-wrap">
+  <div class="quick" id="quick"></div>
+  <div class="composer">
+    <textarea id="ask" rows="1" placeholder="Topshiriq bering…"></textarea>
+    <button id="send" class="send" title="Bajarish">↑</button>
+  </div>
+</footer>
+
+<script type="module" src="panel.js"></script>

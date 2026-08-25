@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { deleteApp, saveLinkApp, updateApp } from '../../lib/creations';
 import { saveArtifact } from '../../lib/exporter';
 import { blocksEmbedding, openExternal } from '../../lib/openlink';
-import { clearSandboxStore, sandboxDocument } from '../../lib/sandbox';
+import { IFRAME_ALLOW, IFRAME_SANDBOX, clearSandboxStore, sandboxDocument } from '../../lib/sandbox';
 import { useStore } from '../../lib/store';
 import type { MiniApp } from '../../lib/types';
 import { relativeTime, uid } from '../../lib/utils';
@@ -69,7 +69,12 @@ export function Apps() {
         {running.url && <LinkHint app={running} />}
         <div className="viewer-body">
           {running.url ? (
-            <iframe key={reloadKey} title={running.name} src={running.url} />
+            <iframe
+              key={reloadKey}
+              title={running.name}
+              src={running.url}
+              allow={IFRAME_ALLOW}
+            />
           ) : !running.html.trim() ? (
             <div className="pad">
               <Empty
@@ -82,7 +87,8 @@ export function Apps() {
               key={reloadKey}
               title={running.name}
               srcDoc={sandboxDocument(running.html, running.id)}
-              sandbox="allow-scripts allow-forms allow-modals allow-popups"
+              sandbox={IFRAME_SANDBOX}
+              allow={IFRAME_ALLOW}
             />
           )}
         </div>

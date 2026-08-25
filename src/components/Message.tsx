@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
+import { Attachments } from './Attachments';
+import { ProcessTrail } from './ProcessTrail';
+import type { RunningTask } from '../lib/tasks';
 import { splitSegments, type Segment } from '../lib/artifacts';
 import { copyText, exportDocument, DOC_LABEL, type DocFormat } from '../lib/exporter';
-import { renderMarkdown } from '../lib/markdown';
+import { Markdown } from './Markdown';
 import { speak, stopSpeaking } from '../lib/speech';
 import { useStore } from '../lib/store';
 import type { Artifact, Message as Msg } from '../lib/types';
@@ -12,11 +15,19 @@ import { Copy, Download, Refresh, Speaker } from './Icons';
 import { RouteCard } from './RouteCard';
 import { ToolLine, splitByTools } from './ToolLine';
 import { VideoCard } from './VideoStudio';
+import { YouTubeCard } from './VideoLink';
+import { findVideos } from '../lib/ytube';
 import { Sheet, toast } from './ui';
 
 interface Props {
   message: Msg;
   streaming: boolean;
+  /**
+   * Hozir bajarilayotgan ish. Berilgan boʻlsa oddiy «yozilmoqda»
+   * nuqtalari oʻrniga qadamlar izi koʻrinadi — foydalanuvchi nima
+   * boʻlayotganini aynan shu yerda, javob chiqadigan joyda koʻradi.
+   */
+  task?: RunningTask;
   isLast: boolean;
   onOpenArtifact: (a: Artifact) => void;
   onOpenVideo: (id: string) => void;
@@ -26,6 +37,7 @@ interface Props {
 export function MessageView({
   message,
   streaming,
+  task,
   isLast,
   onOpenArtifact,
   onOpenVideo,
@@ -48,6 +60,9 @@ export function MessageView({
       .filter((a): a is Artifact => Boolean(a));
   }, [message.artifactIds, artifacts]);
 
+  // Javobdagi YouTube havolalari — chatning oʻzida pleyer boʻlib chiqadi.
+  const videoLinks = useMemo(() => findVideos(message.text), [message.text]);
+
   // Rasmlar chatda oʻzi koʻrinadi, qolganlari kod bloklariga bogʻlanadi.
   const pictures = useMemo(() => linked.filter((a) => a.kind === 'image'), [linked]);
   const codeLinked = useMemo(() => linked.filter((a) => a.kind !== 'image'), [linked]);
@@ -55,13 +70,7 @@ export function MessageView({
   if (message.role === 'user') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-        {!!message.attachments?.length && (
-          <div className="attach-grid" style={{ justifyContent: 'flex-end' }}>
-            {message.attachments.map((a, i) => (
-              <img key={i} src={`data:${a.mimeType};base64,${a.data}`} alt="" />
-            ))}
-          </div>
-        )}
+        {!!message.attachments?.length && <Attachments items={message.attachments} />}
         {message.text && (
           <div
             className="msg user"
@@ -108,13 +117,7 @@ export function MessageView({
   const renderSegment = (seg: Segment, key: string) => {
     if (seg.type === 'text') {
       if (!seg.value.trim()) return null;
-      return (
-        <div
-          key={key}
-          className="md"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(seg.value) }}
-        />
-      );
+      return <Markdown key={key} text={seg.value} />;
     }
 
     if (seg.lang === 'chart') {
@@ -168,6 +171,10 @@ export function MessageView({
         </div>
       ))}
 
+      {videoLinks.map((v) => (
+        <YouTubeCard key={v.id} video={v} />
+      ))}
+
       {pictures.map((img) => (
         <button
           key={img.id}
@@ -183,7 +190,7 @@ export function MessageView({
 
       {message.videoId && <VideoCard projectId={message.videoId} onOpen={onOpenVideo} />}
 
-      {streaming && <span className="typing" />}
+      {streaming && (task ? <ProcessTrail task={task} inline /> : <span className="typing" />)}
 
       {message.error && <div className="err">{message.error}</div>}
 

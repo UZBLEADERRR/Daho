@@ -1,5 +1,6 @@
 import type { Block, Run } from './docmodel';
 import { parseDocument, runsToText } from './docmodel';
+import { loadImage, prepareImages } from './docimages';
 
 /* ------------------------------------------------------------------ */
 /*  Sahifalarni canvasda chizish                                       */
@@ -94,11 +95,100 @@ function writeText(
   state.current.pen.y += opts.gapAfter ?? 6;
 }
 
+type DrawState = {
+  pages: HTMLCanvasElement[];
+  current: { canvas: HTMLCanvasElement; pen: Pen };
+};
+
+/**
+ * Rasmni sahifaga chizadi. Sigʻmasa yangi sahifaga oʻtadi; juda baland
+ * boʻlsa sahifa balandligiga moslashtiriladi.
+ */
+function drawImage(state: DrawState, img: HTMLImageElement, caption: string): void {
+  const maxW = PAGE_W - MARGIN * 2;
+  const ratio = (img.naturalHeight || 1) / (img.naturalWidth || 1);
+  let w = maxW;
+  let h = w * ratio;
+
+  const maxH = PAGE_H - MARGIN * 2 - 30;
+  if (h > maxH) {
+    h = maxH;
+    w = h / ratio;
+  }
+
+  // Sahifada joy qolmagan boʻlsa — yangisiga.
+  if (state.current.pen.y + h > PAGE_H - MARGIN) {
+    state.pages.push(state.current.canvas);
+    state.current = newPage();
+  }
+
+  const x = MARGIN + (maxW - w) / 2;
+  const { ctx } = state.current.pen;
+  ctx.drawImage(img, x, state.current.pen.y, w, h);
+  state.current.pen.y += h + 6;
+
+  if (caption.trim()) {
+    ctx.font = `italic 9.5px ${FONT}`;
+    ctx.fillStyle = '#6b6b76';
+    ctx.textAlign = 'center';
+    ctx.fillText(caption.slice(0, 110), PAGE_W / 2, state.current.pen.y);
+    ctx.textAlign = 'left';
+    state.current.pen.y += 16;
+  } else {
+    state.current.pen.y += 8;
+  }
+}
+
+/** Muqova sahifasi — rasm toʻliq sahifa, ustida kitob nomi. */
+function drawCover(state: DrawState, img: HTMLImageElement, title: string): void {
+  const { ctx } = state.current.pen;
+  const ratio = (img.naturalHeight || 1) / (img.naturalWidth || 1);
+
+  // Sahifani toʻliq qoplaymiz (kerak boʻlsa chetini kesib).
+  let w = PAGE_W;
+  let h = w * ratio;
+  if (h < PAGE_H) {
+    h = PAGE_H;
+    w = h / ratio;
+  }
+  ctx.drawImage(img, (PAGE_W - w) / 2, (PAGE_H - h) / 2, w, h);
+
+  if (title.trim()) {
+    // Pastki qismga qoraygan yoʻlak — matn har qanday rasmda oʻqiladi.
+    const bandTop = PAGE_H - 190;
+    const grad = ctx.createLinearGradient(0, bandTop, 0, PAGE_H);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.82)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, bandTop, PAGE_W, 190);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    const lines = wrap(ctx, title, PAGE_W - MARGIN * 2);
+    ctx.font = `700 26px ${FONT}`;
+    let y = PAGE_H - 60 - (lines.length - 1) * 32;
+    for (const line of lines.slice(0, 3)) {
+      ctx.fillText(line, PAGE_W / 2, y);
+      y += 32;
+    }
+    ctx.textAlign = 'left';
+  }
+
+  state.pages.push(state.current.canvas);
+  state.current = newPage();
+}
+
 function drawBlock(
-  state: { pages: HTMLCanvasElement[]; current: { canvas: HTMLCanvasElement; pen: Pen } },
+  state: DrawState,
   block: Block,
+  images?: Map<string, HTMLImageElement>,
 ): void {
   switch (block.type) {
+    case 'img': {
+      const img = images?.get(block.src);
+      if (img) drawImage(state, img, block.caption);
+      break;
+    }
     case 'h1':
       writeText(state, runsToText(block.runs), { size: 24, bold: true, gapAfter: 10 });
       break;
@@ -247,20 +337,39 @@ function assemblePdf(images: Uint8Array[], width: number, height: number): Uint8
 }
 
 /** Markdown matndan .pdf fayl bayti yasaydi. */
-export function buildPdf(markdown: string, title?: string): Uint8Array {
+export async function buildPdf(markdown: string, title?: string): Promise<Uint8Array> {
   const blocks = parseDocument(markdown);
+
+  // Rasmlarni oldindan yuklab olamiz — canvas ga chizish sinxron boʻlishi kerak.
+  const srcs = blocks.filter((b): b is Extract<Block, { type: 'img' }> => b.type === 'img');
+  const prepared = await prepareImages(srcs.map((b) => b.src));
+  const images = new Map<string, HTMLImageElement>();
+  for (const [src, data] of prepared) {
+    try {
+      images.set(src, await loadImage(data.data, data.mimeType));
+    } catch {
+      /* bitta rasm chiqmasa hujjat baribir yasaladi */
+    }
+  }
+
   const state = { pages: [] as HTMLCanvasElement[], current: newPage() };
 
-  if (title) {
+  // Muqova boʻlsa — birinchi sahifa toʻliq muqova boʻlsin.
+  const first = blocks[0];
+  if (first?.type === 'img' && images.has(first.src)) {
+    drawCover(state, images.get(first.src)!, title ?? '');
+    blocks.shift();
+  } else if (title) {
     writeText(state, title, { size: 26, bold: true, gapAfter: 16 });
   }
-  for (const block of blocks) drawBlock(state, block);
+
+  for (const block of blocks) drawBlock(state, block, images);
   state.pages.push(state.current.canvas);
 
-  const images = state.pages.map((canvas) =>
+  const pageJpegs = state.pages.map((canvas) =>
     dataUrlToBytes(canvas.toDataURL('image/jpeg', 0.86)),
   );
-  return assemblePdf(images, PAGE_W, PAGE_H);
+  return assemblePdf(pageJpegs, PAGE_W, PAGE_H);
 }
 
 /** Faqat sarlavhani olish uchun yordamchi (eksport nomi uchun). */

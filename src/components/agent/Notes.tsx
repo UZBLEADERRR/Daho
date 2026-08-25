@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { renderMarkdown } from '../../lib/markdown';
+import { Markdown } from '../Markdown';
 import { setState, useStore } from '../../lib/store';
 import type { Note } from '../../lib/types';
 import { relativeTime, uid } from '../../lib/utils';
@@ -122,10 +122,7 @@ export function Notes() {
             <span className="chip accent">{preview.subject}</span>
             <span className="tiny">{relativeTime(preview.updatedAt)}</span>
           </div>
-          <div
-            className="md"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(preview.content) }}
-          />
+          <Markdown text={preview.content} />
           <div className="row" style={{ marginTop: 16 }}>
             <button
               className="btn ghost"

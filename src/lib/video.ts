@@ -1,6 +1,6 @@
 import { b64ToBytes } from './audio';
-import { generateImage, generateJson } from './gemini';
 import { synthesize } from './speech';
+import { imageAny, jsonAny } from './providers';
 import { getState, setState } from './store';
 import type {
   SubtitleStyle,
@@ -10,12 +10,14 @@ import type {
   VideoStage,
 } from './types';
 import { uid } from './utils';
+import { withWebmDuration } from './webm';
 
 /* ------------------------------------------------------------------ */
 /*  Standart qiymatlar                                                 */
 /* ------------------------------------------------------------------ */
 
 export const DEFAULT_SUBTITLE: SubtitleStyle = {
+  enabled: true,
   font: 'Inter',
   size: 46,
   color: '#ffffff',
@@ -142,9 +144,8 @@ export async function planVideo(
   const style = opts.style ?? VIDEO_STYLES[0];
   const sceneCount = Math.min(12, Math.max(3, opts.sceneCount ?? 6));
 
-  const plan = await generateJson<PlanResponse>(
-    settings.apiKey,
-    settings.model,
+  // Provayderdan qatʼi nazar: Gemini boʻlsa u, boʻlmasa OpenRouter.
+  const plan = await jsonAny<PlanResponse>(
     planPrompt(topic, sceneCount, style),
     PLAN_SCHEMA,
     signal,
@@ -233,7 +234,6 @@ export async function generateSceneImages(
   onProgress?: (done: number, total: number) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const { settings } = getState();
   const project = getProject(projectId);
   if (!project) return;
 
@@ -257,16 +257,14 @@ export async function generateSceneImages(
     ].filter(Boolean);
 
     try {
-      const result = await generateImage(
-        settings.apiKey,
-        settings.imageModel,
+      const images = await imageAny(
         parts.join(' '),
         character?.refImage ? [{ mimeType: 'image/png', data: character.refImage }] : [],
         signal,
       );
       patchScene(projectId, scene.id, {
-        imageData: result.images[0].data,
-        imageMime: result.images[0].mimeType,
+        imageData: images[0].data,
+        imageMime: images[0].mimeType,
       });
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') throw err;
@@ -292,6 +290,9 @@ export async function generateSceneVoices(
   setStage(projectId, 'ovoz');
   const total = project.scenes.length;
 
+  let failed = 0;
+  let lastError = '';
+
   for (let i = 0; i < total; i += 1) {
     const scene = getProject(projectId)?.scenes[i];
     if (!scene) break;
@@ -305,10 +306,107 @@ export async function generateSceneVoices(
       patchScene(projectId, scene.id, { audioWav: wav });
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') throw err;
+      failed += 1;
+      lastError = String((err as Error)?.message ?? err);
       console.warn('Sahna ovozi chiqmadi:', err);
     }
     onProgress?.(i + 1, total);
   }
+
+  setStage(projectId, 'tayyor');
+
+  // Ilgari ovoz chiqmasa ham hech narsa aytilmasdi va video jimjit chiqardi.
+  if (failed) {
+    const hint = getState().settings.apiKey
+      ? lastError
+      : 'Ovoz uchun Gemini kaliti kerak — Sozlamalar → AI modellar boʻlimiga qoʻying.';
+    patchProject(projectId, { error: `${failed} ta sahna ovozsiz qoldi. ${hint}` });
+    throw new Error(`${failed} ta sahnaning ovozi chiqmadi. ${hint}`);
+  }
+  patchProject(projectId, { error: undefined });
+}
+
+/** Bitta sahnaning ovozini qaytadan yozadi. */
+export async function revoiceScene(
+  projectId: string,
+  sceneId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const project = getProject(projectId);
+  const scene = project?.scenes.find((s) => s.id === sceneId);
+  if (!project || !scene) return;
+  const character = project.characters.find((c) => c.id === scene.characterId);
+  const wav = await synthesize(scene.narration, character?.voiceId ?? project.voiceId, signal);
+  patchScene(projectId, sceneId, { audioWav: wav });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tarjima — videoning tilini almashtirish                            */
+/* ------------------------------------------------------------------ */
+
+export const VIDEO_LANGUAGES = [
+  'oʻzbek',
+  'rus',
+  'ingliz',
+  'turk',
+  'qozoq',
+  'arab',
+  'koreys',
+  'ispan',
+];
+
+/**
+ * Barcha sahna matnlarini boshqa tilga oʻgiradi. Rasm soʻrovlariga tegilmaydi
+ * (ular ingliz tilida yaxshiroq ishlaydi), ovozlar esa tozalanadi — matn
+ * oʻzgargani uchun ularni qayta yozish kerak.
+ */
+export async function translateProject(
+  projectId: string,
+  language: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const project = getProject(projectId);
+  if (!project || !project.scenes.length) return;
+
+  const numbered = project.scenes.map((s, i) => `${i + 1}. ${s.narration}`).join('\n');
+
+  const result = await jsonAny<{ title?: string; lines: string[] }>(
+    `Quyidagi video ssenariysini ${language.toUpperCase()} TILIGA tarjima qil.
+
+Qoidalar:
+- Har bir qatorni alohida tarjima qil, tartibini saqla — ${project.scenes.length} ta qator kirdi, ${project.scenes.length} ta chiqishi shart.
+- Matn diktor oʻqishi uchun: ravon, tabiiy, gapirishga qulay boʻlsin.
+- Raqam, qavs yoki izoh qoʻshma — faqat oʻqiladigan matnning oʻzi.
+- Uzunligi asl matnga yaqin boʻlsin, chunki u sahna davomiyligiga moslanadi.
+- "title" — video sarlavhasining shu tildagi varianti.
+
+Ssenariy:
+${numbered}`,
+    {
+      type: 'OBJECT',
+      properties: {
+        title: { type: 'STRING' },
+        lines: { type: 'ARRAY', items: { type: 'STRING' } },
+      },
+      required: ['lines'],
+    },
+    signal,
+  );
+
+  const lines = result.lines ?? [];
+  if (!lines.length) throw new Error('Tarjima boʻsh qaytdi');
+
+  patchProject(projectId, {
+    language,
+    ...(result.title ? { title: result.title } : {}),
+    // Matn oʻzgardi — eski ovoz endi mos kelmaydi.
+    scenes: project.scenes.map((s, i) => ({
+      ...s,
+      narration: lines[i]?.trim() || s.narration,
+      audioWav: undefined,
+    })),
+    error: undefined,
+  });
   setStage(projectId, 'tayyor');
 }
 
@@ -361,23 +459,65 @@ function wrapLine(
   return lines;
 }
 
-function pickVideoMime(): string {
+/**
+ * Chrome `isTypeSupported('video/mp4')` uchun «ha» deydi, lekin ichiga
+ * VP9 + Opus solib qoʻyadi — bunday fayl .mp4 nomi bilan telefon galereyasida
+ * ovozsiz ochiladi yoki umuman ochilmaydi. Shuning uchun rekorderni tuzib
+ * koʻramiz va u AYNAN qaysi kodekni yozishini soʻraymiz: mp4 faqat H.264 +
+ * AAC boʻlsa qabul qilinadi, aks holda webm ga tushamiz.
+ */
+function isRealMp4(mimeType: string): boolean {
+  const lower = mimeType.toLowerCase();
+  const video = lower.includes('avc1') || lower.includes('h264') || lower.includes('avc3');
+  const audio = lower.includes('mp4a') || lower.includes('aac');
+  return video && audio;
+}
+
+interface RecorderChoice {
+  recorder: MediaRecorder;
+  ext: 'mp4' | 'webm';
+}
+
+function makeRecorder(stream: MediaStream): RecorderChoice {
+  const options = { videoBitsPerSecond: 3_500_000, audioBitsPerSecond: 128_000 };
   const candidates = [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=h264,aac',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
     'video/webm',
-    'video/mp4',
   ];
-  for (const type of candidates) {
-    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) return type;
+
+  for (const mimeType of candidates) {
+    if (!MediaRecorder.isTypeSupported(mimeType)) continue;
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { ...options, mimeType });
+    } catch {
+      continue;
+    }
+    // Rekorder aslida nima yozishini aytadi — soʻralgan bilan bir xil boʻlmasligi mumkin.
+    const actual = recorder.mimeType || mimeType;
+    if (actual.includes('mp4')) {
+      if (isRealMp4(actual)) return { recorder, ext: 'mp4' };
+      continue; // mp4 qutisiga VP9 solingan — bunisi kerak emas
+    }
+    return { recorder, ext: 'webm' };
   }
-  return '';
+
+  // Hech biri toʻgʻri kelmasa — brauzer oʻzi tanlasin.
+  const recorder = new MediaRecorder(stream, options);
+  return { recorder, ext: recorder.mimeType.includes('mp4') && isRealMp4(recorder.mimeType) ? 'mp4' : 'webm' };
 }
 
 export interface RenderResult {
   blob: Blob;
   mimeType: string;
   durationSec: number;
+  /** Faylga qaysi kengaytma bilan saqlash kerak */
+  ext: 'mp4' | 'webm';
+  /** Ovozi chiqmagan sahnalar soni */
+  silentScenes: number;
 }
 
 /**
@@ -425,6 +565,15 @@ export async function renderVideo(
     }
   }
 
+  const silentScenes = buffers.filter((b) => !b).length;
+  if (silentScenes === buffers.length) {
+    await audio.close().catch(() => undefined);
+    setStage(projectId, 'tayyor');
+    throw new Error(
+      'Hech bir sahnaning ovozi yoʻq — video ovozsiz chiqardi. Avval «Ovoz yozish» ni bosing.',
+    );
+  }
+
   const GAP = 0.28;
   const durations = project.scenes.map((scene, i) =>
     buffers[i] ? buffers[i]!.duration + GAP : scene.durationSec,
@@ -446,18 +595,18 @@ export async function renderVideo(
   }
 
   const captions = project.scenes.map((s) => splitCaption(s.narration));
+  const subtitlesOn = project.subtitle.enabled !== false;
 
   // Oqimlarni birlashtirish
   const destination = audio.createMediaStreamDestination();
   const stream = canvas.captureStream(30);
   destination.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
 
-  const mimeType = pickVideoMime();
-  const recorder = new MediaRecorder(stream, {
-    ...(mimeType ? { mimeType } : {}),
-    videoBitsPerSecond: 3_500_000,
-    audioBitsPerSecond: 128_000,
-  });
+  if (!stream.getAudioTracks().length) {
+    throw new Error('Ovoz yoʻli ochilmadi — qurilma ovoz yozishga ruxsat bermadi.');
+  }
+
+  const { recorder, ext } = makeRecorder(stream);
   const chunks: BlobPart[] = [];
   recorder.ondataavailable = (e) => {
     if (e.data.size > 0) chunks.push(e.data);
@@ -511,12 +660,15 @@ export async function renderVideo(
       ctx.fillRect(0, 0, w, h);
     }
 
-    // Pastki qorayish — subtitr oʻqilishi uchun
-    const shade = ctx.createLinearGradient(0, h * 0.55, 0, h);
-    shade.addColorStop(0, 'rgba(0,0,0,0)');
-    shade.addColorStop(1, 'rgba(0,0,0,0.55)');
-    ctx.fillStyle = shade;
-    ctx.fillRect(0, h * 0.55, w, h * 0.45);
+    // Pastki qorayish faqat subtitr oʻqilishi uchun kerak — subtitr
+    // oʻchirilgan boʻlsa rasmni behuda qoraytirmaymiz.
+    if (subtitlesOn) {
+      const shade = ctx.createLinearGradient(0, h * 0.55, 0, h);
+      shade.addColorStop(0, 'rgba(0,0,0,0)');
+      shade.addColorStop(1, 'rgba(0,0,0,0.55)');
+      ctx.fillStyle = shade;
+      ctx.fillRect(0, h * 0.55, w, h * 0.45);
+    }
 
     // Kirish/chiqish qorayishi
     if (elapsed < 0.4) {
@@ -527,7 +679,7 @@ export async function renderVideo(
       ctx.fillRect(0, 0, w, h);
     }
 
-    drawCaption(ctx, project.subtitle, captions[index], progress, w, h);
+    if (subtitlesOn) drawCaption(ctx, project.subtitle, captions[index], progress, w, h);
   };
 
   await new Promise<void>((resolve) => {
@@ -552,16 +704,21 @@ export async function renderVideo(
   stream.getTracks().forEach((t) => t.stop());
   await audio.close().catch(() => undefined);
 
-  const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+  const raw = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+  // MediaRecorder davomiylikni yozmaydi — qoʻshib qoʻyamiz, aks holda pleyer
+  // uzunlikni bilmaydi va bazi telefonlarda ovoz eshitilmaydi.
+  const blob = ext === 'webm' ? await withWebmDuration(raw, total) : raw;
+
   renderCache.set(projectId, blob);
   patchProject(projectId, {
     stage: 'yakunlandi',
     outputMime: blob.type,
+    outputExt: ext,
     outputSize: blob.size,
   });
   onProgress?.(100);
 
-  return { blob, mimeType: blob.type, durationSec: total };
+  return { blob, mimeType: blob.type, durationSec: total, ext, silentScenes };
 }
 
 function drawCaption(

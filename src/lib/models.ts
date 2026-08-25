@@ -1,4 +1,5 @@
 import { listModels, type RemoteModel } from './gemini';
+import { aiAvailable, resolveSource } from './route';
 
 export type ModelRole = 'chat' | 'image' | 'tts' | 'video' | 'embed' | 'other';
 
@@ -11,6 +12,21 @@ export interface ModelInfo {
   score: number;
   preview: boolean;
   description?: string;
+  /** Tashqi provayder id si; boʻsh boʻlsa — Gemini */
+  provider?: string;
+  providerLabel?: string;
+  /** Rasmni koʻra oladimi */
+  vision?: boolean;
+  /** Vositalarni chaqira oladimi */
+  tools?: boolean;
+  /** Kontekst oynasi (token) */
+  context?: number;
+  /** 1 mln kirish tokeni narxi (USD) */
+  inPrice?: number;
+  /** 1 mln chiqish tokeni narxi (USD) */
+  outPrice?: number;
+  /** Bepul modelmi */
+  free?: boolean;
 }
 
 const CACHE_KEY = 'daho.models.v1';
@@ -18,6 +34,8 @@ const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 soat
 
 interface Cache {
   fetchedAt: number;
+  /** Roʻyxat qaysi manbadan olingan — bulutda faqat rejadagi modellar boʻladi */
+  source: 'byok' | 'cloud';
   models: ModelInfo[];
 }
 
@@ -87,6 +105,8 @@ function readCache(): Cache | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Cache;
     if (!Array.isArray(parsed.models) || !parsed.models.length) return null;
+    // Manba almashgan boʻlsa (oʻz kaliti ↔ obuna) roʻyxat boshqacha boʻladi.
+    if (parsed.source !== resolveSource()) return null;
     return parsed;
   } catch {
     return null;
@@ -95,7 +115,10 @@ function readCache(): Cache | null {
 
 function writeCache(models: ModelInfo[]): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), models }));
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({ fetchedAt: Date.now(), source: resolveSource(), models }),
+    );
   } catch {
     /* xotira toʻlgan boʻlishi mumkin */
   }
@@ -110,7 +133,7 @@ let inflight: Promise<ModelInfo[]> | null = null;
 export async function getModels(apiKey: string, force = false): Promise<ModelInfo[]> {
   const cache = readCache();
   if (!force && cache && Date.now() - cache.fetchedAt < CACHE_TTL) return cache.models;
-  if (!apiKey) return cache?.models ?? [];
+  if (!aiAvailable(apiKey)) return cache?.models ?? [];
 
   if (inflight && !force) return inflight;
 
@@ -160,6 +183,21 @@ export function pickModel(
   // Barqaror (preview boʻlmagan) modelga ustunlik beramiz.
   const stable = pool.filter((m) => !m.preview);
   return (stable[0] ?? pool[0]).id;
+}
+
+/**
+ * Gemini-ga xos ishlar uchun model nomi.
+ *
+ * Sxema boʻyicha JSON, Google qidiruvi, audio va PDF oʻqish — bularni
+ * faqat Gemini bajaradi. Foydalanuvchi asosiy modelni tashqi provayderga
+ * (Kimi, Qwen, GPT…) almashtirgan boʻlsa, shu vositalar baribir ishlashi
+ * uchun bu yerda Gemini modeliga qaytamiz.
+ */
+export function geminiModel(preferred?: string): string {
+  if (preferred && !preferred.includes('::')) return preferred;
+  const list = cachedModels().filter((m) => m.role === 'chat' && !m.provider);
+  const stable = list.find((m) => !m.preview);
+  return (stable ?? list[0])?.id ?? FALLBACK_MODELS.chat;
 }
 
 /** Standart taxminlar — API hali soʻralmaganda ishlatiladi. */

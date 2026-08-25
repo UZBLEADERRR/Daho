@@ -3,6 +3,7 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { blobToWavBytes, bytesToB64, playWavBase64, stopPlayback, ttsToWavBase64 } from './audio';
 import { generateSpeech, transcribeAudio } from './gemini';
+import { cachedModels, geminiModel } from './models';
 import { getState } from './store';
 
 const isNative = () => Capacitor.isNativePlatform();
@@ -207,18 +208,151 @@ export interface ListenCallbacks {
   onState?: (state: 'yozilmoqda' | 'tahlil') => void;
   onFinal: (text: string) => void;
   onError: (message: string) => void;
+  /** Mikrofon darajasi 0..1 — jonli rejimda toʻlqin chizish uchun */
+  onLevel?: (level: number) => void;
+  /**
+   * Jim qolinganda oʻzi toʻxtasin (jonli suhbat uchun). Necha millisekund
+   * sukunatdan keyin toʻxtash kerakligi. 0 — oʻchiq.
+   */
+  autoStopAfterSilence?: number;
+}
+
+/**
+ * Ovozni matnga oʻgirish uchun Gemini modeli.
+ *
+ * Asosiy model tashqi provayderniki (OpenRouter, Kimi…) boʻlishi mumkin —
+ * ular audio qabul qilmaydi. Shuning uchun bu yerda har doim Gemini
+ * modelini tanlaymiz.
+ */
+function sttModel(): string {
+  return geminiModel(getState().settings.model);
 }
 
 /** Mikrofon ruxsatini so'raydi. */
 async function ensureMicPermission(): Promise<boolean> {
   if (!isNative()) return true;
   try {
+    // Avval tekshiramiz — berilgan boʻlsa qayta soʻrab bezovta qilmaymiz.
+    const current = await SpeechRecognition.checkPermissions();
+    if (current.speechRecognition === 'granted') return true;
     const perm = await SpeechRecognition.requestPermissions();
     return perm.speechRecognition === 'granted';
   } catch {
     // Plagin ruxsat so'ray olmasa, getUserMedia o'zi so'raydi.
     return true;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mikrofon diagnostikasi                                             */
+/* ------------------------------------------------------------------ */
+
+export interface MicCheck {
+  step: string;
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * Mikrofonning har bir bosqichini alohida tekshiradi.
+ *
+ * Telefonda mikrofon ishlamaganda sabab koʻp boʻlishi mumkin: ruxsat
+ * berilmagan, WebView `getUserMedia` ni bermayapti, `MediaRecorder` yoʻq,
+ * yoki qurilmada oʻzbek tili uchun nutq xizmati yoʻq. Bu funksiya
+ * qaysi bosqichda toʻxtaganini aniq aytadi.
+ */
+export async function checkMicrophone(): Promise<MicCheck[]> {
+  const out: MicCheck[] = [];
+  const { settings } = getState();
+
+  out.push({
+    step: 'Muhit',
+    ok: true,
+    detail: isNative() ? 'Android ilova (WebView)' : 'Brauzer',
+  });
+
+  // 1. Ruxsat
+  if (isNative()) {
+    try {
+      const perm = await SpeechRecognition.checkPermissions();
+      const granted = perm.speechRecognition === 'granted';
+      if (!granted) {
+        const asked = await SpeechRecognition.requestPermissions();
+        out.push({
+          step: 'Mikrofon ruxsati',
+          ok: asked.speechRecognition === 'granted',
+          detail: `holat: ${asked.speechRecognition}`,
+        });
+      } else {
+        out.push({ step: 'Mikrofon ruxsati', ok: true, detail: 'berilgan' });
+      }
+    } catch (err) {
+      out.push({
+        step: 'Mikrofon ruxsati',
+        ok: false,
+        detail: `plagin javob bermadi: ${String((err as Error)?.message ?? err)}`,
+      });
+    }
+  } else {
+    out.push({ step: 'Mikrofon ruxsati', ok: true, detail: 'brauzer oʻzi soʻraydi' });
+  }
+
+  // 2. getUserMedia — ovoz yozib olish yoʻli
+  if (!navigator.mediaDevices?.getUserMedia) {
+    out.push({ step: 'Ovoz oqimi', ok: false, detail: 'getUserMedia yoʻq' });
+  } else {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const track = stream.getAudioTracks()[0];
+      out.push({
+        step: 'Ovoz oqimi',
+        ok: true,
+        detail: track ? `ochildi: ${track.label || 'mikrofon'}` : 'ochildi',
+      });
+      stream.getTracks().forEach((t) => t.stop());
+    } catch (err) {
+      out.push({
+        step: 'Ovoz oqimi',
+        ok: false,
+        detail: `${(err as Error)?.name ?? 'xato'}: ${(err as Error)?.message ?? ''}`,
+      });
+    }
+  }
+
+  // 3. Yozib oluvchi
+  const mime = typeof MediaRecorder === 'undefined' ? '' : pickRecorderMime();
+  out.push({
+    step: 'Yozib oluvchi',
+    ok: typeof MediaRecorder !== 'undefined',
+    detail: typeof MediaRecorder === 'undefined' ? 'MediaRecorder yoʻq' : mime || 'standart format',
+  });
+
+  // 4. Matnga oʻgirish yoʻli
+  if (settings.apiKey.trim()) {
+    out.push({ step: 'Matnga oʻgirish', ok: true, detail: `Gemini: ${sttModel()}` });
+  } else {
+    out.push({
+      step: 'Matnga oʻgirish',
+      ok: false,
+      detail: 'Google kaliti yoʻq — telefon xizmati ishlatiladi',
+    });
+  }
+
+  // 5. Qurilmaning oʻz nutq xizmati (zaxira yoʻl)
+  if (isNative()) {
+    try {
+      const { available } = await SpeechRecognition.available();
+      out.push({
+        step: 'Telefon nutq xizmati',
+        ok: available,
+        detail: available ? `bor (${settings.sttLang})` : 'yoʻq — Google ilovasini yangilang',
+      });
+    } catch {
+      out.push({ step: 'Telefon nutq xizmati', ok: false, detail: 'tekshirib boʻlmadi' });
+    }
+  }
+
+  return out;
 }
 
 function pickRecorderMime(): string {
@@ -240,10 +374,9 @@ function pickRecorderMime(): string {
  */
 async function listenViaGemini(cb: ListenCallbacks): Promise<ListenHandle | null> {
   const { settings } = getState();
-  if (!settings.apiKey) {
-    cb.onError('Avval Sozlamalarda API kalitni kiriting.');
-    return null;
-  }
+  // Google kaliti yoʻq (masalan faqat OpenRouter ulangan) — bu yoʻl
+  // ishlamaydi. Xato koʻrsatmaymiz: qurilmaning oʻz xizmatiga oʻtamiz.
+  if (!settings.apiKey) return null;
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
     return null;
   }
@@ -273,39 +406,115 @@ async function listenViaGemini(cb: ListenCallbacks): Promise<ListenHandle | null
     if (e.data.size > 0) chunks.push(e.data);
   };
 
+  /* ---- Daraja oʻlchagich: koʻrsatkich va sukunatni aniqlash ---- */
+  let meter: (() => void) | null = null;
+  /** Umuman ovoz eshitildimi — «ovoz aniqlanmadi» xabarini aniq qilish uchun */
+  let heardVoice = false;
+
+  try {
+    const AudioCtor: typeof AudioContext =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AudioCtor();
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+    const buffer = new Uint8Array(analyser.frequencyBinCount);
+
+    let lastLoudAt = Date.now();
+    let raf = 0;
+    const silenceMs = cb.autoStopAfterSilence ?? 0;
+    /** Ovoz boshlanmasdan turib toʻxtatmaslik uchun */
+    const startedAt = Date.now();
+
+    const step = () => {
+      analyser.getByteTimeDomainData(buffer);
+      let peak = 0;
+      for (let i = 0; i < buffer.length; i += 1) {
+        peak = Math.max(peak, Math.abs(buffer[i] - 128) / 128);
+      }
+      cb.onLevel?.(peak);
+      if (peak > 0.06) {
+        lastLoudAt = Date.now();
+        heardVoice = true;
+      }
+      // Jonli rejim: gap tugagach oʻzi toʻxtaydi.
+      if (
+        silenceMs > 0 &&
+        heardVoice &&
+        Date.now() - lastLoudAt > silenceMs &&
+        Date.now() - startedAt > 1200 &&
+        recorder.state === 'recording'
+      ) {
+        recorder.stop();
+        return;
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+
+    meter = () => {
+      cancelAnimationFrame(raf);
+      void ctx.close().catch(() => undefined);
+    };
+  } catch {
+    /* daraja oʻlchagichsiz ham yozib olamiz */
+  }
+
   const finished = new Promise<void>((resolve) => {
     recorder.onstop = async () => {
+      meter?.();
       stream.getTracks().forEach((t) => t.stop());
       if (cancelled) {
         resolve();
         return;
       }
       const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-      if (blob.size < 1200) {
-        cb.onError('Ovoz juda qisqa — qaytadan urinib koʻring.');
+      if (blob.size < 1200 || !heardVoice) {
+        cb.onError('Ovoz eshitilmadi — mikrofonga yaqinroq va balandroq gapiring.');
         resolve();
         return;
       }
       cb.onState?.('tahlil');
       try {
         // Gemini webm ni qabul qilmaydi — WAV ga oʻgiramiz.
-        let mimeType = blob.type.split(';')[0] || 'audio/webm';
+        let sendMime = blob.type.split(';')[0] || 'audio/webm';
         let base64: string;
         try {
           base64 = bytesToB64(await blobToWavBytes(blob));
-          mimeType = 'audio/wav';
+          sendMime = 'audio/wav';
         } catch {
           base64 = await blobToBase64(blob);
         }
-        const text = await transcribeAudio(
-          settings.apiKey,
-          settings.model,
-          { mimeType, data: base64 },
-          undefined,
-          settings.sttLang,
-        );
+
+        const audio = { mimeType: sendMime, data: base64 };
+        let text = '';
+        try {
+          text = await transcribeAudio(
+            settings.apiKey,
+            sttModel(),
+            audio,
+            undefined,
+            settings.sttLang,
+          );
+        } catch (first) {
+          // Bitta model band yoki audioni qabul qilmadi — ikkinchisini sinaymiz.
+          const spare = cachedModels().find(
+            (m) => m.role === 'chat' && !m.provider && m.id !== sttModel(),
+          );
+          if (!spare) throw first;
+          text = await transcribeAudio(
+            settings.apiKey,
+            spare.id,
+            audio,
+            undefined,
+            settings.sttLang,
+          );
+        }
+
         if (text.trim()) cb.onFinal(text.trim());
-        else cb.onError('Ovoz aniqlanmadi — balandroq va yaqinroq gapiring.');
+        else cb.onError('Nutq tanilmadi — sekinroq va tiniqroq gapirib koʻring.');
       } catch (err) {
         // Model audioni qabul qilmadi — keyingi safar qurilma xizmatiga oʻtamiz.
         geminiSttBroken = true;
@@ -328,6 +537,7 @@ async function listenViaGemini(cb: ListenCallbacks): Promise<ListenHandle | null
     },
     cancel: () => {
       cancelled = true;
+      meter?.();
       if (recorder.state !== 'inactive') recorder.stop();
       stream.getTracks().forEach((t) => t.stop());
     },
